@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../integrations/supabase/client.server";
+import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 
 export type AppSettings = {
   gemini_api_key?: string;
@@ -19,36 +19,31 @@ export async function getAppSettings(): Promise<AppSettings> {
   }
 
   try {
-    // Check if supabaseAdmin is accessible before calling it
-    // The Proxy in client.server.ts will throw if env vars are missing
-    let admin;
-    try {
-      admin = supabaseAdmin;
-      const { data, error } = await (admin as any)
-        .from("app_settings")
-        .select("key, value");
+    const admin = supabaseAdmin;
+    const { data, error } = await (admin as any)
+      .from("app_settings")
+      .select("key, value");
 
-      if (error) {
-        console.error("[Settings] DB select error:", error.message);
-        return (_settingsCache || {}) as AppSettings;
-      }
-
-      const settings: AppSettings = {};
-      if (data) {
-        for (const row of data) {
-          settings[row.key] = row.value;
-        }
-      }
-
-      _settingsCache = settings;
-      _lastFetch = now;
-      return settings;
-    } catch (adminError) {
-      console.warn("[Settings] Supabase admin client not available:", adminError);
+    if (error) {
+      console.error("[Settings] Erro ao buscar no banco app_settings:", error.message);
       return (_settingsCache || {}) as AppSettings;
     }
+
+    const settings: AppSettings = {};
+    if (data) {
+      console.log(`[Settings] Sucesso ao carregar ${data.length} chaves do banco de dados.`);
+      for (const row of data) {
+        settings[row.key] = row.value;
+      }
+    } else {
+      console.warn("[Settings] Nenhum dado retornado da tabela app_settings.");
+    }
+
+    _settingsCache = settings;
+    _lastFetch = now;
+    return settings;
   } catch (e) {
-    console.error("[Settings] Critical error fetching settings:", e);
+    console.error("[Settings] Erro crítico ao buscar configurações:", e);
     return (_settingsCache || {}) as AppSettings;
   }
 }

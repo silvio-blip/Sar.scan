@@ -1,6 +1,6 @@
-import { supabaseAdmin } from "../integrations/supabase/client.server";
+import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 
-import { getAppSettings } from "./settings.server";
+import { getAppSettings } from "./settings.server.js";
 
 type Body = Record<string, unknown> | undefined;
 
