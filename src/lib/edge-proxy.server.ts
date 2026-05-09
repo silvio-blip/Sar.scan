@@ -289,32 +289,22 @@ async function getUserStatus(userId: string) {
   return sub;
 }
 
-async function checkAndDeductScan(userId: string) {
+async function checkEligibility(userId: string) {
   const admin = getAdminSafe();
   if (!admin) throw new Error("Erro de conexão com o banco");
-
   const today = new Date().toISOString().split("T")[0];
 
-  // 1. Verificar uso diário gratuito (limite de 3)
+  // 1. Verificar uso diário gratuito
   const { data: usage } = await (admin as any)
     .from("scan_usage")
     .select("count")
     .eq("user_id", userId)
     .eq("data", today)
     .maybeSingle();
-
   const currentDailyCount = (usage as any)?.count ?? 0;
+  if (currentDailyCount < 3) return { type: "free" as const, val: currentDailyCount };
 
-  if (currentDailyCount < 3) {
-    // Usa um scan gratuito diário
-    await (admin as any).from("scan_usage").upsert(
-      { user_id: userId, data: today, count: currentDailyCount + 1 },
-      { onConflict: "user_id,data" }
-    );
-    return true;
-  }
-
-  // 2. Se esgotou os gratuitos, verificar créditos do plano
+  // 2. Verificar créditos do plano
   const { data: sub } = await (admin as any)
     .from("subscriptions")
     .select("scans_credits")
@@ -322,17 +312,26 @@ async function checkAndDeductScan(userId: string) {
     .maybeSingle();
 
   const credits = (sub as any)?.scans_credits ?? 0;
-
-  if (credits > 0) {
-    // Deduz do saldo pago
-    await (admin as any)
-      .from("subscriptions")
-      .update({ scans_credits: credits - 1 })
-      .eq("user_id", userId);
-    return true;
-  }
+  if (credits > 0) return { type: "paid" as const, val: credits };
 
   throw new Error("Você atingiu o limite de 3 scans gratuitos por dia. Assine um plano para continuar escaneando ou aguarde amanhã!");
+}
+
+async function deductScan(userId: string, eligibility: { type: "free" | "paid"; val: number }) {
+  const admin = getAdminSafe();
+  const today = new Date().toISOString().split("T")[0];
+
+  if (eligibility.type === "free") {
+    await (admin as any).from("scan_usage").upsert(
+      { user_id: userId, data: today, count: eligibility.val + 1 },
+      { onConflict: "user_id,data" }
+    );
+  } else {
+    await (admin as any)
+      .from("subscriptions")
+      .update({ scans_credits: eligibility.val - 1 })
+      .eq("user_id", userId);
+  }
 }
 
 export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
@@ -358,9 +357,13 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
         return await handleNutritionChat(data.body);
       case "scan-food": {
         if (!userId) throw new Error("Usuário não identificado");
-        // Verifica se pode escanear (deduz crédito ou incrementa contador diário)
-        await checkAndDeductScan(userId);
-        return await handleScanFood(data.body);
+        // Verifica se pode escanear
+        const eligibility = await checkEligibility(userId);
+        const result = await handleScanFood(data.body);
+        if (result.ok) {
+           await deductScan(userId, eligibility);
+        }
+        return result;
       }
       case "food-image":
         return { ok: true };

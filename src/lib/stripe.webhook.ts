@@ -20,6 +20,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
   switch (event.type) {
     case "checkout.session.completed": {
       const s = event.data.object;
+      console.log(`[Webhook] Checkout completed: ${s.id}, user: ${s.metadata?.user_id}`);
       const userId = s.metadata?.user_id;
       const planId = s.metadata?.plan;
       if (userId && planId) {
@@ -32,6 +33,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
         
         const currentCredits = (currentSub as any)?.scans_credits ?? 0;
         const newCredits = currentCredits + planScans(planId);
+        console.log(`[Webhook] Adding ${planScans(planId)} credits to user ${userId}. New total: ${newCredits}`);
 
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {

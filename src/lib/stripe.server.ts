@@ -133,6 +133,7 @@ export async function createStripeCheckoutInternal(data: {
   const planDef = PLANS_DEF.find(p => p.id === data.plan);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
+    automatic_payment_methods: { enabled: true },
     customer: customerId,
     line_items: [{ price: prodTyped.price_id, quantity: 1 }],
     subscription_data: { 
