@@ -1,0 +1,86 @@
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, TrendingDown, Minus, TrendingUp, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+
+export const Route = createFileRoute("/_app/perfil/objetivo")({ component: ObjetivoPage });
+
+type Objetivo = "perder" | "manter" | "ganhar";
+
+function ObjetivoPage() {
+  const { user, profile, refresh } = useAuth();
+  const nav = useNavigate();
+  const [objetivo, setObjetivo] = useState<Objetivo>((profile?.objetivo as Objetivo) ?? "manter");
+  const [saving, setSaving] = useState(false);
+
+  const objs: { id: Objetivo; label: string; sub: string; Icon: typeof TrendingDown }[] = [
+    { id: "perder", label: "Perder Peso", sub: "-500 cal/dia", Icon: TrendingDown },
+    { id: "manter", label: "Manter Peso", sub: "Manutenção", Icon: Minus },
+    { id: "ganhar", label: "Ganhar Massa", sub: "+300 cal/dia", Icon: TrendingUp },
+  ];
+
+  const save = async () => {
+    if (!user) return;
+    setSaving(true);
+    const { error } = await supabase.from("profiles").update({ objetivo }).eq("id", user.id);
+    setSaving(false);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    await refresh();
+    toast.success("Objetivo atualizado");
+    nav({ to: "/perfil" });
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-700">
+      <div className="flex items-center gap-4">
+        <Link
+          to="/perfil"
+          className="size-12 rounded-2xl glass flex items-center justify-center hover:bg-white/10 transition-all border-white/5 shadow-xl"
+        >
+          <ArrowLeft className="size-5" />
+        </Link>
+        <h1 className="text-2xl font-display font-black tracking-tight">Objetivo</h1>
+      </div>
+
+      <Card className="glass rounded-[32px] p-6 space-y-3 border-white/5 shadow-xl">
+        {objs.map(({ id, label, sub, Icon }) => {
+          const active = objetivo === id;
+          return (
+            <button
+              key={id}
+              onClick={() => setObjetivo(id)}
+              className={`w-full text-left rounded-2xl border p-4 flex items-center gap-4 transition-all duration-300 ${active ? "border-white bg-white/10 ring-1 ring-white/40 shadow-lg shadow-white/5" : "border-white/5 bg-white/[0.02] hover:bg-white/[0.1]"}`}
+            >
+              <div
+                className={`size-12 rounded-2xl flex items-center justify-center transition-colors ${active ? "bg-white text-black" : "bg-white/5 text-white"}`}
+              >
+                <Icon className="size-5" />
+              </div>
+              <div className="flex-1">
+                <div className="font-bold text-sm tracking-tight">{label}</div>
+                <div className="text-[10px] font-black uppercase tracking-widest text-white/30">
+                  {sub}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </Card>
+
+      <Button
+        className="w-full h-16 rounded-[28px] bg-white text-black hover:bg-zinc-200 font-black uppercase tracking-widest text-xs shadow-xl shadow-white/5 transition-all active:scale-95"
+        onClick={save}
+        disabled={saving}
+      >
+        {saving && <Loader2 className="size-4 animate-spin mr-2" />}Salvar
+      </Button>
+    </div>
+  );
+}
