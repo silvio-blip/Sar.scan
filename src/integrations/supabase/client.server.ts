@@ -3,7 +3,7 @@
 // Use this for admin operations in server functions and server routes only.
 // For user-authenticated queries (with RLS), use the auth middleware instead.
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "./types.ts";
+import type { Database } from "./types";
 
 function createSupabaseAdminClient() {
   const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -14,7 +14,7 @@ function createSupabaseAdminClient() {
       ...(!SUPABASE_URL ? ["SUPABASE_URL"] : []),
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ["SUPABASE_SERVICE_ROLE_KEY"] : []),
     ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(", ")}. Connect Supabase in Lovable Cloud.`;
+    const message = `Erro na Vercel: Variáveis de conexão SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não encontradas. Certifique-se de as ter adicionado ao painel Environment Variables da Vercel para que o site consiga buscar as chaves no banco de dados.`;
     console.error(`[Supabase] ${message}`);
     throw new Error(message);
   }

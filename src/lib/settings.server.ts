@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "../integrations/supabase/client.server.ts";
+import { supabaseAdmin } from "../integrations/supabase/client.server";
 
 export type AppSettings = {
   gemini_api_key?: string;
