@@ -19,26 +19,34 @@ export async function getAppSettings(): Promise<AppSettings> {
   }
 
   try {
-    const { data, error } = await (supabaseAdmin as any)
-      .from("app_settings")
-      .select("key, value");
+    // Check if supabaseAdmin is accessible before calling it
+    // The Proxy in client.server.ts will throw if env vars are missing
+    let admin;
+    try {
+      admin = supabaseAdmin;
+      const { data, error } = await (admin as any)
+        .from("app_settings")
+        .select("key, value");
 
-    if (error) {
-      console.error("[Settings] Failed to fetch from DB:", error);
-      // Fallback to env if DB fails and we have no cache
+      if (error) {
+        console.error("[Settings] DB select error:", error.message);
+        return (_settingsCache || {}) as AppSettings;
+      }
+
+      const settings: AppSettings = {};
+      if (data) {
+        for (const row of data) {
+          settings[row.key] = row.value;
+        }
+      }
+
+      _settingsCache = settings;
+      _lastFetch = now;
+      return settings;
+    } catch (adminError) {
+      console.warn("[Settings] Supabase admin client not available:", adminError);
       return (_settingsCache || {}) as AppSettings;
     }
-
-    const settings: AppSettings = {};
-    if (data) {
-      for (const row of data) {
-        settings[row.key] = row.value;
-      }
-    }
-
-    _settingsCache = settings;
-    _lastFetch = now;
-    return settings;
   } catch (e) {
     console.error("[Settings] Critical error fetching settings:", e);
     return (_settingsCache || {}) as AppSettings;

@@ -153,10 +153,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOtherUser(null);
   }, [stopVibration, user?.id]);
 
+  const [peerId, setPeerId] = useState<string | null>(null);
+  const peerIdRef = useRef<string | null>(null);
+
   const sendCallSignal = useCallback(
-    async (targetId: string, type: "REJECTED" | "ENDED" | "CALL_REQUEST") => {
+    async (targetId: string, type: "REJECTED" | "ENDED" | "CALL_REQUEST" | "CALL_RESPONSE", additionalPayload: any = {}) => {
       if (!user?.id) return;
-      console.log(`Sending signal ${type} to ${targetId}`);
+      console.log(`Sending signal ${type} to ${targetId}`, additionalPayload);
       const channel = supabase.channel(`call_signals_${targetId}`);
       try {
         await channel.subscribe(async (status) => {
@@ -164,7 +167,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await channel.send({
               type: "broadcast",
               event: "call-signal",
-              payload: { type, from: user.id },
+              payload: { type, from: user.id, ...additionalPayload },
             });
             // Don't remove immediately to ensure broadcast delivery
             setTimeout(() => {
@@ -210,6 +213,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleCallEnd = useCallback(
     (otherId: string, skipSignal = false, signalType?: "REJECTED" | "ENDED") => {
+      // Normalize otherId in case it's a PeerJS ID with random suffix
+      const normalizedId = otherId.includes("_") ? otherId.split("_")[0] : otherId;
+      
       const currentStatus = statusRef.current;
       if (currentStatus.type === "idle" || currentStatus.type === "ended") return;
 
@@ -227,7 +233,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log(
         "handleCallEnd called for:",
-        otherId,
+        normalizedId,
         "finalType:",
         finalType,
         "skipSignal:",
@@ -243,8 +249,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       stopVibration();
 
       // Send signal to other peer if needed
-      if (!skipSignal && otherId) {
-        sendCallSignal(otherId, finalDuration > 0 ? "ENDED" : "REJECTED");
+      if (!skipSignal && normalizedId) {
+        sendCallSignal(normalizedId, finalDuration > 0 ? "ENDED" : "REJECTED");
       }
 
       // Update UI Status
@@ -258,8 +264,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetCall();
       }
 
-      if (user?.id && otherId) {
-        saveCallLog(otherId, finalDuration, finalType);
+      if (user?.id && normalizedId) {
+        saveCallLog(normalizedId, finalDuration, finalType);
       }
     },
     [resetCall, saveCallLog, stopVibration, user?.id, sendCallSignal],
@@ -285,7 +291,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startCall = useCallback(
     async (targetId: string) => {
       const currentPeer = peerRef.current || peer;
-      if (!currentPeer) return;
+      if (!currentPeer) {
+        toast.error("Conexão de áudio ainda não está pronta. Aguarde um momento.");
+        return;
+      }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setLocalStream(stream);
@@ -301,39 +310,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
 
-        // Wakeup signal
-        sendCallSignal(targetId, "CALL_REQUEST");
+        // Wakeup signal - include our peerId if we want them to call us back (not used here yet but good practice)
+        sendCallSignal(targetId, "CALL_REQUEST", { peerId: peerIdRef.current });
 
-        const call = currentPeer.call(targetId, stream);
-        setActiveCall(call);
-
-        call.on("stream", (remote) => {
-          dialingAudioRef.current?.pause();
-          setStatus({ type: "connected" });
-          setRemoteStream(remote);
-          if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remote;
-        });
-
-        call.on("close", () => {
-          console.log("Call connection closed in startCall");
-          if (statusRef.current.type === "calling") {
-            setStatus({ type: "rejected" });
-            setTimeout(() => resetCall(), 2000);
-          } else {
-            handleCallEnd(targetId, true);
-          }
-        });
-
-        call.on("error", (err) => {
-          console.error("Call error in startCall:", err);
-          handleCallEnd(targetId, true);
-        });
+        // Note: Actual peer.call will happen when we receive CALL_RESPONSE from the target
+        // But for backward compatibility or if they use the direct user.id peerId, we can try to call directly after a small delay
+        // However, with the new handshake, we should wait for CALL_RESPONSE.
+        
+        // For now, let's also try calling the direct user.id as a fallback
+        // const call = currentPeer.call(targetId, stream);
+        // ... (this part will be handled in the signal listener)
       } catch (err) {
+        console.error("Error starting call:", err);
         toast.error("Erro ao acessar microfone");
         resetCall();
       }
     },
-    [peer, user?.id, fetchOtherUserProfile, sendCallSignal, resetCall, handleCallEnd],
+    [peer, user?.id, fetchOtherUserProfile, sendCallSignal, resetCall],
   );
 
   const answerCall = useCallback(async () => {
@@ -456,18 +449,51 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     channel
       .on("broadcast", { event: "call-signal" }, ({ payload }) => {
         console.log("Received call signal:", payload);
-        const { type, from } = payload;
+        const { type, from, peerId: senderPeerId } = payload;
         // If we receive a rejection or end signal, clean up
         if (type === "REJECTED" || type === "ENDED") {
           handleCallEndRef.current(from, true, type); // true = skip sending signal back
         } else if (type === "CALL_REQUEST") {
+          // Send back our peer ID so the caller can call us
+          if (peerIdRef.current) {
+            sendCallSignal(from, "CALL_RESPONSE", { peerId: peerIdRef.current });
+          }
+          
           if (statusRef.current.type === "idle") {
             fetchOtherUserProfileRef.current(from);
           } else if (statusRef.current.type === "calling" && from === otherUserRef.current?.id) {
-            // If we are calling and receive a CALL_REQUEST from the same person,
-            // it means they refreshed and lost the incoming call. We re-initiate PeerJS call.
-            console.log("Receiver refreshed, re-initiating PeerJS call...");
-            startCallRef.current(from);
+            // Re-initiate if they refreshed
+            console.log("Receiver refreshed, re-requesting call...");
+            sendCallSignal(from, "CALL_REQUEST", { peerId: peerIdRef.current });
+          }
+        } else if (type === "CALL_RESPONSE") {
+          // Caller receives target's Peer ID and initiates the call
+          if (statusRef.current.type === "calling" && from === otherUserRef.current?.id && senderPeerId) {
+            console.log("Received CALL_RESPONSE with peerId:", senderPeerId);
+            const currentPeer = peerRef.current;
+            const stream = localStreamRef.current;
+            
+            if (currentPeer && stream) {
+              const call = currentPeer.call(senderPeerId, stream);
+              setActiveCall(call);
+
+              call.on("stream", (remote) => {
+                dialingAudioRef.current?.pause();
+                setStatus({ type: "connected" });
+                setRemoteStream(remote);
+                if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remote;
+              });
+
+              call.on("close", () => {
+                console.log("Call connection closed in active call (caller side)");
+                handleCallEndRef.current(from, true);
+              });
+
+              call.on("error", (err) => {
+                console.error("Call error in active call (caller side):", err);
+                handleCallEndRef.current(from, true);
+              });
+            }
           }
         }
       })
@@ -489,24 +515,32 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initPeer = (id: string, attempt = 0) => {
       if (isDestroyed) return;
 
-      console.log(`Initializing Peer with ID: ${id} (attempt ${attempt + 1})`);
+      // Always randomize the PeerJS ID to avoid collisions on refresh
+      // The handshake via CALL_REQUEST/CALL_RESPONSE will handle finding this ID
+      const finalId = `${id}_${Math.random().toString(36).substring(2, 6)}`;
+      
+      console.log(`[PeerJS] Initializing for user ${id} with random PeerId: ${finalId} (attempt ${attempt + 1})`);
 
-      const newPeer = new Peer(id, {
+      const newPeer = new Peer(finalId, {
         debug: 1, // Only errors
       });
 
       peerInstance = newPeer;
       setPeer(newPeer);
       peerRef.current = newPeer;
+      setPeerId(finalId);
+      peerIdRef.current = finalId;
 
-      newPeer.on("open", (peerId) => {
-        console.log("Peer successfully open with ID:", peerId);
+      newPeer.on("open", (pId) => {
+        console.log("Peer successfully open with ID:", pId);
+        setPeerId(pId);
+        peerIdRef.current = pId;
       });
 
       newPeer.on("call", (incoming) => {
         console.log("Incoming PeerJS call from:", incoming.peer);
 
-        if (statusRef.current.type !== "idle" && statusRef.current.type !== "ringing") {
+        if (statusRef.current.type !== "idle" && statusRef.current.type !== "ringing" && statusRef.current.type !== "calling") {
           console.log("Busy, rejecting call. Current status:", statusRef.current.type);
           incoming.close();
           return;
@@ -514,16 +548,24 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setIncomingCall(incoming);
         setStatus({ type: "ringing" });
-        fetchOtherUserProfileRef.current(incoming.peer);
+        // The sender's ID in PeerJS might be randomized, so we rely on the Supabase signal 
+        // to have already fetched the profile. Or we can try to parse the peer ID if it follows our pattern.
+        const otherSupabaseId = incoming.peer.includes("_") ? incoming.peer.split("_")[0] : incoming.peer;
+        fetchOtherUserProfileRef.current(otherSupabaseId);
+
+        incoming.on("stream", (remote) => {
+          // This is useful if the caller already established the stream
+          console.log("Stream received on incoming call listener");
+        });
 
         incoming.on("close", () => {
           console.log("Incoming call connection closed automatically");
-          handleCallEndRef.current(incoming.peer, true);
+          handleCallEndRef.current(otherSupabaseId, true);
         });
 
         incoming.on("error", (err) => {
           console.error("Incoming call error:", err);
-          handleCallEndRef.current(incoming.peer, true);
+          handleCallEndRef.current(otherSupabaseId, true);
         });
 
         // Receiver hears the ringing sound
@@ -536,10 +578,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error("Peer root error:", errorType, err);
 
         if (errorType === "unavailable-id") {
-          console.warn("Peer ID already taken, delaying retry...");
+          console.warn("Peer ID already taken, trying with randomized suffix...");
           if (attempt < 5 && !isDestroyed) {
             newPeer.destroy();
-            const delay = 3000 + attempt * 2000; // increasing delay 3s, 5s, 7s...
+            const delay = 500 + attempt * 500; // shorter wait if we are randomizing anyway
             retryTimeout = setTimeout(() => {
               if (!isDestroyed) initPeer(id, attempt + 1);
             }, delay);
@@ -547,13 +589,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             toast.error("Erro de conexão persistente. Tente recarregar a página.");
           }
         } else if (errorType === "peer-unavailable") {
-          toast.error("O utilizador não está disponível");
-          if (statusRef.current.type === "calling" || statusRef.current.type === "ringing") {
-            handleCallEndRef.current(
-              incomingCallRef.current?.peer || activeCallRef.current?.peer || "",
-              true,
-            );
-          }
+          // This happens if the handshake target went offline
+          console.log("Target peer unavailable");
         } else if (errorType === "disconnected" || errorType === "network") {
           console.log("Peer disconnected, attempting to reconnect...");
           if (!newPeer.destroyed) {

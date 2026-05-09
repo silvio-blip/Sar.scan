@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 import { getAppSettings } from "./settings.server";
 
@@ -6,10 +6,13 @@ type Body = Record<string, unknown> | undefined;
 
 const MODEL = "gemini-flash-lite-latest";
 
-function getAdmin() {
-  const url = process.env.SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, key, { auth: { persistSession: false } });
+function getAdminSafe() {
+  try {
+    return supabaseAdmin;
+  } catch (e) {
+    console.error("[Edge] Supabase admin client not available:", e);
+    return null;
+  }
 }
 
 let _cachedKey: string | null = null;
@@ -133,12 +136,14 @@ async function handleSearchFoodAi(body: Body) {
   const query = (body?.query as string) ?? "";
 
   if (mode === "popular") {
-    const admin = getAdmin();
-    const { data } = await admin
+    const admin = getAdminSafe();
+    if (!admin) return { alimentos: [] };
+    
+    const { data } = await (admin as any)
       .from("foods_basic")
       .select("nome, cal, carb, prot, gord, foto_url")
       .limit(100);
-    return { alimentos: (data ?? []).map((c) => ({ ...c, porcao: "1 porção" })) };
+    return { alimentos: (data ?? []).map((c: any) => ({ ...c, porcao: "1 porção" })) };
   }
 
   if (!query.trim()) return { alimentos: [] };
@@ -185,10 +190,12 @@ async function handleNutritionChat(body: Body) {
 
   if (userId) {
     try {
-      const admin = getAdmin();
-      await admin
-        .from("chat_messages")
-        .insert({ user_id: userId, role: "assistant", content: reply });
+      const admin = getAdminSafe();
+      if (admin) {
+        await (admin as any)
+          .from("chat_messages")
+          .insert({ user_id: userId, role: "assistant", content: reply });
+      }
     } catch (e) {
       console.error("chat persist failed", e);
     }
