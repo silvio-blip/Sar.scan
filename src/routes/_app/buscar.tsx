@@ -66,7 +66,7 @@ export function BuscarPage() {
     setAiBusy(true);
     try {
       const { data, error } = await supabase.functions.invoke("search-food-ai", {
-        body: { query: q, mode: "variants" },
+        body: { query: q, mode: "variants", user_id: user?.id },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);

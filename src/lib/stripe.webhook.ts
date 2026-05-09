@@ -21,15 +21,27 @@ export async function handleStripeWebhook(payload: string, signature: string | n
     case "checkout.session.completed": {
       const s = event.data.object;
       const userId = s.metadata?.user_id;
-      const plan = s.metadata?.plan;
-      if (userId && plan) {
+      const planId = s.metadata?.plan;
+      if (userId && planId) {
+        // Obter créditos atuais para somar
+        const { data: currentSub } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .select("scans_credits")
+          .eq("user_id", userId)
+          .maybeSingle();
+        
+        const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+        const newCredits = currentCredits + planScans(planId);
+
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {
             user_id: userId,
-            status: "active",
-            plan,
-            scans_credits: planScans(plan),
-            ai_agent_enabled: plan !== "weekly",
+            status: s.subscription ? "active" : "free", // Se for checkout de sessão sem sub?? mas aqui é subscription mode
+            plan: planId,
+            scans_credits: newCredits,
+            // IA apenas se não for semanal e NÃO estiver em trial (no checkout inicial pode estar trialing)
+            // Mas o status real vem do evento customer.subscription.created/updated
+            ai_agent_enabled: false, 
             stripe_customer_id: s.customer,
             stripe_subscription_id: s.subscription,
             current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
@@ -43,23 +55,25 @@ export async function handleStripeWebhook(payload: string, signature: string | n
     case "customer.subscription.created": {
       const sub = event.data.object;
       const userId = sub.metadata?.user_id;
-      const plan = sub.metadata?.plan;
-      if (userId && plan) {
-        const status =
-          sub.status === "active" || sub.status === "trialing" ? sub.status : "expired";
-        await (supabaseAdmin as any).from("subscriptions").upsert(
+      const planId = sub.metadata?.plan;
+      if (userId && planId) {
+        const isTrialing = sub.status === "trialing";
+        const status = (sub.status === "active" || isTrialing) ? sub.status : "expired";
+        
+        // IA liberada apenas se for Plano Mensal/Anual E o status for 'active' (terminou trial)
+        const canUseAi = (planId === "monthly" || planId === "yearly") && status === "active";
+
+        await (supabaseAdmin as any).from("subscriptions").update(
           {
-            user_id: userId,
             status,
-            plan,
-            scans_credits: planScans(plan),
-            ai_agent_enabled: plan !== "weekly",
+            plan: planId,
+            ai_agent_enabled: canUseAi,
             stripe_subscription_id: sub.id,
             stripe_customer_id: sub.customer,
             current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-          },
-          { onConflict: "user_id" },
-        );
+            trial_end: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
+          }
+        ).eq("user_id", userId);
       }
       break;
     }
@@ -67,29 +81,38 @@ export async function handleStripeWebhook(payload: string, signature: string | n
       const sub = event.data.object;
       const userId = sub.metadata?.user_id;
       if (userId) {
-        await (supabaseAdmin as any).from("subscriptions").upsert(
+        await (supabaseAdmin as any).from("subscriptions").update(
           {
-            user_id: userId,
             status: "expired",
-            scans_credits: 0,
             ai_agent_enabled: false,
-          },
-          { onConflict: "user_id" },
-        );
+          }
+        ).eq("user_id", userId);
       }
       break;
     }
     case "invoice.payment_succeeded": {
       const inv = event.data.object;
+      // billing_reason indicate recurring payment?
       const userId = inv.subscription_details?.metadata?.user_id;
-      const plan = inv.subscription_details?.metadata?.plan;
-      if (userId && plan) {
-        // Renova créditos no início de cada ciclo
+      const planId = inv.subscription_details?.metadata?.plan;
+      
+      // Se for pagamento recorrente (não o primeiro que já foi tratado no checkout), adicionamos créditos
+      if (userId && planId && inv.billing_reason === "subscription_cycle") {
+        const { data: currentSub } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .select("scans_credits")
+          .eq("user_id", userId)
+          .maybeSingle();
+        
+        const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+        const addedScans = planScans(planId);
+
         await (supabaseAdmin as any)
           .from("subscriptions")
           .update({
             status: "active",
-            scans_credits: planScans(plan),
+            scans_credits: currentCredits + addedScans,
+            ai_agent_enabled: planId === "monthly" || planId === "yearly", // Renovação de ciclo = active
           })
           .eq("user_id", userId);
       }

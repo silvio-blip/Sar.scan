@@ -27,7 +27,6 @@ import {
   Loader2,
   Crown,
   Activity,
-  ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +43,6 @@ function AdminPage() {
   const [rDesc, setRDesc] = useState("");
   const [rBonus, setRBonus] = useState(0);
   const [rSending, setRSending] = useState(false);
-  const [backfilling, setBackfilling] = useState(false);
 
   const { data: users } = useQuery({
     queryKey: ["admin_users"],
@@ -161,18 +159,6 @@ function AdminPage() {
       u.nome?.toLowerCase().includes(q.toLowerCase()),
   );
 
-  const runBackfill = async () => {
-    setBackfilling(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("backfill-food-images");
-      if (error) throw error;
-      toast.success(`Imagens atualizadas: ${data?.updated ?? 0} (de ${data?.scanned ?? 0})`);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Erro no backfill");
-    } finally {
-      setBackfilling(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-black">
@@ -222,30 +208,6 @@ function AdminPage() {
           />
         </Card>
 
-        <Card className="glass rounded-[32px] p-6 space-y-4 border-white/5 shadow-xl">
-          <div className="flex items-center gap-3">
-            <ImageIcon className="size-5 text-white/40" />
-            <b className="text-[11px] font-black uppercase tracking-widest">
-              Imagens dos alimentos
-            </b>
-          </div>
-          <p className="text-xs text-white/40 leading-relaxed font-medium">
-            Resolve e salva automaticamente as imagens dos alimentos do catálogo que ainda estão sem
-            foto ou com URL inválida.
-          </p>
-          <Button
-            className="w-full h-12 rounded-2xl bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-xs"
-            onClick={runBackfill}
-            disabled={backfilling}
-          >
-            {backfilling ? (
-              <Loader2 className="size-4 animate-spin mr-2" />
-            ) : (
-              <ImageIcon className="size-4 mr-2" />
-            )}
-            Atualizar imagens agora
-          </Button>
-        </Card>
 
         {filtered.map((u) => (
           <Card

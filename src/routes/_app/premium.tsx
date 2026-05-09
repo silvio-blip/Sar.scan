@@ -46,7 +46,7 @@ const PLANS: PlanDef[] = [
     priceNum: 4.99,
     cycle: "/semana",
     scans: 30,
-    trialDays: 3,
+    trialDays: 7,
     hint: "Ideal para experimentar",
     aiAgent: false,
     perks: [
@@ -84,7 +84,7 @@ const PLANS: PlanDef[] = [
     priceNum: 99.0,
     cycle: "/ano",
     scans: 1200,
-    trialDays: 14,
+    trialDays: 7,
     badge: "Melhor valor",
     hint: "Economize ~58%",
     aiAgent: true,
@@ -105,11 +105,11 @@ function PremiumPage() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const current = PLANS.find((p) => p.id === selected)!;
-  const subscribe = async () => {
+  const subscribePlan = async (planId: PlanId) => {
     if (!user || !session?.access_token) return;
     setLoading(true);
     try {
-      const { url } = await createStripeCheckout({ token: session.access_token, plan: current.id });
+      const { url } = await createStripeCheckout({ token: session.access_token, plan: planId });
       if (url) window.location.href = url;
       else throw new Error("URL de checkout não retornada");
     } catch (e: any) {
@@ -175,10 +175,9 @@ function PremiumPage() {
           {PLANS.map((p) => {
             const active = selected === p.id;
             return (
-              <button
+                <div
                 key={p.id}
-                onClick={() => setSelected(p.id)}
-                className={`group relative overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 ${
+                className={`group relative overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 w-full ${
                   active
                     ? "border-white bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.05)] ring-1 ring-white/40"
                     : "border-white/5 bg-white/[0.03] hover:bg-white/[0.06]"
@@ -210,7 +209,7 @@ function PremiumPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                <div className="grid grid-cols-2 gap-y-2 gap-x-4 mb-4">
                   {p.perks.slice(0, 4).map((pk) => (
                     <div
                       key={pk}
@@ -222,62 +221,28 @@ function PremiumPage() {
                   ))}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-white/5 text-[10px] font-bold text-white/50 uppercase tracking-widest">
-                  {p.scans} scans inclusos
+                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+                  <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest">
+                    <span>{p.scans} scans inclusos</span>
+                  </div>
+                  <Button
+                    className="h-10 px-6 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-lg transition-all"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      subscribePlan(p.id);
+                    }}
+                    disabled={loading || (isPremium && subscription?.plan === p.id)}
+                  >
+                    {loading && selected === p.id ? <Loader2 className="size-4 animate-spin" /> : "Assinar agora"}
+                  </Button>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
 
-      <div className="glass-strong rounded-[40px] p-8 space-y-6 text-center border-white/10 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-40" />
-
-        <div className="flex flex-col items-center gap-3">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 text-white text-[10px] font-black uppercase tracking-[0.15em] border border-white/10">
-            <Gift className="size-4" /> {current.trialDays} dias grátis experimental
-          </div>
-          <p className="text-xs text-muted-foreground font-medium px-4">
-            Aproveite todos os recursos premium sem compromisso por {current.trialDays} dias.
-          </p>
-        </div>
-
-        <Button
-          className="w-full h-16 rounded-[24px] bg-white text-black hover:bg-zinc-200 font-black text-lg tracking-tight shadow-[0_15px_30px_rgba(255,255,255,0.1)] transition-all active:scale-95"
-          onClick={subscribe}
-          disabled={loading || (isPremium && subscription?.plan === current.id)}
-        >
-          {loading ? (
-            <Loader2 className="size-6 mr-2 animate-spin" />
-          ) : (
-            <Sparkles className="size-6 mr-2" />
-          )}
-          {isPremium && subscription?.plan === current.id
-            ? "Assinatura Ativa"
-            : `Iniciar Teste Grátis`}
-        </Button>
-
-        <p className="text-[10px] text-muted-foreground/60 font-bold uppercase tracking-widest">
-          Cancele facilmente a qualquer momento
-        </p>
-
-        {isAdmin && (
-          <Button
-            variant="ghost"
-            className="w-full h-10 text-[10px] font-black uppercase tracking-widest border border-white/5 text-muted-foreground hover:bg-white/5"
-            onClick={syncPlans}
-            disabled={syncing}
-          >
-            {syncing ? (
-              <Loader2 className="size-3 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="size-3 mr-2" />
-            )}
-            Sync Stripe Infrastructure
-          </Button>
-        )}
-      </div>
+      {/* Deleted main subscribe/sync UI block */}
 
       <div className="space-y-4">
         <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">

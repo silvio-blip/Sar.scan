@@ -53,16 +53,10 @@ const tabs = [
 function AppLayout() {
   const { user, profile, loading } = useAuth();
   const loc = useLocation();
-  const [showIntro, setShowIntro] = useState(() => {
-    if (typeof window !== "undefined") {
-      return !sessionStorage.getItem("sar_scan_intro_done");
-    }
-    return true;
-  });
+  const [showIntro, setShowIntro] = useState(true);
 
   const handleIntroDone = () => {
     setShowIntro(false);
-    sessionStorage.setItem("sar_scan_intro_done", "true");
   };
 
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);

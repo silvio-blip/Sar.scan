@@ -21,9 +21,9 @@ export async function getStripe() {
 }
 
 export const PLANS_DEF = [
-  { id: "weekly", label: "sar.sacn Semanal", amount: 499, interval: "week", scans: 30 },
-  { id: "monthly", label: "sar.sacn Mensal", amount: 1999, interval: "month", scans: 150 },
-  { id: "yearly", label: "sar.sacn Anual", amount: 9900, interval: "year", scans: 1200 },
+  { id: "weekly", label: "sar.sacn Semanal", amount: 499, interval: "week", scans: 30, trial_days: 7 },
+  { id: "monthly", label: "sar.sacn Mensal", amount: 1999, interval: "month", scans: 150, trial_days: 7 },
+  { id: "yearly", label: "sar.sacn Anual", amount: 9900, interval: "year", scans: 1200, trial_days: 7 },
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];
 
@@ -130,14 +130,18 @@ export async function createStripeCheckoutInternal(data: {
 
   const baseUrl = data.origin || "https://example.com";
 
+  const planDef = PLANS_DEF.find(p => p.id === data.plan);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: prodTyped.price_id, quantity: 1 }],
+    subscription_data: { 
+      metadata: { user_id: user.id, plan: data.plan },
+      trial_period_days: planDef?.trial_days ?? 0 
+    },
     success_url: `${baseUrl}/premium?success=1`,
     cancel_url: `${baseUrl}/premium?canceled=1`,
     metadata: { user_id: user.id, plan: data.plan },
-    subscription_data: { metadata: { user_id: user.id, plan: data.plan } },
   });
   return { url: session.url };
 }

@@ -99,10 +99,10 @@ function ScannerPage() {
     },
   });
 
-  const baseScans = isUnlimited ? Infinity : isPremium ? (subscription?.scans_credits ?? 0) : 3;
+  const dailyFreeRemaining = Math.max(0, 3 - (usage?.count ?? 0));
   const remaining = isUnlimited
     ? Infinity
-    : Math.max(0, baseScans + (usage?.bonus ?? 0) - (usage?.count ?? 0));
+    : dailyFreeRemaining + (subscription?.scans_credits ?? 0) + (usage?.bonus ?? 0);
 
   useEffect(() => {
     // Midnight reset notification logic
@@ -179,7 +179,7 @@ function ScannerPage() {
     setScanPhoto(dataUrl);
     try {
       const { data, error } = await supabase.functions.invoke("scan-food", {
-        body: { image: dataUrl },
+        body: { image: dataUrl, user_id: user.id }, // Passando user_id para o server gerenciar créditos
       });
       if (error) throw error;
       if (data?.ok === false || !data?.itens?.length) {
@@ -189,27 +189,11 @@ function ScannerPage() {
         setScanPhoto(null);
         return;
       }
-      if (isUnlimited) {
-        // no-op
-      } else if (isPremium) {
-        const newCredits = Math.max(0, (subscription?.scans_credits ?? 0) - 1);
-        await supabase
-          .from("subscriptions")
-          .update({ scans_credits: newCredits })
-          .eq("user_id", user.id);
-        await refresh();
-      } else {
-        await supabase.from("scan_usage").upsert(
-          {
-            user_id: user.id,
-            data: today(),
-            count: (usage?.count ?? 0) + 1,
-            bonus: usage?.bonus ?? 0,
-          },
-          { onConflict: "user_id,data" },
-        );
-        qc.invalidateQueries({ queryKey: ["scan_usage"] });
-      }
+      
+      // Atualiza counts após scan bem sucedido (server já deduziu)
+      await refresh();
+      qc.invalidateQueries({ queryKey: ["scan_usage"] });
+
       setDetected(data.itens as ScannedFood[]);
     } catch (e) {
       console.error("Scan error:", e);

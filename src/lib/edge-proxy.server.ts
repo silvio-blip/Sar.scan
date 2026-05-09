@@ -261,15 +261,107 @@ async function handleScanFood(body: Body) {
   return { ok: true, itens, total };
 }
 
+async function getUserStatus(userId: string) {
+  const admin = getAdminSafe();
+  if (!admin) return null;
+
+  const { data: sub } = await (admin as any)
+    .from("subscriptions")
+    .select("status, scans_credits, ai_agent_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  // Se não existir subscription, criamos uma 'free' por padrão como solicitado
+  if (!sub) {
+    const { data: newSub } = await (admin as any)
+      .from("subscriptions")
+      .insert({
+        user_id: userId,
+        status: "free",
+        scans_credits: 0,
+        ai_agent_enabled: false,
+      })
+      .select()
+      .single();
+    return newSub;
+  }
+
+  return sub;
+}
+
+async function checkAndDeductScan(userId: string) {
+  const admin = getAdminSafe();
+  if (!admin) throw new Error("Erro de conexão com o banco");
+
+  const today = new Date().toISOString().split("T")[0];
+
+  // 1. Verificar uso diário gratuito (limite de 3)
+  const { data: usage } = await (admin as any)
+    .from("scan_usage")
+    .select("count")
+    .eq("user_id", userId)
+    .eq("data", today)
+    .maybeSingle();
+
+  const currentDailyCount = (usage as any)?.count ?? 0;
+
+  if (currentDailyCount < 3) {
+    // Usa um scan gratuito diário
+    await (admin as any).from("scan_usage").upsert(
+      { user_id: userId, data: today, count: currentDailyCount + 1 },
+      { onConflict: "user_id,data" }
+    );
+    return true;
+  }
+
+  // 2. Se esgotou os gratuitos, verificar créditos do plano
+  const { data: sub } = await (admin as any)
+    .from("subscriptions")
+    .select("scans_credits")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  const credits = (sub as any)?.scans_credits ?? 0;
+
+  if (credits > 0) {
+    // Deduz do saldo pago
+    await (admin as any)
+      .from("subscriptions")
+      .update({ scans_credits: credits - 1 })
+      .eq("user_id", userId);
+    return true;
+  }
+
+  throw new Error("Você atingiu o limite de 3 scans gratuitos por dia. Assine um plano para continuar escaneando ou aguarde amanhã!");
+}
+
 export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
+  const userId = data.body?.user_id ? String(data.body.user_id) : null;
+
   try {
+    // Proteção de IA para chats e buscas inteligentes
+    if (data.name === "nutrition-chat") {
+      if (!userId) throw new Error("Usuário não identificado");
+      const status = await getUserStatus(userId);
+      if (!status?.ai_agent_enabled) {
+        throw new Error("O chat da inteligência artificial está disponível apenas para assinantes pagantes.");
+      }
+    }
+    // search-food-ai e scan-food são liberados na trial.
+    // nutrition-chat é apenas para assinantes (após trial).
+    // ...
+    
     switch (data.name) {
       case "search-food-ai":
         return await handleSearchFoodAi(data.body);
       case "nutrition-chat":
         return await handleNutritionChat(data.body);
-      case "scan-food":
+      case "scan-food": {
+        if (!userId) throw new Error("Usuário não identificado");
+        // Verifica se pode escanear (deduz crédito ou incrementa contador diário)
+        await checkAndDeductScan(userId);
         return await handleScanFood(data.body);
+      }
       case "food-image":
         return { ok: true };
       case "backfill-food-images":
