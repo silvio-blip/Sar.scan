@@ -3,8 +3,17 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
-import { Camera, Search, History, User, MessagesSquare, BarChart3, Loader2, ArrowLeft } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import {
+  Camera,
+  Search,
+  History,
+  User,
+  MessagesSquare,
+  BarChart3,
+  Loader2,
+  ArrowLeft,
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { SarLogo } from "@/components/sar-logo";
 import { IntroAnimation } from "@/components/intro-animation";
 

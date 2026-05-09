@@ -92,12 +92,14 @@ function AdminPage() {
       {
         user_id: uid,
         status: on ? "active" : "free",
+        plan: on ? "monthly" : null,
+        ai_agent_enabled: on ? true : false,
         current_period_end: on ? new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString() : null,
       },
       { onConflict: "user_id" },
     );
     qc.invalidateQueries({ queryKey: ["admin_users"] });
-    toast.success(on ? "Premium ativado" : "Premium removido");
+    toast.success(on ? "Premium ativado (Mensal + IA)" : "Premium removido");
   };
 
   const addBonus = async (uid: string, n: number) => {

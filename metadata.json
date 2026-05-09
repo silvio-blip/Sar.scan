@@ -1,9 +1,6 @@
 {
   "name": "Remix: sar.scan",
   "description": "A nutrição inteligente começa aqui. Identifique alimentos por foto e controle seu diário.",
-  "requestFramePermissions": [
-    "camera",
-    "microphone"
-  ],
+  "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": []
 }

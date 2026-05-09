@@ -70,7 +70,7 @@ export function BuscarPage() {
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      
+
       const alimentos = (data.alimentos ?? []) as Food[];
       if (alimentos.length === 0) {
         toast.message("Nenhum alimento encontrado", {
@@ -81,9 +81,9 @@ export function BuscarPage() {
     } catch (e) {
       console.error("AI Search error:", e);
       toast.error(
-        e instanceof Error 
-          ? `Erro na busca por IA: ${e.message}` 
-          : "Erro ao realizar busca com IA. Tente novamente."
+        e instanceof Error
+          ? `Erro na busca por IA: ${e.message}`
+          : "Erro ao realizar busca com IA. Tente novamente.",
       );
     } finally {
       setAiBusy(false);

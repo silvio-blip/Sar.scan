@@ -17,7 +17,7 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
 
   // API Routes
-  
+
   // Proxy for invokeEdge
   app.post("/api/edge", async (req, res) => {
     try {

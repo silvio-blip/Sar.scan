@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import React, { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -105,9 +105,7 @@ function DiarioPage() {
         const d = new Date();
         d.setDate(d.getDate() - (6 - i));
         const key = d.toISOString().slice(0, 10);
-        const ml = (data ?? [])
-          .filter((r) => r.data === key)
-          .reduce((s, r) => s + Number(r.ml), 0);
+        const ml = (data ?? []).filter((r) => r.data === key).reduce((s, r) => s + Number(r.ml), 0);
         return { dia: format(d, "EEE", { locale: ptBR }).slice(0, 3), ml: Math.round(ml) };
       });
       return days;

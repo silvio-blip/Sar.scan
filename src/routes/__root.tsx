@@ -1,13 +1,9 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Outlet,
-  Link,
-  createRootRouteWithContext,
-  useRouter,
-} from "@tanstack/react-router";
+import { Outlet, Link, createRootRouteWithContext, useRouter } from "@tanstack/react-router";
 
 import { AuthProvider } from "@/lib/auth-context";
+import { CallProvider } from "@/lib/CallContext";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -63,8 +59,10 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <Outlet />
-        <Toaster position="top-center" richColors />
+        <CallProvider>
+          <Outlet />
+          <Toaster position="top-center" richColors />
+        </CallProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

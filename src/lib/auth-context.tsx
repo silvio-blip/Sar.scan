@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useState, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  type ReactNode,
+} from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -34,6 +42,7 @@ type AuthCtx = {
   isAdmin: boolean;
   isPremium: boolean;
   isUnlimited: boolean;
+  canAccessAI: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -108,13 +117,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (user) await loadUserData(user.id);
-  };
+  }, [user]);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-  };
+  }, []);
 
   const isPremiumBase =
     !!subscription &&
@@ -122,27 +131,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (subscription.status === "trialing" &&
         !!subscription.trial_end &&
         new Date(subscription.trial_end) > new Date()));
+
+  // Admin always premium and unlimited
   const isPremium = isAdmin || isPremiumBase;
   const isUnlimited = isAdmin;
 
-  const value = useMemo(() => ({
-    user,
-    session,
-    profile,
-    subscription,
-    isAdmin,
-    isPremium,
-    isUnlimited,
-    loading,
-    refresh,
-    signOut,
-  }), [user, session, profile, subscription, isAdmin, isPremium, isUnlimited, loading]);
+  // New logic: Weekly plan does NOT get AI Agent access. Only Monthly and Yearly (or manual enabled)
+  const canAccessAI =
+    isAdmin ||
+    (isPremiumBase &&
+      subscription?.plan !== "weekly" &&
+      (subscription?.plan === "monthly" ||
+        subscription?.plan === "yearly" ||
+        subscription?.ai_agent_enabled ||
+        !subscription?.plan)); // Allow access if plan is missing but status is active (admin manual toggle)
 
-  return (
-    <Ctx.Provider value={value}>
-      {children}
-    </Ctx.Provider>
+  const value = useMemo(
+    () => ({
+      user,
+      session,
+      profile,
+      subscription,
+      isAdmin,
+      isPremium,
+      isUnlimited,
+      canAccessAI,
+      loading,
+      refresh,
+      signOut,
+    }),
+    [
+      user,
+      session,
+      profile,
+      subscription,
+      isAdmin,
+      isPremium,
+      isUnlimited,
+      canAccessAI,
+      loading,
+      refresh,
+      signOut,
+    ],
   );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {
