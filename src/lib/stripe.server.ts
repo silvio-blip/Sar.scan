@@ -1,20 +1,15 @@
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+import { getAppSettings } from "./settings.server";
+
 let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = null;
 
 async function loadKeys() {
-  const { data, error } = await (supabaseAdmin as any)
-    .from("app_settings")
-    .select("key, value")
-    .in("key", ["stripe_secret_key", "stripe_webhook_secret"]);
-  if (error) throw new Error(`app_settings read failed: ${error.message}`);
-  const map = Object.fromEntries(
-    (data ?? []).map((r: { key: string; value: string }) => [r.key, r.value]),
-  );
-  const secret = (map.stripe_secret_key as string) ?? "";
-  if (!secret) throw new Error("stripe_secret_key not set in app_settings");
-  return { secret, webhookSecret: (map.stripe_webhook_secret as string) ?? "" };
+  const settings = await getAppSettings();
+  const secret = settings.stripe_secret_key || process.env.STRIPE_SECRET_KEY || "";
+  if (!secret) throw new Error("stripe_secret_key not set in app_settings or environment");
+  return { secret, webhookSecret: settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET || "" };
 }
 
 export async function getStripe() {

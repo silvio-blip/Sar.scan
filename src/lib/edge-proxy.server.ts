@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+import { getAppSettings } from "./settings.server";
+
 type Body = Record<string, unknown> | undefined;
 
 const MODEL = "gemini-flash-lite-latest";
@@ -14,28 +16,14 @@ let _cachedKey: string | null = null;
 async function getGeminiKey() {
   if (_cachedKey) return _cachedKey;
 
-  // Prefer Supabase key if defined
-  try {
-    const admin = getAdmin();
-    const { data, error } = await admin
-      .from("app_settings")
-      .select("value")
-      .eq("key", "gemini_api_key")
-      .maybeSingle();
-    if (!error && data?.value) {
-      _cachedKey = data.value as string;
-      return _cachedKey;
-    }
-  } catch (e) {
-    console.error("Erro ao buscar chave no Supabase", e);
+  const settings = await getAppSettings();
+  const key = settings.gemini_api_key || process.env.GEMINI_API_KEY;
+  
+  if (key) {
+    _cachedKey = key;
+    return key;
   }
-
-  const envKey = process.env.GEMINI_API_KEY;
-  if (envKey) {
-    _cachedKey = envKey;
-    return envKey;
-  }
-  throw new Error("Chave Gemini não configurada");
+  throw new Error("Chave Gemini não configurada (não encontrada em app_settings nem environment)");
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
