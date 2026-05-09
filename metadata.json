@@ -1,6 +1,6 @@
 {
-  "name": "Remix: sar.scan",
-  "description": "A nutrição inteligente começa aqui. Identifique alimentos por foto e controle seu diário.",
+  "name": "Sar.scan",
+  "description": "Nutrição inteligente e escaneamento de alimentos com IA. Controle seu diário calórico de forma simples.",
   "requestFramePermissions": ["camera", "microphone"],
   "majorCapabilities": []
 }
