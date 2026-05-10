@@ -8,9 +8,16 @@ interface CreditDisplayProps {
 export function CreditDisplay({ value }: CreditDisplayProps) {
   const [prevValue, setPrevValue] = useState<number | string>(value);
   const [animating, setAnimating] = useState(false);
+  const isFirstRender = useRef(true);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      setPrevValue(value);
+      return;
+    }
+
     if (value !== prevValue) {
       const diff =
         typeof value === "number" && typeof prevValue === "number" ? value - prevValue : 0;

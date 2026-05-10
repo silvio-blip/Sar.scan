@@ -206,7 +206,13 @@ function PremiumPage() {
             return (
               <div
                 key={p.id}
-                onClick={() => setSelected(p.id)}
+                onClick={() => {
+                  if (loading) return;
+                  console.log("[PremiumPage] Card clicked:", p.id);
+                  if (selected !== p.id) {
+                    setSelected(p.id);
+                  }
+                }}
                 className={`group relative cursor-pointer overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 w-full ${
                   active
                     ? "border-white bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.05)] ring-1 ring-white/40"

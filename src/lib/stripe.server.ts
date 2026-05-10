@@ -142,35 +142,43 @@ export async function createStripeCheckoutInternal(data: {
         metadata: { user_id: user.id, plan: data.plan },
         trial_period_days: planDef?.trial_days ?? 0,
       },
+      // Habilita coleta de endereço se necessário para alguns métodos (ex: Klarna)
+      billing_address_collection: "auto",
       success_url: `${baseUrl}/premium?success=1`,
       cancel_url: `${baseUrl}/premium?canceled=1`,
       metadata: { user_id: user.id, plan: data.plan },
     };
 
-    // Tenta usar automatic payment methods primeiro (recomendado)
-    // Se falhar com erro de "unknown parameter", vamos tentar payment_method_types manual.
+    // Tenta usar automatic payment methods primeiro (recomendado nas versões recentes da Stripe)
     try {
-      console.log("[Stripe] Attempting with automatic_payment_methods...");
+      console.log("[Stripe] Attempting session creation...");
       const session = await stripe.checkout.sessions.create({
         ...sessionOptions,
-        automatic_payment_methods: { enabled: true },
+        // Ao invés de automatic_payment_methods: { enabled: true },
+        // Vamos usar payment_method_collection se a versão da API permitir, 
+        // ou apenas deixar a Stripe decidir se configurado no dashboard.
+        // Mas para garantir compatibilidade com a versão do SDK instalada (22.x ou agora latest):
+        payment_method_types: [
+          "card",
+          "paypal",
+          "klarna",
+          "sepa_debit",
+          "bancontact",
+          "ideal",
+          "revolut_pay"
+        ],
       });
-      console.log("[Stripe] Session created successfully (automatic):", session.id);
+      console.log("[Stripe] Session created successfully:", session.id);
       return { url: session.url };
     } catch (e: any) {
-      if (e.message?.includes("unknown parameter: automatic_payment_methods")) {
-        console.warn("[Stripe] automatic_payment_methods not supported, falling back to manual types.");
-        const session = await stripe.checkout.sessions.create({
-          ...sessionOptions,
-          payment_method_types: ["card", "pix", "sepa_debit"], 
-        });
-        console.log("[Stripe] Session created successfully (manual):", session.id);
-        return { url: session.url };
-      }
+      console.error("[Stripe] Checkout creation failed:", e.message);
       throw e;
     }
   } catch (stripeErr: any) {
-    console.error("[Stripe] Exhaustive error details:", JSON.stringify(stripeErr, null, 2));
+    console.error("[Stripe] Critical failure creating session:", stripeErr);
+    if (stripeErr.raw) {
+      console.error("[Stripe] Raw error details:", JSON.stringify(stripeErr.raw, null, 2));
+    }
     throw new Error(stripeErr.message || "Erro na Stripe ao criar sessão");
   }
 }
