@@ -134,6 +134,7 @@ export async function createStripeCheckoutInternal(data: {
   const planDef = PLANS_DEF.find((p) => p.id === data.plan);
   
   try {
+    // Configuração base da sessão
     const sessionOptions: any = {
       mode: "subscription",
       customer: customerId,
@@ -142,37 +143,78 @@ export async function createStripeCheckoutInternal(data: {
         metadata: { user_id: user.id, plan: data.plan },
         trial_period_days: planDef?.trial_days ?? 0,
       },
-      // Habilita coleta de endereço se necessário para alguns métodos (ex: Klarna)
       billing_address_collection: "auto",
       success_url: `${baseUrl}/premium?success=1`,
       cancel_url: `${baseUrl}/premium?canceled=1`,
       metadata: { user_id: user.id, plan: data.plan },
     };
 
-    // Tenta usar automatic payment methods primeiro (recomendado nas versões recentes da Stripe)
+    // Lista exaustiva de métodos habilitados na imagem do usuário
+    // Note: Stripe Checkout validará a compatibilidade com o modo 'subscription' e a moeda (EUR)
+    // Alguns métodos da imagem (PIX, Multibanco, BLIK) podem ser filtrados pela Stripe se incompatíveis com recorrência.
+    const allEnabledMethods = [
+      "card",
+      "paypal",
+      "klarna",
+      "bancontact",
+      "ideal",
+      "sepa_debit",
+      "link",
+      "revolut_pay",
+      "mb_way",
+      "multibanco", // Pode falhar em assinaturas, mas o usuário insistiu
+      "mobilepay",
+      "blik",
+      "p24",
+      "eps",
+      "giropay",
+      "twint",
+      "pix", // Geralmente requer BRL, mas vamos incluir
+      "upi",
+    ];
+
     try {
-      console.log("[Stripe] Attempting session creation...");
+      console.log("[Stripe] Attempting session creation with all methods...");
       const session = await stripe.checkout.sessions.create({
         ...sessionOptions,
-        // Ao invés de automatic_payment_methods: { enabled: true },
-        // Vamos usar payment_method_collection se a versão da API permitir, 
-        // ou apenas deixar a Stripe decidir se configurado no dashboard.
-        // Mas para garantir compatibilidade com a versão do SDK instalada (22.x ou agora latest):
-        payment_method_types: [
-          "card",
-          "paypal",
-          "klarna",
-          "sepa_debit",
-          "bancontact",
-          "ideal",
-          "revolut_pay"
-        ],
+        // Tentamos automatic_payment_methods primeiro, pois é o padrão moderno
+        automatic_payment_methods: { enabled: true },
+        // Se quisermos forçar a Stripe a mostrar tudo que pode, usamos as configurações do dashboard
       });
-      console.log("[Stripe] Session created successfully:", session.id);
+      console.log("[Stripe] Session created successfully (automatic):", session.id);
       return { url: session.url };
     } catch (e: any) {
-      console.error("[Stripe] Checkout creation failed:", e.message);
-      throw e;
+      console.warn("[Stripe] automatic_payment_methods failed, falling back to manual list:", e.message);
+      
+      try {
+        const session = await stripe.checkout.sessions.create({
+          ...sessionOptions,
+          payment_method_types: allEnabledMethods.filter(m => {
+             // Opcional: filtrar métodos sabidamente incompatíveis com assinaturas se o erro for específico
+             return true;
+          }) as any,
+        });
+        console.log("[Stripe] Session created successfully (manual list):", session.id);
+        return { url: session.url };
+      } catch (err2: any) {
+        console.warn("[Stripe] Manual list also failed, falling back to safe subscription methods:", err2.message);
+        // Fallback final para o que é GARANTIDO funcionar em assinaturas EUR
+        const session = await stripe.checkout.sessions.create({
+          ...sessionOptions,
+          payment_method_types: [
+            "card",
+            "paypal",
+            "klarna",
+            "sepa_debit",
+            "bancontact",
+            "ideal",
+            "revolut_pay",
+            "link"
+          ],
+        });
+        console.log("[Stripe] Session created successfully (safe fallback):", session.id);
+        return { url: session.url };
+      }
     }
   } catch (stripeErr: any) {
     console.error("[Stripe] Critical failure creating session:", stripeErr);

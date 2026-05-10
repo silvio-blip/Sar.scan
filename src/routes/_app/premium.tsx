@@ -120,7 +120,7 @@ function PremiumPage() {
 
   const current = PLANS.find((p) => p.id === selected)!;
   const subscribePlan = async (planId: PlanId) => {
-    console.log("[PremiumPage] subscribePlan called with planId:", planId);
+    console.log("[PremiumPage] subscribePlan START for planId:", planId);
     if (!user || !session?.access_token) {
       console.warn("[PremiumPage] No user or session token found.");
       return;
@@ -128,16 +128,16 @@ function PremiumPage() {
     setLoading(planId);
     setSelected(planId);
     try {
-      console.log("[PremiumPage] Calling createStripeCheckout API...");
+      console.log("[PremiumPage] Calling createStripeCheckout API for:", planId);
       const { url } = await createStripeCheckout({ token: session.access_token, plan: planId });
-      console.log("[PremiumPage] API Response URL:", url);
+      console.log("[PremiumPage] API Response URL for", planId, ":", url);
       if (url) {
         window.location.href = url;
       } else {
         throw new Error("URL de checkout não retornada pelo servidor");
       }
     } catch (e) {
-      console.error("[PremiumPage] Checkout error:", e);
+      console.error("[PremiumPage] Checkout error for", planId, ":", e);
       const err = e as Error;
       toast.error(err?.message ?? "Erro ao iniciar checkout");
       setLoading(null);
