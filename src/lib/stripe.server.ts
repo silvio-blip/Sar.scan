@@ -149,73 +149,28 @@ export async function createStripeCheckoutInternal(data: {
       metadata: { user_id: user.id, plan: data.plan },
     };
 
-    // Lista exaustiva de métodos habilitados na imagem do usuário
-    // Note: Stripe Checkout validará a compatibilidade com o modo 'subscription' e a moeda (EUR)
-    // Alguns métodos da imagem (PIX, Multibanco, BLIK) podem ser filtrados pela Stripe se incompatíveis com recorrência.
-    const allEnabledMethods = [
+    // Nota: Métodos como MB WAY, Multibanco, PIX e BLIK não suportam 'subscription' no Stripe Checkout.
+    // Se incluirmos esses métodos, a Stripe recusa a criação da sessão.
+    // Usamos apenas os métodos que garantidamente suportam o modo assinatura em EUR.
+    const checkoutMethods = [
       "card",
       "paypal",
       "klarna",
+      "sepa_debit",
       "bancontact",
       "ideal",
-      "sepa_debit",
-      "link",
       "revolut_pay",
-      "mb_way",
-      "multibanco", // Pode falhar em assinaturas, mas o usuário insistiu
-      "mobilepay",
-      "blik",
-      "p24",
-      "eps",
-      "giropay",
-      "twint",
-      "pix", // Geralmente requer BRL, mas vamos incluir
-      "upi",
+      "link"
     ];
 
-    try {
-      console.log("[Stripe] Attempting session creation with all methods...");
-      const session = await stripe.checkout.sessions.create({
-        ...sessionOptions,
-        // Tentamos automatic_payment_methods primeiro, pois é o padrão moderno
-        automatic_payment_methods: { enabled: true },
-        // Se quisermos forçar a Stripe a mostrar tudo que pode, usamos as configurações do dashboard
-      });
-      console.log("[Stripe] Session created successfully (automatic):", session.id);
-      return { url: session.url };
-    } catch (e: any) {
-      console.warn("[Stripe] automatic_payment_methods failed, falling back to manual list:", e.message);
-      
-      try {
-        const session = await stripe.checkout.sessions.create({
-          ...sessionOptions,
-          payment_method_types: allEnabledMethods.filter(m => {
-             // Opcional: filtrar métodos sabidamente incompatíveis com assinaturas se o erro for específico
-             return true;
-          }) as any,
-        });
-        console.log("[Stripe] Session created successfully (manual list):", session.id);
-        return { url: session.url };
-      } catch (err2: any) {
-        console.warn("[Stripe] Manual list also failed, falling back to safe subscription methods:", err2.message);
-        // Fallback final para o que é GARANTIDO funcionar em assinaturas EUR
-        const session = await stripe.checkout.sessions.create({
-          ...sessionOptions,
-          payment_method_types: [
-            "card",
-            "paypal",
-            "klarna",
-            "sepa_debit",
-            "bancontact",
-            "ideal",
-            "revolut_pay",
-            "link"
-          ],
-        });
-        console.log("[Stripe] Session created successfully (safe fallback):", session.id);
-        return { url: session.url };
-      }
-    }
+    console.log("[Stripe] Creating checkout session with stable subscription methods...");
+    const session = await stripe.checkout.sessions.create({
+      ...sessionOptions,
+      payment_method_types: checkoutMethods as any,
+    });
+    
+    console.log("[Stripe] Session created successfully:", session.id);
+    return { url: session.url };
   } catch (stripeErr: any) {
     console.error("[Stripe] Critical failure creating session:", stripeErr);
     if (stripeErr.raw) {

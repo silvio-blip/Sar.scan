@@ -14,12 +14,27 @@ import {
   Check,
   X,
   Bot,
+  CircleAlert,
   Loader2,
   RefreshCw,
+  CircleCheckBig,
+  ArrowRight,
+  Zap,
+  ShieldQuestion,
+  CreditCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogDescription,
+  DialogFooter
+} from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_app/premium")({ component: PremiumPage });
 
@@ -106,17 +121,30 @@ function PremiumPage() {
   const [selected, setSelected] = useState<PlanId>("monthly");
   const [loading, setLoading] = useState<PlanId | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [purchasedPlan, setPurchasedPlan] = useState<PlanDef | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     const search = new URLSearchParams(location.search);
     if (search.get("success")) {
-      toast.success("Pagamento processado! Sincronizando sua conta...");
+      // Find what plan we likely just bought (or look at current subscription)
+      const likelyPlan = PLANS.find((p) => p.id === selected) || PLANS[1]; // fallback to monthly
+      setPurchasedPlan(likelyPlan);
+      setShowSuccessModal(true);
+
       if (refresh) refresh();
+      // Limpamos a URL para não disparar de novo, mas mantemos o estado do modal
       navigate({ to: "/premium", search: {}, replace: true });
     }
-  }, [location.search, refresh, navigate]);
+
+    if (search.get("canceled")) {
+      setShowCancelModal(true);
+      navigate({ to: "/premium", search: {}, replace: true });
+    }
+  }, [location.search, refresh, navigate, selected]);
 
   const current = PLANS.find((p) => p.id === selected)!;
   const subscribePlan = async (planId: PlanId) => {
@@ -328,6 +356,134 @@ function PremiumPage() {
           ))}
         </div>
       </div>
+
+      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+        <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <div className="relative p-8 flex flex-col items-center text-center">
+            {/* Background elements */}
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/10 to-transparent" />
+            <div className="absolute top-10 size-40 bg-white/5 rounded-full blur-3xl" />
+            
+            <motion.div
+              initial={{ scale: 0, rotate: -20 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.1 }}
+              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center shadow-2xl mb-6"
+            >
+              <CircleCheckBig className="size-10" strokeWidth={2.5} />
+            </motion.div>
+
+            <motion.div
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="relative z-10"
+            >
+              <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2">
+                Plano {purchasedPlan?.label} Ativado!
+              </h2>
+              <p className="text-white/60 text-sm font-medium mb-8">
+                Parabéns! Você acaba de desbloquear o potencial máximo do sar.scan.
+              </p>
+
+              <div className="space-y-3 mb-8">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 text-left mb-2">
+                  O que você desbloqueou:
+                </div>
+                {[
+                  { icon: Zap, text: `${purchasedPlan?.scans} créditos de scan instantâneos` },
+                  { icon: Bot, text: "Acesso total ao Agente IA Nutricional" },
+                  { icon: Sparkles, text: "Análises ultra detalhadas de alimentos" },
+                  { icon: Target, text: "Personalização avançada de metas" },
+                ].map((item, i) => (
+                  <motion.div
+                    key={item.text}
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: 0.5 + i * 0.1 }}
+                    className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
+                  >
+                    <div className="size-8 rounded-xl bg-white/5 flex items-center justify-center">
+                      <item.icon className="size-4 text-white" />
+                    </div>
+                    <span className="text-xs font-semibold text-white/80">{item.text}</span>
+                  </motion.div>
+                ))}
+              </div>
+
+              <Button
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  navigate({ to: "/" });
+                }}
+                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-[0_20px_40px_rgba(255,255,255,0.1)] transition-all group"
+              >
+                Começar a usar agora
+                <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
+              </Button>
+            </motion.div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <div className="relative p-8 flex flex-col items-center text-center">
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/5 to-transparent" />
+            
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="relative z-10 size-20 rounded-[24px] bg-zinc-800 text-white/50 flex items-center justify-center mb-6"
+            >
+              <CircleAlert className="size-10" />
+            </motion.div>
+
+            <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2">
+              Pagamento não finalizado
+            </h2>
+            <p className="text-white/60 text-sm font-medium mb-8">
+              Parece que o processo foi interrompido. Sem problemas, seus dados estão seguros e nada foi cobrado.
+            </p>
+
+            <div className="w-full space-y-3 mb-8">
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-left">
+                <ShieldQuestion className="size-5 text-white/40 shrink-0" />
+                <div className="text-xs">
+                  <p className="text-white/80 font-bold mb-0.5">Dúvida sobre o plano?</p>
+                  <p className="text-white/40 font-medium">Fale conosco se precisar de ajuda.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-left">
+                <CreditCard className="size-5 text-white/40 shrink-0" />
+                <div className="text-xs">
+                  <p className="text-white/80 font-bold mb-0.5">Problema no cartão?</p>
+                  <p className="text-white/40 font-medium">Tente outro método de pagamento.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col w-full gap-3">
+              <Button
+                onClick={() => setShowCancelModal(false)}
+                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all"
+              >
+                Tentar novamente
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowCancelModal(false);
+                  navigate({ to: "/" });
+                }}
+                className="w-full h-12 text-white/40 hover:text-white hover:bg-white/5 font-bold text-xs"
+              >
+                Voltar para o Início
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
