@@ -22,31 +22,39 @@ export async function handleStripeWebhook(payload: string, signature: string | n
       const s = event.data.object;
       const userId = s.metadata?.user_id;
       const planId = s.metadata?.plan;
-      console.log(`[Webhook] Checkout session completed: ${s.id}, user: ${userId}, plan: ${planId}`);
+      console.log(`[Webhook] Session Completed: ${s.id}, user: ${userId}, plan: ${planId}`);
 
       if (userId && planId) {
+        // Encontra ou cria a subscrição
         const { data: currentSub } = await (supabaseAdmin as any)
           .from("subscriptions")
           .select("*")
           .eq("user_id", userId)
           .maybeSingle();
 
-        const currentCredits = (currentSub as any)?.scans_credits ?? 0;
         const addedCredits = planScans(planId);
+        const currentCredits = (currentSub as any)?.scans_credits ?? 0;
         const newTotal = currentCredits + addedCredits;
 
-        console.log(`[Webhook] Adding ${addedCredits} credits. New total: ${newTotal}`);
+        console.log(`[Webhook] Adding ${addedCredits} credits to user ${userId}. Total: ${newTotal}`);
+
+        // Determinar status inicial (se houver subscription info na sessão do Stripe)
+        let initialStatus = "active";
+        if (s.subscription && s.mode === "subscription") {
+          // No checkout completed, se for trial, o subscription.created logo virá ajustar. 
+          // Mas podemos tentar inferir aqui.
+        }
 
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {
             user_id: userId,
-            status: "active", // Refinado pelo subscription.created/updated se houver trial
+            status: initialStatus, 
             plan: planId,
             scans_credits: newTotal,
             stripe_customer_id: s.customer,
             stripe_subscription_id: s.subscription,
             ai_agent_enabled: planId === "monthly" || planId === "yearly",
-            current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
+            current_period_end: new Date(Date.now() + 32 * 86400000).toISOString(),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" }
@@ -57,11 +65,10 @@ export async function handleStripeWebhook(payload: string, signature: string | n
     case "customer.subscription.updated":
     case "customer.subscription.created": {
       const sub = event.data.object;
-      // Stripe puts metadata in different places. Try session metadata first if available or direct
       const userId = sub.metadata?.user_id;
       const planId = sub.metadata?.plan;
 
-      console.log(`[Webhook] Sub Status Change: ${sub.id}, status: ${sub.status}, user: ${userId}, plan: ${planId}`);
+      console.log(`[Webhook] Subscription Update: ${sub.id}, status: ${sub.status}, user: ${userId}`);
 
       if (userId && planId) {
         let dbStatus = "active";
@@ -69,9 +76,10 @@ export async function handleStripeWebhook(payload: string, signature: string | n
         else if (sub.status === "past_due" || sub.status === "unpaid") dbStatus = "past_due";
         else if (sub.status === "canceled") dbStatus = "expired";
         else if (sub.status === "active") dbStatus = "active";
-        else dbStatus = sub.status; // fallback
 
         const canUseAi = (planId === "monthly" || planId === "yearly") && (dbStatus === "active" || dbStatus === "trialing");
+
+        console.log(`[Webhook] Updating DB Status: ${dbStatus}, AI: ${canUseAi}`);
 
         await (supabaseAdmin as any)
           .from("subscriptions")
@@ -80,7 +88,6 @@ export async function handleStripeWebhook(payload: string, signature: string | n
             plan: planId,
             ai_agent_enabled: canUseAi,
             stripe_subscription_id: sub.id,
-            stripe_customer_id: sub.customer,
             current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
             trial_end: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
             updated_at: new Date().toISOString(),

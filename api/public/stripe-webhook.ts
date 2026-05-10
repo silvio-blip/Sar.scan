@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { handleStripeWebhook } from "../../src/lib/stripe.webhook";
+import { handleStripeWebhook } from "../../src/lib/stripe.webhook.js";
 
 export const config = {
   api: {
