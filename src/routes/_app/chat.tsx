@@ -45,6 +45,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import Peer, { MediaConnection } from "peerjs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -405,7 +407,11 @@ function MessageCard({
                   {repliedTo.content || "Voz"}
                 </div>
               )}
-              <div className="break-words whitespace-pre-wrap leading-snug">{m.content}</div>
+              <div className="break-words leading-snug">
+                <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:p-3 prose-pre:rounded-lg prose-ul:list-disc prose-ol:list-decimal">
+                  <Markdown remarkPlugins={[remarkGfm]}>{m.content}</Markdown>
+                </div>
+              </div>
             </>
           )}
           <div className="flex items-center justify-end gap-1 mt-0.5 text-[8px] font-black tracking-tight self-end opacity-40">
@@ -429,7 +435,7 @@ function MessageCard({
 }
 
 function ChatPage() {
-  const { user, isPremium, canAccessAI, subscription } = useAuth();
+  const { user, isPremium, canAccessAI, subscription, isAdmin } = useAuth();
   const navigate = useNavigate();
   const {
     startCall,
@@ -467,6 +473,7 @@ function ChatPage() {
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const startRecording = async () => {
+    if (view === "ai") return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -1044,9 +1051,7 @@ function ChatPage() {
           }
         }
 
-        await supabase
-          .from("chat_messages")
-          .insert({ user_id: user.id, role: "user", content: text });
+        /* Message insert removed to prevent duplication (handled by edge function) */
         
         const { data, error } = await supabase.functions.invoke("nutrition-chat", {
           body: { message: text, user_id: user.id },
@@ -2102,10 +2107,10 @@ function ChatPage() {
                     onKeyDown={(e) => e.key === "Enter" && send()}
                     className="bg-white/5 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-sm h-14 rounded-2xl flex-1 px-6 shadow-inner"
                   />
-                  {input.trim() ? (
+                  {input.trim() || (view === "ai" && !input.trim()) ? (
                     <Button
                       onClick={send}
-                      disabled={sending || (view === "ai" && !aiAgent)}
+                      disabled={sending || !input.trim() || (view === "ai" && !canAccessAI)}
                       className="size-14 rounded-2xl bg-white text-black hover:bg-zinc-200 shadow-xl transition-all active:scale-95 disabled:opacity-20"
                     >
                       <SendIcon className="size-6" />
@@ -2113,7 +2118,7 @@ function ChatPage() {
                   ) : (
                     <Button
                       onClick={startRecording}
-                      disabled={sending || (view === "ai" && !aiAgent)}
+                      disabled={sending}
                       className="size-14 rounded-2xl bg-white/5 text-white hover:bg-white/10 border border-white/10 shadow-xl transition-all active:scale-95"
                     >
                       <Mic className="size-6" />
