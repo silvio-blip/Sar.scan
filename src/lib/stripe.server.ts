@@ -1,7 +1,7 @@
 import Stripe from "stripe";
-import { supabaseAdmin } from "../integrations/supabase/client.server";
+import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 
-import { getAppSettings } from "./settings.server";
+import { getAppSettings } from "./settings.server.js";
 
 let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = null;
 
@@ -15,7 +15,7 @@ async function loadKeys() {
 export async function getStripe() {
   if (_cached) return _cached;
   const { secret, webhookSecret } = await loadKeys();
-  const stripe = new Stripe(secret, { apiVersion: "2024-06-20" });
+  const stripe = new Stripe(secret, { apiVersion: "2024-12-18.acacia" as any });
   _cached = { stripe, secret, webhookSecret };
   return _cached;
 }

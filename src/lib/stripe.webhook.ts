@@ -1,5 +1,5 @@
-import { supabaseAdmin } from "../integrations/supabase/client.server";
-import { getStripe, PLANS_DEF } from "./stripe.server";
+import { supabaseAdmin } from "../integrations/supabase/client.server.js";
+import { getStripe, PLANS_DEF } from "./stripe.server.js";
 
 console.log("[Webhook] Module Loading...");
 
