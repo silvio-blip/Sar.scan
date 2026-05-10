@@ -351,8 +351,17 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
     // ...
     
     switch (data.name) {
-      case "search-food-ai":
-        return await handleSearchFoodAi(data.body);
+      case "search-food-ai": {
+        if (!userId) throw new Error("Usuário não identificado");
+        // Verifica se pode usar IA (deduz crédito ou incrementa contador diário)
+        const eligibility = await checkEligibility(userId);
+        const result = await handleSearchFoodAi(data.body);
+        // Se a busca retornar resultados (não for popular/vazia), deduzimos
+        if (result && Array.isArray(result.alimentos) && result.alimentos.length > 0) {
+          await deductScan(userId, eligibility);
+        }
+        return result;
+      }
       case "nutrition-chat":
         return await handleNutritionChat(data.body);
       case "scan-food": {

@@ -151,17 +151,21 @@ function PremiumPage() {
         </div>
       </div>
 
-      {isPremium && subscription?.plan && (
-        <div className="glass rounded-[32px] p-4 border-white/20 bg-white/5 flex items-center gap-4">
-          <div className="size-12 rounded-2xl bg-white/10 flex items-center justify-center shadow-inner">
-            <Crown className="size-6 text-white" strokeWidth={2.5} />
+      {isPremium && (
+        <div className="glass rounded-[32px] p-6 border-white/20 bg-white/5 flex items-center gap-5 shadow-[0_20px_50px_rgba(255,255,255,0.05)] relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-r from-white/[0.02] to-transparent" />
+          <div className="size-16 rounded-[24px] bg-white text-black flex items-center justify-center shadow-2xl relative z-10 transition-transform group-hover:scale-105">
+            <Crown className="size-8" strokeWidth={2.5} />
           </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-white uppercase tracking-wider">
-              Seu Plano: {subscription.plan}
+          <div className="flex-1 relative z-10">
+            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-1">
+              Status da Assinatura
             </div>
-            <div className="text-xs text-white/60 font-semibold">
-              {subscription.scans_credits} créditos disponíveis
+            <div className="font-display font-black text-xl text-white uppercase tracking-tight flex items-center gap-2">
+              Ativa <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+            </div>
+            <div className="text-xs text-white/60 font-semibold mt-1">
+              Plano {subscription?.plan || "Premium"} · {subscription?.scans_credits} créditos
             </div>
           </div>
         </div>

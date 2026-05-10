@@ -133,6 +133,7 @@ export async function createStripeCheckoutInternal(data: {
   const planDef = PLANS_DEF.find(p => p.id === data.plan);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
+    payment_method_types: ["card", "pix", "sepa_debit"], // Card for Global/Europe, Pix for Brazil, SEPA for Europe.
     customer: customerId,
     line_items: [{ price: prodTyped.price_id, quantity: 1 }],
     subscription_data: { 

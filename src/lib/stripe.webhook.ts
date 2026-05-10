@@ -27,23 +27,28 @@ export async function handleStripeWebhook(payload: string, signature: string | n
         // Obter créditos atuais para somar
         const { data: currentSub } = await (supabaseAdmin as any)
           .from("subscriptions")
-          .select("scans_credits")
+          .select("scans_credits, stripe_subscription_id")
           .eq("user_id", userId)
           .maybeSingle();
         
+        // Evitar duplicidade se já processamos customer.subscription.created
+        if ((currentSub as any)?.stripe_subscription_id === s.subscription && (currentSub as any)?.scans_credits > 0) {
+           console.log("[Webhook] Credits already added for this session.");
+           break;
+        }
+
         const currentCredits = (currentSub as any)?.scans_credits ?? 0;
-        const newCredits = currentCredits + planScans(planId);
-        console.log(`[Webhook] Adding ${planScans(planId)} credits to user ${userId}. New total: ${newCredits}`);
+        const addedCredits = planScans(planId);
+        const newCredits = currentCredits + addedCredits;
+        console.log(`[Webhook] Adding ${addedCredits} credits to user ${userId}. New total: ${newCredits}`);
 
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {
             user_id: userId,
-            status: s.subscription ? "active" : "free", // Se for checkout de sessão sem sub?? mas aqui é subscription mode
+            status: "active", // No checkout assume-se que começou (seja trial ou pago)
             plan: planId,
             scans_credits: newCredits,
-            // IA apenas se não for semanal e NÃO estiver em trial (no checkout inicial pode estar trialing)
-            // Mas o status real vem do evento customer.subscription.created/updated
-            ai_agent_enabled: false, 
+            ai_agent_enabled: false, // Só libera Full AI no core logic se for Monthly/Yearly e Ativo
             stripe_customer_id: s.customer,
             stripe_subscription_id: s.subscription,
             current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
@@ -60,13 +65,14 @@ export async function handleStripeWebhook(payload: string, signature: string | n
       const planId = sub.metadata?.plan;
       if (userId && planId) {
         const isTrialing = sub.status === "trialing";
-        const status = (sub.status === "active" || isTrialing) ? sub.status : "expired";
-        
+        const status = sub.status === "active" || isTrialing ? sub.status : "expired";
+
         // IA liberada apenas se for Plano Mensal/Anual E o status for 'active' (terminou trial)
         const canUseAi = (planId === "monthly" || planId === "yearly") && status === "active";
 
-        await (supabaseAdmin as any).from("subscriptions").update(
-          {
+        await (supabaseAdmin as any)
+          .from("subscriptions")
+          .update({
             status,
             plan: planId,
             ai_agent_enabled: canUseAi,
@@ -74,8 +80,8 @@ export async function handleStripeWebhook(payload: string, signature: string | n
             stripe_customer_id: sub.customer,
             current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
             trial_end: sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null,
-          }
-        ).eq("user_id", userId);
+          })
+          .eq("user_id", userId);
       }
       break;
     }

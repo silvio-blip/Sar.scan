@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 
+import { CreditDisplay } from "@/components/credit-display";
+
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
 function PerfilPage() {
@@ -105,7 +107,7 @@ function PerfilPage() {
             Scans Disponíveis
           </div>
           <div className="text-3xl font-display font-black text-white">
-            {remaining === Infinity ? "∞" : remaining}
+            <CreditDisplay value={remaining} />
           </div>
         </div>
 

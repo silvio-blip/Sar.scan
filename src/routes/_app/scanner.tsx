@@ -29,6 +29,8 @@ import { useSubscriptionRealtime, useRewardsRealtime } from "@/hooks/use-realtim
 import { Gauge } from "@/components/gauge";
 import { WaterTracker } from "@/components/water-tracker";
 
+import { CreditDisplay } from "@/components/credit-display";
+
 export const Route = createFileRoute("/_app/scanner")({ component: ScannerPage });
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -292,7 +294,7 @@ function ScannerPage() {
             Scans
           </div>
           <div className="text-sm font-display font-black text-white mt-0.5">
-            {remaining === Infinity ? "∞" : remaining}
+            <CreditDisplay value={remaining} />
           </div>
         </div>
       </header>
