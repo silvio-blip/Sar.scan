@@ -788,6 +788,8 @@ function ChatPage() {
     queryKey: ["chat_usage", user?.id],
     enabled: !!user,
     queryFn: async () => {
+      if (isAdmin) return { count: 0, limit: -1, plan: "admin" };
+      
       const planKey = subscription?.plan || "free";
       const [{ data: limitData }, { data: usageData }] = await Promise.all([
         supabase.from("plan_limits").select("chat_limit").eq("plan", planKey).single(),
