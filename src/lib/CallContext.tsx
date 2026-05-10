@@ -535,6 +535,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.log("Peer successfully open with ID:", pId);
         setPeerId(pId);
         peerIdRef.current = pId;
+        // Se cair e voltar, forçamos um status idle se não estiver em chamada real
+        if (statusRef.current.type === "ended") {
+          resetCall();
+        }
       });
 
       newPeer.on("call", (incoming) => {
@@ -594,7 +598,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (errorType === "disconnected" || errorType === "network") {
           console.log("Peer disconnected, attempting to reconnect...");
           if (!newPeer.destroyed) {
-            newPeer.reconnect();
+            try {
+              if (newPeer.disconnected) {
+                newPeer.reconnect();
+              } else {
+                // Se recebemos erro de rede mas o PeerJS ainda acha que está conectado,
+                // forçamos uma desconexão controlada antes de tentar reconectar
+                // para evitar o erro "cannot reconnect because it is not disconnected".
+                newPeer.disconnect();
+                setTimeout(() => {
+                  if (!newPeer.destroyed) newPeer.reconnect();
+                }, 100);
+              }
+            } catch (reconnectErr) {
+              console.error("Reconnection failed:", reconnectErr);
+            }
           }
         }
       });

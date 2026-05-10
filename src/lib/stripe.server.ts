@@ -15,7 +15,7 @@ async function loadKeys() {
 export async function getStripe() {
   if (_cached) return _cached;
   const { secret, webhookSecret } = await loadKeys();
-  const stripe = new Stripe(secret, { apiVersion: "2025-09-30.clover" as any });
+  const stripe = new Stripe(secret, { apiVersion: "2024-06-20" });
   _cached = { stripe, secret, webhookSecret };
   return _cached;
 }
@@ -133,7 +133,7 @@ export async function createStripeCheckoutInternal(data: {
   const planDef = PLANS_DEF.find(p => p.id === data.plan);
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
-    payment_method_types: ["card", "pix", "sepa_debit"], // Card for Global/Europe, Pix for Brazil, SEPA for Europe.
+    automatic_payment_methods: { enabled: true },
     customer: customerId,
     line_items: [{ price: prodTyped.price_id, quantity: 1 }],
     subscription_data: { 
