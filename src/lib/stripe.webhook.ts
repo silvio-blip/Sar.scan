@@ -1,5 +1,7 @@
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { getStripe, PLANS_DEF } from "@/lib/stripe.server";
+import { supabaseAdmin } from "../integrations/supabase/client.server";
+import { getStripe, PLANS_DEF } from "./stripe.server";
+
+console.log("[Webhook] Module Loading...");
 
 export async function handleStripeWebhook(payload: string, signature: string | null) {
   const { stripe, webhookSecret } = await getStripe();

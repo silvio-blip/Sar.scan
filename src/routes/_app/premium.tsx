@@ -368,6 +368,9 @@ function PremiumPage() {
 
       <Dialog open={!!confirmingPlan} onOpenChange={(open) => !open && setConfirmingPlan(null)}>
         <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Confirmar Ativação de Teste Grátis</DialogTitle>
+          </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
             <div className="absolute inset-x-0 top-0 h-40 bg-zinc-900/50" />
             
@@ -425,6 +428,9 @@ function PremiumPage() {
 
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Plano Ativado com Sucesso</DialogTitle>
+          </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
             {/* Background elements */}
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/10 to-transparent" />
@@ -505,6 +511,9 @@ function PremiumPage() {
 
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
         <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Pagamento Interrompido</DialogTitle>
+          </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/5 to-transparent" />
             

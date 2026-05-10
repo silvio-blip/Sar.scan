@@ -1,7 +1,7 @@
 import Stripe from "stripe";
-import { supabaseAdmin } from "../integrations/supabase/client.server.js";
+import { supabaseAdmin } from "../integrations/supabase/client.server";
 
-import { getAppSettings } from "./settings.server.js";
+import { getAppSettings } from "./settings.server";
 
 let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = null;
 
