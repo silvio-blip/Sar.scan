@@ -12,7 +12,12 @@ export function CreditDisplay({ value }: CreditDisplayProps) {
 
   useEffect(() => {
     if (value !== prevValue) {
-      setAnimating(true);
+      const diff =
+        typeof value === "number" && typeof prevValue === "number" ? value - prevValue : 0;
+      // Se a diferença for grande (ex: +30, +150), não mostramos a animação flutuante
+      // mas ainda atualizamos o número com a animação de troca.
+      setAnimating(Math.abs(diff) > 0 && Math.abs(diff) < 10);
+
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
         setAnimating(false);

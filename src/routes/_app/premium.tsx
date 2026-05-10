@@ -18,6 +18,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/_app/premium")({ component: PremiumPage });
 
@@ -100,22 +102,35 @@ const PLANS: PlanDef[] = [
 ];
 
 function PremiumPage() {
-  const { user, session, isPremium, isAdmin, subscription } = useAuth();
+  const { user, session, isPremium, isAdmin, subscription, refresh } = useAuth();
   const [selected, setSelected] = useState<PlanId>("monthly");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<PlanId | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const search = new URLSearchParams(location.search);
+    if (search.get("success")) {
+      toast.success("Pagamento processado! Sincronizando sua conta...");
+      if (refresh) refresh();
+      navigate({ to: "/premium", search: {}, replace: true });
+    }
+  }, [location.search, refresh, navigate]);
+
   const current = PLANS.find((p) => p.id === selected)!;
   const subscribePlan = async (planId: PlanId) => {
     if (!user || !session?.access_token) return;
-    setLoading(true);
+    setLoading(planId);
+    setSelected(planId);
     try {
       const { url } = await createStripeCheckout({ token: session.access_token, plan: planId });
       if (url) window.location.href = url;
       else throw new Error("URL de checkout não retornada");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Erro ao iniciar checkout");
-    } finally {
-      setLoading(false);
+    } catch (e) {
+      const err = e as Error;
+      toast.error(err?.message ?? "Erro ao iniciar checkout");
+      setLoading(null);
     }
   };
 
@@ -179,9 +194,10 @@ function PremiumPage() {
           {PLANS.map((p) => {
             const active = selected === p.id;
             return (
-                <div
+              <div
                 key={p.id}
-                className={`group relative overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 w-full ${
+                onClick={() => setSelected(p.id)}
+                className={`group relative cursor-pointer overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 w-full ${
                   active
                     ? "border-white bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.05)] ring-1 ring-white/40"
                     : "border-white/5 bg-white/[0.03] hover:bg-white/[0.06]"
@@ -235,9 +251,13 @@ function PremiumPage() {
                       e.stopPropagation();
                       subscribePlan(p.id);
                     }}
-                    disabled={loading || (isPremium && subscription?.plan === p.id)}
+                    disabled={!!loading || (isPremium && subscription?.plan === p.id)}
                   >
-                    {loading && selected === p.id ? <Loader2 className="size-4 animate-spin" /> : "Assinar agora"}
+                    {loading === p.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      "Assinar agora"
+                    )}
                   </Button>
                 </div>
               </div>
