@@ -21,9 +21,9 @@ export async function getStripe() {
 }
 
 export const PLANS_DEF = [
-  { id: "weekly", label: "sar.sacn Semanal", amount: 499, interval: "week", scans: 30, trial_days: 7 },
-  { id: "monthly", label: "sar.sacn Mensal", amount: 1999, interval: "month", scans: 150, trial_days: 7 },
-  { id: "yearly", label: "sar.sacn Anual", amount: 9900, interval: "year", scans: 1200, trial_days: 7 },
+  { id: "weekly", label: "sar.scan Semanal", amount: 499, interval: "week", scans: 30, trial_days: 7 },
+  { id: "monthly", label: "sar.scan Mensal", amount: 1999, interval: "month", scans: 150, trial_days: 7 },
+  { id: "yearly", label: "sar.scan Anual", amount: 9900, interval: "year", scans: 1200, trial_days: 7 },
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];
 
@@ -130,21 +130,49 @@ export async function createStripeCheckoutInternal(data: {
 
   const baseUrl = data.origin || "https://example.com";
 
-  const planDef = PLANS_DEF.find(p => p.id === data.plan);
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    automatic_payment_methods: { enabled: true },
-    customer: customerId,
-    line_items: [{ price: prodTyped.price_id, quantity: 1 }],
-    subscription_data: { 
+  console.log("[Stripe] Creating checkout session for user:", user.id, "plan:", data.plan, "customerId:", customerId);
+  const planDef = PLANS_DEF.find((p) => p.id === data.plan);
+  
+  try {
+    const sessionOptions: any = {
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: prodTyped.price_id, quantity: 1 }],
+      subscription_data: {
+        metadata: { user_id: user.id, plan: data.plan },
+        trial_period_days: planDef?.trial_days ?? 0,
+      },
+      success_url: `${baseUrl}/premium?success=1`,
+      cancel_url: `${baseUrl}/premium?canceled=1`,
       metadata: { user_id: user.id, plan: data.plan },
-      trial_period_days: planDef?.trial_days ?? 0 
-    },
-    success_url: `${baseUrl}/premium?success=1`,
-    cancel_url: `${baseUrl}/premium?canceled=1`,
-    metadata: { user_id: user.id, plan: data.plan },
-  });
-  return { url: session.url };
+    };
+
+    // Tenta usar automatic payment methods primeiro (recomendado)
+    // Se falhar com erro de "unknown parameter", vamos tentar payment_method_types manual.
+    try {
+      console.log("[Stripe] Attempting with automatic_payment_methods...");
+      const session = await stripe.checkout.sessions.create({
+        ...sessionOptions,
+        automatic_payment_methods: { enabled: true },
+      });
+      console.log("[Stripe] Session created successfully (automatic):", session.id);
+      return { url: session.url };
+    } catch (e: any) {
+      if (e.message?.includes("unknown parameter: automatic_payment_methods")) {
+        console.warn("[Stripe] automatic_payment_methods not supported, falling back to manual types.");
+        const session = await stripe.checkout.sessions.create({
+          ...sessionOptions,
+          payment_method_types: ["card", "pix", "sepa_debit"], 
+        });
+        console.log("[Stripe] Session created successfully (manual):", session.id);
+        return { url: session.url };
+      }
+      throw e;
+    }
+  } catch (stripeErr: any) {
+    console.error("[Stripe] Exhaustive error details:", JSON.stringify(stripeErr, null, 2));
+    throw new Error(stripeErr.message || "Erro na Stripe ao criar sessão");
+  }
 }
 
 async function authUser(token: string) {
