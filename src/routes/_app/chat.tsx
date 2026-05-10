@@ -408,9 +408,13 @@ function MessageCard({
                 </div>
               )}
               <div className="break-words leading-snug">
-                <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:p-3 prose-pre:rounded-lg prose-ul:list-disc prose-ol:list-decimal">
-                  <Markdown remarkPlugins={[remarkGfm]}>{m.content}</Markdown>
-                </div>
+                {isMe ? (
+                  <div className="whitespace-pre-wrap text-white">{m.content}</div>
+                ) : (
+                  <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:p-3 prose-pre:rounded-lg prose-ul:list-disc prose-ol:list-decimal">
+                    <Markdown remarkPlugins={[remarkGfm]}>{m.content}</Markdown>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1007,6 +1011,7 @@ function ChatPage() {
       id: tempId,
       sender_id: user.id,
       receiver_id: selectedUser?.id,
+      role: view === "ai" ? "user" : undefined,
       content: text,
       created_at: new Date().toISOString(),
       is_read: false,

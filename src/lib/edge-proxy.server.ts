@@ -192,9 +192,13 @@ async function handleNutritionChat(body: Body) {
     try {
       const admin = getAdminSafe();
       if (admin) {
+        // Persist user message and assistant reply
         await (admin as any)
           .from("chat_messages")
-          .insert({ user_id: userId, role: "assistant", content: reply });
+          .insert([
+            { user_id: userId, role: "user", content: message },
+            { user_id: userId, role: "assistant", content: reply }
+          ]);
       }
     } catch (e) {
       console.error("chat persist failed", e);
