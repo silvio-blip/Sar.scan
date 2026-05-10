@@ -144,7 +144,7 @@ export async function createStripeCheckoutInternal(data: {
         trial_period_days: planDef?.trial_days ?? 0,
       },
       billing_address_collection: "auto",
-      success_url: `${baseUrl}/premium?success=1`,
+      success_url: `${baseUrl}/premium?success=1&plan=${data.plan}`,
       cancel_url: `${baseUrl}/premium?canceled=1`,
       metadata: { user_id: user.id, plan: data.plan },
     };

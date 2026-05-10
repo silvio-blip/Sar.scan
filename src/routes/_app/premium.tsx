@@ -124,14 +124,20 @@ function PremiumPage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [purchasedPlan, setPurchasedPlan] = useState<PlanDef | null>(null);
+  const [confirmingPlan, setConfirmingPlan] = useState<PlanDef | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     const search = new URLSearchParams(location.search);
-    if (search.get("success")) {
-      // Find what plan we likely just bought (or look at current subscription)
-      const likelyPlan = PLANS.find((p) => p.id === selected) || PLANS[1]; // fallback to monthly
+    const success = search.get("success");
+    const canceled = search.get("canceled");
+    const planFromUrl = search.get("plan") as PlanId | null;
+
+    if (success) {
+      // Find what plan we bought from URL first, then fallback to state
+      const likelyPlanId = planFromUrl || selected;
+      const likelyPlan = PLANS.find((p) => p.id === likelyPlanId) || PLANS[1];
       setPurchasedPlan(likelyPlan);
       setShowSuccessModal(true);
 
@@ -140,35 +146,32 @@ function PremiumPage() {
       navigate({ to: "/premium", search: {}, replace: true });
     }
 
-    if (search.get("canceled")) {
+    if (canceled) {
       setShowCancelModal(true);
       navigate({ to: "/premium", search: {}, replace: true });
     }
   }, [location.search, refresh, navigate, selected]);
 
   const current = PLANS.find((p) => p.id === selected)!;
-  const subscribePlan = async (planId: PlanId) => {
-    console.log("[PremiumPage] subscribePlan START for planId:", planId);
-    if (!user || !session?.access_token) {
-      console.warn("[PremiumPage] No user or session token found.");
-      return;
-    }
+
+  const startCheckout = async (planId: PlanId) => {
+    if (!user || !session?.access_token) return;
     setLoading(planId);
-    setSelected(planId);
     try {
-      console.log("[PremiumPage] Calling createStripeCheckout API for:", planId);
       const { url } = await createStripeCheckout({ token: session.access_token, plan: planId });
-      console.log("[PremiumPage] API Response URL for", planId, ":", url);
-      if (url) {
-        window.location.href = url;
-      } else {
-        throw new Error("URL de checkout não retornada pelo servidor");
-      }
-    } catch (e) {
-      console.error("[PremiumPage] Checkout error for", planId, ":", e);
-      const err = e as Error;
-      toast.error(err?.message ?? "Erro ao iniciar checkout");
+      if (url) window.location.href = url;
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao iniciar checkout");
       setLoading(null);
+    }
+  };
+
+  const subscribePlan = async (planId: PlanId) => {
+    const planDef = PLANS.find(p => p.id === planId);
+    if (planDef?.trialDays && !isPremium) {
+      setConfirmingPlan(planDef);
+    } else {
+      await startCheckout(planId);
     }
   };
 
@@ -287,10 +290,14 @@ function PremiumPage() {
 
                 <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
                   <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest">
-                    <span>{p.scans} scans inclusos</span>
+                    <span>{p.trialDays} dias grátis</span>
                   </div>
                   <Button
-                    className="h-10 px-6 rounded-full bg-white text-black hover:bg-zinc-200 font-bold text-xs shadow-lg transition-all"
+                    className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-xl ${
+                      active 
+                        ? "bg-white text-black hover:bg-zinc-200" 
+                        : "bg-white/10 text-white hover:bg-white/20"
+                    }`}
                     onClick={(e) => {
                       e.stopPropagation();
                       subscribePlan(p.id);
@@ -299,8 +306,10 @@ function PremiumPage() {
                   >
                     {loading === p.id ? (
                       <Loader2 className="size-4 animate-spin" />
+                    ) : isPremium && subscription?.plan === p.id ? (
+                      "Plano Atual"
                     ) : (
-                      "Assinar agora"
+                      `Assinar ${p.label}`
                     )}
                   </Button>
                 </div>
@@ -357,6 +366,63 @@ function PremiumPage() {
         </div>
       </div>
 
+      <Dialog open={!!confirmingPlan} onOpenChange={(open) => !open && setConfirmingPlan(null)}>
+        <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <div className="relative p-8 flex flex-col items-center text-center">
+            <div className="absolute inset-x-0 top-0 h-40 bg-zinc-900/50" />
+            
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center mb-6 shadow-2xl"
+            >
+              <Gift className="size-10" />
+            </motion.div>
+
+            <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
+              Comece 7 dias grátis
+            </h2>
+            <p className="text-white/60 text-sm font-medium mb-8">
+              Experimente o plano <strong>{confirmingPlan?.label}</strong> agora. 
+              Você não será cobrado hoje.
+            </p>
+
+            <div className="w-full space-y-3 mb-8">
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+                <div className="text-left">
+                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Total Hoje</p>
+                  <p className="text-lg font-display font-black text-white">€0,00</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Após 7 dias</p>
+                  <p className="text-lg font-display font-black text-white">{confirmingPlan?.price}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col w-full gap-3">
+              <Button
+                onClick={() => {
+                  if (confirmingPlan) startCheckout(confirmingPlan.id);
+                  setConfirmingPlan(null);
+                }}
+                disabled={!!loading}
+                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all"
+              >
+                {loading ? <Loader2 className="size-4 animate-spin" /> : "Ativar Teste Grátis"}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirmingPlan(null)}
+                className="w-full h-12 text-white/40 hover:text-white hover:bg-white/5 font-bold text-xs"
+              >
+                Talvez depois
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
           <div className="relative p-8 flex flex-col items-center text-center">
@@ -368,9 +434,9 @@ function PremiumPage() {
               initial={{ scale: 0, rotate: -20 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.1 }}
-              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center shadow-2xl mb-6"
+              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center shadow-2xl mb-6 font-display font-black text-2xl"
             >
-              <CircleCheckBig className="size-10" strokeWidth={2.5} />
+              {purchasedPlan?.trialDays ? "7" : <CircleCheckBig className="size-10" strokeWidth={2.5} />}
             </motion.div>
 
             <motion.div
@@ -379,22 +445,25 @@ function PremiumPage() {
               transition={{ delay: 0.3 }}
               className="relative z-10"
             >
-              <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2">
-                Plano {purchasedPlan?.label} Ativado!
+              <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
+                {purchasedPlan?.trialDays ? "Teste Grátis Ativado!" : `Plano ${purchasedPlan?.label} Ativado!`}
               </h2>
               <p className="text-white/60 text-sm font-medium mb-8">
-                Parabéns! Você acaba de desbloquear o potencial máximo do sar.scan.
+                {purchasedPlan?.trialDays 
+                  ? `Você tem 7 dias para explorar todas as ferramentas Premium sem custo.`
+                  : "Parabéns! Você acaba de desbloquear o acesso total ao sar.scan."}
               </p>
 
-              <div className="space-y-3 mb-8">
-                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 text-left mb-2">
-                  O que você desbloqueou:
+              <div className="space-y-3 mb-8 text-left">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-2 px-1">
+                  SEUS NOVOS PODERES:
                 </div>
                 {[
-                  { icon: Zap, text: `${purchasedPlan?.scans} créditos de scan instantâneos` },
-                  { icon: Bot, text: "Acesso total ao Agente IA Nutricional" },
-                  { icon: Sparkles, text: "Análises ultra detalhadas de alimentos" },
-                  { icon: Target, text: "Personalização avançada de metas" },
+                  { icon: Zap, text: `${purchasedPlan?.scans} créditos iniciais adicionados` },
+                  { icon: Bot, text: purchasedPlan?.aiAgent ? "Agente IA Nutricional Full" : "Nutricionista IA Básico" },
+                  { icon: Sparkles, text: "Identificação ultra detalhada" },
+                  { icon: Target, text: "Definição de metas avançadas" },
+                  { icon: Gift, text: "Acesso a bónus exclusivos" },
                 ].map((item, i) => (
                   <motion.div
                     key={item.text}
@@ -403,7 +472,7 @@ function PremiumPage() {
                     transition={{ delay: 0.5 + i * 0.1 }}
                     className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
                   >
-                    <div className="size-8 rounded-xl bg-white/5 flex items-center justify-center">
+                    <div className="size-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
                       <item.icon className="size-4 text-white" />
                     </div>
                     <span className="text-xs font-semibold text-white/80">{item.text}</span>
@@ -411,16 +480,24 @@ function PremiumPage() {
                 ))}
               </div>
 
-              <Button
-                onClick={() => {
-                  setShowSuccessModal(false);
-                  navigate({ to: "/" });
-                }}
-                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-[0_20px_40px_rgba(255,255,255,0.1)] transition-all group"
-              >
-                Começar a usar agora
-                <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
-              </Button>
+              <div className="flex flex-col gap-3">
+                <Button
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    navigate({ to: "/" });
+                  }}
+                  className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-[0_20px_40px_rgba(255,255,255,0.1)] transition-all group"
+                >
+                  Começar a usar agora
+                  <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
+                </Button>
+                
+                <p className="text-[10px] text-white/20 font-medium">
+                  {purchasedPlan?.trialDays 
+                    ? "Cancele a qualquer momento no seu perfil se mudar de ideia." 
+                    : "Suas vantagens já estão disponíveis em tempo real."}
+                </p>
+              </div>
             </motion.div>
           </div>
         </DialogContent>
