@@ -131,22 +131,38 @@ function ScannerPage() {
   }, [profile?.meta_prazo]);
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
-    (async () => {
+    let currentStream: MediaStream | null = null;
+    let active = true;
+
+    const initCamera = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
         });
+
+        if (!active) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        currentStream = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setStreamOn(true);
         }
-      } catch {
-        setStreamOn(false);
+      } catch (err) {
+        console.error("Camera access error:", err);
+        if (active) setStreamOn(false);
       }
-    })();
+    };
+
+    initCamera();
+
     return () => {
-      stream?.getTracks().forEach((t) => t.stop());
+      active = false;
+      if (currentStream) {
+        currentStream.getTracks().forEach((t) => t.stop());
+      }
     };
   }, []);
 
@@ -329,20 +345,24 @@ function ScannerPage() {
             exit={{ opacity: 0, scale: 0.95 }}
             className="relative w-full aspect-square rounded-[40px] bg-black/40 overflow-hidden border border-white/5 shadow-inner group"
           >
-            {scanning && scanPhoto ? (
+            {/* Camera View - Always mounted to prevent losing stream reference */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
+                (scanning && scanPhoto) || (detected && scanPhoto) ? "opacity-0 pointer-events-none" : "opacity-90"
+              }`}
+            />
+
+            {/* Static Result Image - Shown while analyzing or reviewing results */}
+            {(scanning || detected) && scanPhoto && (
               <motion.img
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 src={scanPhoto}
                 className="absolute inset-0 w-full h-full object-cover grayscale-[20%]"
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="absolute inset-0 w-full h-full object-cover opacity-90 transition-opacity duration-300"
               />
             )}
 

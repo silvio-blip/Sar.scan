@@ -20,8 +20,6 @@ import {
 } from "lucide-react";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 
-import { CreditDisplay } from "@/components/credit-display";
-
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
 function PerfilPage() {
@@ -57,27 +55,6 @@ function PerfilPage() {
   const novas = rewards?.filter((r) => !r.lida).length ?? 0;
   const initials = (profile?.nome ?? profile?.email ?? "U").slice(0, 2).toUpperCase();
 
-  const { subscription } = useAuth();
-  const { data: usage } = useQuery({
-    queryKey: ["scan_usage", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const today = new Date().toISOString().slice(0, 10);
-      const { data } = await supabase
-        .from("scan_usage")
-        .select("count, bonus")
-        .eq("user_id", user!.id)
-        .eq("data", today)
-        .maybeSingle();
-      return data ?? { count: 0, bonus: 0 };
-    },
-  });
-
-  const baseScans = isAdmin ? Infinity : isPremium ? (subscription?.scans_credits ?? 0) : 3;
-  const remaining = isAdmin
-    ? Infinity
-    : Math.max(0, baseScans + (usage?.bonus ?? 0) - (usage?.count ?? 0));
-
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <h1 className="text-3xl font-display font-black tracking-tight">Perfil</h1>
@@ -99,15 +76,6 @@ function PerfilPage() {
           <div className="font-black text-xl tracking-tight">{profile?.nome ?? "—"}</div>
           <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground opacity-60">
             {profile?.email}
-          </div>
-        </div>
-
-        <div className="bg-white/5 border border-white/10 rounded-3xl p-4 w-full max-w-[200px] mt-2 shadow-xl backdrop-blur-xl">
-          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-1">
-            Scans Disponíveis
-          </div>
-          <div className="text-3xl font-display font-black text-white">
-            <CreditDisplay value={remaining} />
           </div>
         </div>
 
