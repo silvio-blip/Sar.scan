@@ -15,7 +15,7 @@ export const syncStripePlans = async (data: { token: string }) => {
 };
 
 /** Cria a Checkout Session do Stripe pra um plano e devolve a URL. */
-export const createStripeCheckout = async (data: { token: string; plan: PlanId }) => {
+export const createStripeCheckout = async (data: { token: string; plan: PlanId; trial?: boolean }) => {
   const res = await fetch("/api/stripe/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

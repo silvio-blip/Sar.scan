@@ -23,7 +23,7 @@ export async function getStripe() {
 export const PLANS_DEF = [
   { id: "weekly", label: "sar.scan Semanal", amount: 499, interval: "week", scans: 30, trial_days: 7 },
   { id: "monthly", label: "sar.scan Mensal", amount: 1999, interval: "month", scans: 150, trial_days: 7 },
-  { id: "yearly", label: "sar.scan Anual", amount: 9900, interval: "year", scans: 1200, trial_days: 7 },
+  { id: "yearly", label: "sar.scan Anual", amount: 9999, interval: "year", scans: 1200, trial_days: 7 },
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];
 
@@ -86,6 +86,7 @@ export async function syncStripePlansInternal(data: { token: string }) {
 export async function createStripeCheckoutInternal(data: {
   token: string;
   plan: PlanId;
+  trial?: boolean;
   origin?: string;
 }) {
   const user = await authUser(data.token);
@@ -130,23 +131,27 @@ export async function createStripeCheckoutInternal(data: {
 
   const baseUrl = data.origin || "https://example.com";
 
-  console.log("[Stripe] Creating checkout session for user:", user.id, "plan:", data.plan, "customerId:", customerId);
+  console.log("[Stripe] Creating checkout session. User:", user.id, "Plan:", data.plan, "Trial:", data.trial);
   const planDef = PLANS_DEF.find((p) => p.id === data.plan);
   
   try {
-    // Configuração base da sessão
+    const subscriptionData: any = {
+      metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
+    };
+
+    if (data.trial && (planDef?.trial_days ?? 7) > 0) {
+      subscriptionData.trial_period_days = planDef?.trial_days ?? 7;
+    }
+
     const sessionOptions: any = {
       mode: "subscription",
       customer: customerId,
       line_items: [{ price: prodTyped.price_id, quantity: 1 }],
-      subscription_data: {
-        metadata: { user_id: user.id, plan: data.plan },
-        trial_period_days: planDef?.trial_days ?? 0,
-      },
+      subscription_data: subscriptionData,
       billing_address_collection: "auto",
-      success_url: `${baseUrl}/premium?success=1&plan=${data.plan}`,
+      success_url: `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`,
       cancel_url: `${baseUrl}/premium?canceled=1`,
-      metadata: { user_id: user.id, plan: data.plan },
+      metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
     };
 
     // Nota: Métodos como MB WAY, Multibanco, PIX e BLIK não suportam 'subscription' no Stripe Checkout.

@@ -68,11 +68,11 @@ const PLANS: PlanDef[] = [
     aiAgent: false,
     perks: [
       "30 scans / semana",
-      "Chat básico de nutrição",
       "Banco de dados completo",
       "Edição de metas",
+      "Suporte prioritário",
     ],
-    missing: ["Agente IA avançado"],
+    missing: ["Agente IA Nutricional", "Chat com Nutricionista IA"],
   },
   {
     id: "monthly",
@@ -87,8 +87,8 @@ const PLANS: PlanDef[] = [
     aiAgent: true,
     perks: [
       "150 scans / mês",
-      "Agente IA Nutricional completo",
-      "Chat ilimitado",
+      "Agente IA Nutricional",
+      "50 mensagens / dia",
       "Edição de metas",
       "Histórico estendido",
     ],
@@ -97,8 +97,8 @@ const PLANS: PlanDef[] = [
   {
     id: "yearly",
     label: "Anual",
-    price: "€99,00",
-    priceNum: 99.0,
+    price: "€99,99",
+    priceNum: 99.99,
     cycle: "/ano",
     scans: 1200,
     trialDays: 7,
@@ -107,10 +107,10 @@ const PLANS: PlanDef[] = [
     aiAgent: true,
     perks: [
       "1200 scans / ano",
-      "Agente IA Nutricional completo",
+      "Nutricionista IA Full",
       "Chat ilimitado",
-      "Suporte prioritário",
-      "Acesso antecipado a novidades",
+      "Suporte exclusivo",
+      "Acesso antecipado",
     ],
     missing: [],
   },
@@ -154,24 +154,19 @@ function PremiumPage() {
 
   const current = PLANS.find((p) => p.id === selected)!;
 
-  const startCheckout = async (planId: PlanId) => {
+  const startCheckout = async (planId: PlanId, trial = false) => {
     if (!user || !session?.access_token) return;
     setLoading(planId);
     try {
-      const { url } = await createStripeCheckout({ token: session.access_token, plan: planId });
+      const { url } = await createStripeCheckout({ 
+        token: session.access_token, 
+        plan: planId,
+        trial: trial
+      });
       if (url) window.location.href = url;
     } catch (e: any) {
       toast.error(e.message || "Erro ao iniciar checkout");
       setLoading(null);
-    }
-  };
-
-  const subscribePlan = async (planId: PlanId) => {
-    const planDef = PLANS.find(p => p.id === planId);
-    if (planDef?.trialDays && !isPremium) {
-      setConfirmingPlan(planDef);
-    } else {
-      await startCheckout(planId);
     }
   };
 
@@ -205,6 +200,27 @@ function PremiumPage() {
             Architecture of Nutri Intelligence
           </p>
         </div>
+
+        {!isPremium && (
+          <motion.div 
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="w-full max-w-sm"
+          >
+            <Button
+              onClick={() => setConfirmingPlan(PLANS[1])} // Default trial to Monthly 
+              className="w-full h-16 rounded-full bg-gradient-to-r from-zinc-100 to-white text-black hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-black flex flex-col items-center justify-center gap-0 shadow-[0_20px_50px_rgba(255,255,255,0.15)] ring-1 ring-white/50 group"
+            >
+              <div className="flex items-center gap-2 text-sm uppercase tracking-wider">
+                Ativar 7 Dias Grátis
+                <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+              <span className="text-[9px] font-bold text-black/50 uppercase tracking-[0.1em]">
+                Experimente o Premium por 1 semana
+              </span>
+            </Button>
+          </motion.div>
+        )}
       </div>
 
       {isPremium && (
@@ -288,10 +304,7 @@ function PremiumPage() {
                   ))}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
-                  <div className="text-[10px] font-bold text-white/50 uppercase tracking-widest">
-                    <span>{p.trialDays} dias grátis</span>
-                  </div>
+                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-end">
                   <Button
                     className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-xl ${
                       active 
@@ -300,7 +313,7 @@ function PremiumPage() {
                     }`}
                     onClick={(e) => {
                       e.stopPropagation();
-                      subscribePlan(p.id);
+                      startCheckout(p.id); // Direct purchase
                     }}
                     disabled={!!loading || (isPremium && subscription?.plan === p.id)}
                   >
@@ -309,7 +322,7 @@ function PremiumPage() {
                     ) : isPremium && subscription?.plan === p.id ? (
                       "Plano Atual"
                     ) : (
-                      `Assinar ${p.label}`
+                      `Ativar ${p.label}`
                     )}
                   </Button>
                 </div>
@@ -386,8 +399,7 @@ function PremiumPage() {
               Comece 7 dias grátis
             </h2>
             <p className="text-white/60 text-sm font-medium mb-8">
-              Experimente o plano <strong>{confirmingPlan?.label}</strong> agora. 
-              Você não será cobrado hoje.
+              Experimente todas as funções premium agora sem custos iniciais.
             </p>
 
             <div className="w-full space-y-3 mb-8">
@@ -406,7 +418,7 @@ function PremiumPage() {
             <div className="flex flex-col w-full gap-3">
               <Button
                 onClick={() => {
-                  if (confirmingPlan) startCheckout(confirmingPlan.id);
+                  if (confirmingPlan) startCheckout(confirmingPlan.id, true);
                   setConfirmingPlan(null);
                 }}
                 disabled={!!loading}
@@ -551,10 +563,15 @@ function PremiumPage() {
 
             <div className="flex flex-col w-full gap-3">
               <Button
-                onClick={() => setShowCancelModal(false)}
-                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all"
+                onClick={() => {
+                  setShowCancelModal(false);
+                  // Optional: highlight the selected plan or scrolls to it
+                  toast.info("Escolha um plano abaixo para completar sua assinatura");
+                }}
+                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all group"
               >
                 Tentar novamente
+                <ArrowRight className="ml-2 size-4 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button
                 variant="ghost"

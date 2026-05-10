@@ -445,6 +445,8 @@ function ChatPage() {
   const qc = useQueryClient();
 
   const [view, setView] = useState<ChatView>("list");
+  const [showLimitModal, setShowLimitModal] = useState(false);
+  const [usageLimit, setUsageLimit] = useState<{ count: number; limit: number } | null>(null);
   const [selectedUser, setSelectedUser] = useState<{
     id: string;
     nome: string | null;
@@ -775,6 +777,30 @@ function ChatPage() {
     },
   });
 
+  const { data: usageInfo, refetch: refetchUsage } = useQuery({
+    queryKey: ["chat_usage", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      const planKey = subscription?.plan || "free";
+      const [{ data: limitData }, { data: usageData }] = await Promise.all([
+        supabase.from("plan_limits").select("chat_limit").eq("plan", planKey).single(),
+        supabase.from("chat_usage").select("usage_count, last_message_at").eq("user_id", user!.id).maybeSingle()
+      ]);
+
+      const limit = limitData?.chat_limit ?? 0;
+      let currentUsage = usageData?.usage_count ?? 0;
+
+      if (usageData?.last_message_at) {
+        const lastDate = new Date(usageData.last_message_at).toDateString();
+        if (lastDate !== new Date().toDateString()) {
+          currentUsage = 0;
+        }
+      }
+
+      return { count: currentUsage, limit, plan: planKey };
+    }
+  });
+
   // Realtime subscription for DM and Friends
   useEffect(() => {
     if (!user) return;
@@ -987,14 +1013,75 @@ function ChatPage() {
     try {
       if (view === "ai") {
         if (!canAccessAI) return;
+
+        // Check limits for non-admins
+        if (!isAdmin) {
+          const planKey = subscription?.plan || "free";
+          
+          const [{ data: limitData }, { data: usageData }] = await Promise.all([
+            supabase.from("plan_limits").select("chat_limit").eq("plan", planKey).single(),
+            supabase.from("chat_usage").select("usage_count, last_message_at").eq("user_id", user.id).maybeSingle()
+          ]);
+
+          const limit = limitData?.chat_limit ?? 0;
+          let currentUsage = usageData?.usage_count ?? 0;
+
+          // Daily reset logic for monthly plan (or anyone with a limit)
+          if (usageData?.last_message_at) {
+            const lastDate = new Date(usageData.last_message_at).toDateString();
+            const today = new Date().toDateString();
+            if (lastDate !== today) {
+              currentUsage = 0;
+            }
+          }
+
+          if (limit !== -1 && currentUsage >= limit) {
+            setUsageLimit({ count: currentUsage, limit });
+            setShowLimitModal(true);
+            setSending(false);
+            setOptimisticMessages((prev) => prev.filter((m) => m.id !== tempId));
+            return;
+          }
+        }
+
         await supabase
           .from("chat_messages")
           .insert({ user_id: user.id, role: "user", content: text });
+        
         const { data, error } = await supabase.functions.invoke("nutrition-chat", {
           body: { message: text, user_id: user.id },
         });
+
         if (error || (data as { error?: string })?.error)
           throw new Error((data as { error?: string })?.error ?? "Erro");
+
+        // Increment usage
+        if (!isAdmin) {
+          const { data: usageData } = await supabase
+            .from("chat_usage")
+            .select("usage_count, last_message_at")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          let currentCount = usageData?.usage_count ?? 0;
+
+          // Check for daily reset
+          if (usageData?.last_message_at) {
+            const lastDate = new Date(usageData.last_message_at).toDateString();
+            const today = new Date().toDateString();
+            if (lastDate !== today) {
+              currentCount = 0;
+            }
+          }
+
+          await supabase.from("chat_usage").upsert({ 
+            user_id: user.id, 
+            usage_count: currentCount + 1,
+            last_message_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+          refetchUsage();
+        }
+
         qc.invalidateQueries({ queryKey: ["ai_chat"] });
       } else if (view === "dm" && selectedUser) {
         const payload: any = {
@@ -1144,7 +1231,8 @@ function ChatPage() {
   );
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <>
+      <div className="flex flex-col h-full gap-4">
       {view === "list" && (
         <>
           <div className="flex items-center justify-between px-1">
@@ -1720,6 +1808,16 @@ function ChatPage() {
                       Ativa Agora
                     </p>
                   </div>
+                  {usageInfo && usageInfo.limit !== -1 && (
+                    <div className="ml-auto flex flex-col items-end">
+                      <div className="px-2 py-1 rounded-md bg-white/5 border border-white/10 flex flex-col items-center">
+                        <span className="text-[8px] font-black tracking-widest text-white/30 uppercase leading-none mb-0.5">Uso Diário</span>
+                        <span className="text-[10px] font-bold text-white leading-none">
+                          {usageInfo.count} / {usageInfo.limit}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -2028,5 +2126,71 @@ function ChatPage() {
         </div>
       )}
     </div>
+
+      <Dialog open={showLimitModal} onOpenChange={setShowLimitModal}>
+        <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Limite de Chat Atingido</DialogTitle>
+          </DialogHeader>
+          <div className="relative p-8 flex flex-col items-center text-center">
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/5 to-transparent" />
+            
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center mb-6 shadow-2xl"
+            >
+              <Lock className="size-10" />
+            </motion.div>
+
+            <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
+              Limite Atingido
+            </h2>
+            <p className="text-white/60 text-sm font-medium mb-8">
+              Você atingiu o limite de {usageLimit?.limit} interações mensais do seu plano. 
+              {subscription?.plan === "monthly" ? " Faça o upgrade para o plano Anual e tenha acesso ilimitado!" : " Assine o Premium para continuar conversando."}
+            </p>
+
+            <div className="w-full space-y-3 mb-8">
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-left">
+                <div className="flex items-center gap-3">
+                  <div className="size-8 rounded-xl bg-white/5 flex items-center justify-center">
+                    <Sparkles className="size-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Seu Plano</p>
+                    <p className="text-sm font-bold text-white uppercase">{subscription?.plan || "Gratuito"}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Uso</p>
+                  <p className="text-sm font-bold text-white">{usageLimit?.count} / {usageLimit?.limit}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col w-full gap-3">
+              <Button
+                onClick={() => {
+                  setShowLimitModal(false);
+                  navigate({ to: "/premium" });
+                }}
+                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all group"
+              >
+                Ver Planos Ilimitados
+                <Crown className="ml-2 size-4 text-black group-hover:scale-110 transition-transform" />
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowLimitModal(false)}
+                className="w-full h-12 text-white/40 hover:text-white hover:bg-white/5 font-bold text-xs"
+              >
+                Entendi
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
