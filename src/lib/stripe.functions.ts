@@ -1,8 +1,9 @@
 import { type PlanId } from "./stripe.server";
+import { getApiUrl } from "./utils";
 
 /** Sincroniza planos com Stripe. Apenas admin. */
 export const syncStripePlans = async (data: { token: string }) => {
-  const res = await fetch("/api/stripe/sync", {
+  const res = await fetch(getApiUrl("/api/stripe/sync"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -16,7 +17,7 @@ export const syncStripePlans = async (data: { token: string }) => {
 
 /** Cria a Checkout Session do Stripe pra um plano e devolve a URL. */
 export const createStripeCheckout = async (data: { token: string; plan: PlanId; trial?: boolean }) => {
-  const res = await fetch("/api/stripe/checkout", {
+  const res = await fetch(getApiUrl("/api/stripe/checkout"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...data, origin: window.location.origin }),

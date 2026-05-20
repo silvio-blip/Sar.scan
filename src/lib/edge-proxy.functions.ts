@@ -1,7 +1,9 @@
+import { getApiUrl } from "./utils";
+
 type Body = Record<string, unknown> | undefined;
 
 export const invokeEdge = async (data: { name: string; body?: Body }) => {
-  const res = await fetch("/api/edge", {
+  const res = await fetch(getApiUrl("/api/edge"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
