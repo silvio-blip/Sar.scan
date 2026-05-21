@@ -395,11 +395,18 @@ function ScannerPage() {
             )}
 
             {!streamOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-10">
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/30 text-center px-10 leading-loose">
-                  Ative a câmera nas
+              <div 
+                onClick={() => fileRef.current?.click()}
+                className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 cursor-pointer active:bg-black/80 transition-all duration-300"
+                title="Clique para tirar foto ou selecionar da galeria"
+              >
+                <Upload className="size-8 text-white/20 mb-3 animate-pulse" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/40 text-center px-10 leading-loose">
+                  Câmera Indisponível/Desativada
                   <br />
-                  configurações do navegador
+                  <span className="text-[#FF8D21] font-bold">Clique aqui</span> para tirar foto
+                  <br />
+                  ou selecionar da galeria
                 </span>
               </div>
             )}
