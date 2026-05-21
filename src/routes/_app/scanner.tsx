@@ -42,6 +42,7 @@ function ScannerPage() {
   useRewardsRealtime(user?.id);
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [streamOn, setStreamOn] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [detected, setDetected] = useState<ScannedFood[] | null>(null);
@@ -394,19 +395,19 @@ function ScannerPage() {
               </div>
             )}
 
-            {!streamOn && (
+             {!streamOn && (
               <div 
-                onClick={() => fileRef.current?.click()}
-                className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-10 cursor-pointer active:bg-black/80 transition-all duration-300"
-                title="Clique para tirar foto ou selecionar da galeria"
+                onClick={() => cameraRef.current?.click()}
+                className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm z-10 cursor-pointer active:bg-black/90 transition-all duration-300 group"
+                title="Clique para tirar foto com a sua câmera"
               >
-                <Upload className="size-8 text-white/20 mb-3 animate-pulse" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/40 text-center px-10 leading-loose">
-                  Câmera Indisponível/Desativada
+                <Camera className="size-10 text-[#FF8D21] mb-3 animate-pulse group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/50 text-center px-8 leading-loose">
+                  Câmera do Navegador Desativada
                   <br />
-                  <span className="text-[#FF8D21] font-bold">Clique aqui</span> para tirar foto
+                  <span className="text-[#FF8D21] font-black text-xs">Clique aqui</span> para abrir de forma nativa
                   <br />
-                  ou selecionar da galeria
+                  e tirar foto do seu prato
                 </span>
               </div>
             )}
@@ -462,6 +463,15 @@ function ScannerPage() {
         ref={fileRef}
         type="file"
         accept="image/*"
+        className="hidden"
+        onChange={onPickGallery}
+      />
+
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         className="hidden"
         onChange={onPickGallery}
       />
