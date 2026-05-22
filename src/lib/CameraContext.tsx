@@ -16,27 +16,24 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [streamOn, setStreamOn] = useState(false);
 
   const startCamera = async () => {
-    if (stream) return;
+    // Se já temos stream e está ativa, não fazemos nada
+    if (stream && stream.active) return;
+    
     try {
-      let mediaStream;
-      try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-        });
-      } catch (e) {
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
-      }
+      // Tentativa direta de acesso às media devices
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+      });
+      
       setStream(mediaStream);
       setStreamOn(true);
     } catch (err) {
       console.error("Camera access error:", err);
-      if (isInstalledApp()) {
-        toast.error("Erro ao acessar câmara. Ative a permissão de Câmara nas Definições do seu telemóvel (Definições > Aplicações > sar.scan > Permissões).");
-      } else {
-        toast.error("Erro ao acessar a câmara. Verifique se o seu navegador não bloqueou o acesso.");
-      }
+      // Em apps nativas, se isto falhar é quase sempre configuração do WebChromeClient
       setStreamOn(false);
     }
   };
