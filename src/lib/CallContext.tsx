@@ -310,13 +310,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       try {
-        // Tentar obter acesso ao microfone - em apps nativas, isto aciona o pedido de permissão nativo
+      // Tentar obter acesso ao microfone - em apps nativas, isto aciona o pedido de permissão nativo
         // se a WebView estiver bem configurada.
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true
-            } 
+            audio: true
         });
         
         setLocalStream(stream);
@@ -365,10 +362,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Tentar obter acesso ao microfone no atendimento
       const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: {
-              echoCancellation: true,
-              noiseSuppression: true
-          } 
+          audio: true 
       });
       setLocalStream(stream);
       setStatus({ type: "connected" });

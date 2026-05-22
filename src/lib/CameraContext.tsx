@@ -20,13 +20,9 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (stream && stream.active) return;
     
     try {
-      // Tentativa direta de acesso às media devices
+      // Tentativa direta de acesso às media devices - simplificando restrições
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
+        video: { facingMode: "environment" }
       });
       
       setStream(mediaStream);
