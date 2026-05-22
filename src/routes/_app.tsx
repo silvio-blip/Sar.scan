@@ -54,6 +54,41 @@ function AppLayout() {
   const { user, profile, loading } = useAuth();
   const loc = useLocation();
   const [showIntro, setShowIntro] = useState(true);
+  const [layoutMode, setLayoutMode] = useState<"buttons" | "infinite">("infinite");
+
+  useEffect(() => {
+    const testDiv = document.createElement("div");
+    testDiv.style.position = "fixed";
+    testDiv.style.bottom = "env(safe-area-inset-bottom, 0px)";
+    document.body.appendChild(testDiv);
+    const bottomVal = window.getComputedStyle(testDiv).bottom;
+    document.body.removeChild(testDiv);
+    
+    const parsed = parseFloat(bottomVal) || 0;
+    
+    const aspectRatio = window.screen.height / window.screen.width;
+    const isTall = aspectRatio >= 2.05;
+    
+    let mode: "buttons" | "infinite" = "infinite";
+    if (parsed > 0) {
+      mode = "infinite";
+    } else if (/Android/i.test(navigator.userAgent)) {
+      mode = isTall ? "infinite" : "buttons";
+    }
+    
+    setLayoutMode(mode);
+    
+    const root = document.documentElement;
+    if (mode === "buttons") {
+      root.style.setProperty("--android-bottom-offset", "16px");
+      root.style.setProperty("--android-nav-bottom", "16px");
+      root.style.setProperty("--main-padding-bottom", "120px");
+    } else {
+      root.style.setProperty("--android-bottom-offset", "32px");
+      root.style.setProperty("--android-nav-bottom", "32px");
+      root.style.setProperty("--main-padding-bottom", "160px");
+    }
+  }, []);
 
   const handleIntroDone = () => {
     setShowIntro(false);
@@ -71,10 +106,10 @@ function AppLayout() {
   if (profile && !profile.onboarding_done) return <Navigate to="/onboarding" />;
 
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center">
+    <div className="min-h-screen bg-black flex flex-col items-center font-sans tracking-tight antialiased">
       {showIntro && <IntroAnimation onDone={handleIntroDone} />}
 
-      <main className="flex-1 w-full max-w-[480px] bg-black/40 px-6 pt-12 pb-40 overflow-hidden relative shadow-2xl border-x border-white/5">
+      <main className="flex-1 w-full max-w-[480px] bg-black/40 px-6 pt-12 overflow-hidden relative shadow-2xl border-x border-white/5 pb-[var(--main-padding-bottom,160px)]">
         {/* Subtle monochrome glow at the top */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 bg-white/5 blur-[100px] pointer-events-none" />
 
@@ -83,7 +118,10 @@ function AppLayout() {
         </div>
       </main>
 
-      <nav className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-[min(92vw,420px)] px-4">
+      <nav 
+        style={{ bottom: "var(--android-nav-bottom, 32px)" }}
+        className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(92vw,420px)] px-4 transition-all duration-300"
+      >
         <div className="glass-strong rounded-[40px] px-3 py-3 flex items-center justify-around shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10">
           {tabs.map(({ to, Icon, label }) => {
             const active = loc.pathname.startsWith(to);

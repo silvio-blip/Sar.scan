@@ -1918,7 +1918,7 @@ function ChatPage() {
             )}
           </div>
 
-          <div className="p-4 bg-zinc-900/50 backdrop-blur-2xl border-t border-white/5 mb-safe pb-4 relative">
+          <div className="p-2.5 sm:p-3 bg-zinc-950/80 backdrop-blur-3xl pb-[var(--android-bottom-offset,32px)] relative">
             {isSelectionMode ? (
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
@@ -2032,7 +2032,7 @@ function ChatPage() {
             )}
             <div className="flex gap-2 max-w-4xl mx-auto items-center">
               {isRecording ? (
-                <div className="flex-1 flex items-center justify-between bg-zinc-900 rounded-2xl h-14 px-4 border border-primary/20">
+                <div className="flex-1 flex items-center justify-between bg-zinc-900 rounded-xl h-12 px-4 border border-primary/20">
                   <div className="flex items-center gap-3">
                     <div className="size-2 bg-red-500 rounded-full animate-pulse" />
                     <span className="text-xs font-black mono tabular-nums opacity-60">
@@ -2059,7 +2059,7 @@ function ChatPage() {
                   </div>
                 </div>
               ) : audioBlob ? (
-                <div className="flex-1 flex items-center justify-between bg-zinc-900 rounded-2xl h-14 px-4 border border-emerald-500/20">
+                <div className="flex-1 flex items-center justify-between bg-zinc-900 rounded-xl h-12 px-4 border border-emerald-500/20">
                   <div className="flex items-center gap-2">
                     <Button
                       size="icon"
@@ -2112,23 +2112,23 @@ function ChatPage() {
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Escreva algo..."
                     onKeyDown={(e) => e.key === "Enter" && send()}
-                    className="bg-white/5 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-sm h-14 rounded-2xl flex-1 px-6 shadow-inner"
+                    className="bg-white/5 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-xs sm:text-sm h-12 rounded-xl flex-1 px-4 shadow-inner"
                   />
                   {input.trim() || (view === "ai" && !input.trim()) ? (
                     <Button
                       onClick={send}
                       disabled={sending || !input.trim() || (view === "ai" && !canAccessAI)}
-                      className="size-14 rounded-2xl bg-white text-black hover:bg-zinc-200 shadow-xl transition-all active:scale-95 disabled:opacity-20"
+                      className="size-12 rounded-xl bg-white text-black hover:bg-zinc-200 shadow-xl transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center shrink-0"
                     >
-                      <SendIcon className="size-6" />
+                      <SendIcon className="size-5" />
                     </Button>
                   ) : (
                     <Button
                       onClick={startRecording}
                       disabled={sending}
-                      className="size-14 rounded-2xl bg-white/5 text-white hover:bg-white/10 border border-white/10 shadow-xl transition-all active:scale-95"
+                      className="size-12 rounded-xl bg-white/5 text-white hover:bg-white/10 border border-white/10 shadow-xl transition-all active:scale-95 flex items-center justify-center shrink-0"
                     >
-                      <Mic className="size-6" />
+                      <Mic className="size-5" />
                     </Button>
                   )}
                 </>

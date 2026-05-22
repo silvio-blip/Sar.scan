@@ -66,6 +66,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const peerRef = useRef<Peer | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const otherUserRef = useRef<UserProfile | null>(null);
+  const [showVoicePermissionDialog, setShowVoicePermissionDialog] = useState(false);
+  const activeNotificationRef = useRef<Notification | null>(null);
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   useEffect(() => {
     statusRef.current = status;
@@ -131,6 +139,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ringingAudioRef.current?.pause();
     dialingAudioRef.current?.pause();
     stopVibration();
+
+    if (activeNotificationRef.current) {
+      activeNotificationRef.current.close();
+      activeNotificationRef.current = null;
+    }
 
     // Remove from active_calls table if any
     if (user?.id) {
@@ -322,7 +335,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // ... (this part will be handled in the signal listener)
       } catch (err) {
         console.error("Error starting call:", err);
-        toast.error("Erro ao acessar microfone");
+        toast.error("Erro ao acessar microfone. Verifique as suas permissões.");
+        setShowVoicePermissionDialog(true);
         resetCall();
       }
     },
@@ -371,7 +385,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     } catch (err) {
       console.error("Error in answerCall:", err);
-      toast.error("Erro ao atender chamada");
+      toast.error("Erro ao atender chamada. Verifique o microfone.");
+      setShowVoicePermissionDialog(true);
       resetCall();
     }
   }, [user?.id, otherUser, stopVibration, resetCall, handleCallEnd, sendCallSignal, status.type]);
@@ -391,17 +406,47 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     handleCallEnd(otherUser?.id || "");
   }, [handleCallEnd, otherUser?.id]);
 
+  const showNotification = useCallback(async (callerId: string) => {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("nome, avatar_url")
+        .eq("id", callerId)
+        .maybeSingle();
+      const name = profile?.nome || "Utilizador";
+      const icon = profile?.avatar_url || "https://sar-scan.vercel.app/apple-touch-icon.png";
+      const n = new Notification(`Chamada de ${name}`, {
+        body: "Está a receber uma chamada de voz! Toque para atender.",
+        icon,
+        requireInteraction: true,
+        tag: "incoming-voice-call",
+        vibrate: [200, 100, 200, 100, 200]
+      });
+      n.onclick = () => {
+        window.focus();
+        answerCall();
+        n.close();
+      };
+      activeNotificationRef.current = n;
+    } catch (e) {
+      console.error("[Notification] Error creating notification:", e);
+    }
+  }, [answerCall]);
+
   const fetchOtherUserProfileRef = useRef(fetchOtherUserProfile);
   const startVibrationRef = useRef(startVibration);
   const handleCallEndRef = useRef(handleCallEnd);
   const startCallRef = useRef(startCall);
+  const showNotificationRef = useRef(showNotification);
 
   useEffect(() => {
     fetchOtherUserProfileRef.current = fetchOtherUserProfile;
     startVibrationRef.current = startVibration;
     handleCallEndRef.current = handleCallEnd;
     startCallRef.current = startCall;
-  }, [fetchOtherUserProfile, startVibration, handleCallEnd, startCall]);
+    showNotificationRef.current = showNotification;
+  }, [fetchOtherUserProfile, startVibration, handleCallEnd, startCall, showNotification]);
 
   // Restore active calls on mount or when user changes
   useEffect(() => {
@@ -556,6 +601,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // to have already fetched the profile. Or we can try to parse the peer ID if it follows our pattern.
         const otherSupabaseId = incoming.peer.includes("_") ? incoming.peer.split("_")[0] : incoming.peer;
         fetchOtherUserProfileRef.current(otherSupabaseId);
+        showNotificationRef.current(otherSupabaseId);
 
         incoming.on("stream", (remote) => {
           // This is useful if the caller already established the stream
@@ -676,6 +722,42 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <CallContext.Provider value={value}>
       {children}
       <audio ref={remoteAudioRef} autoPlay />
+
+      {/* Microphone Permission Help Dialog */}
+      <Dialog open={showVoicePermissionDialog} onOpenChange={setShowVoicePermissionDialog}>
+        <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-[340px] rounded-[32px] p-6 flex flex-col items-center gap-4">
+          <DialogHeader>
+            <DialogTitle className="text-center font-black uppercase tracking-widest text-[10px] text-zinc-400">
+              Permissão do Microfone
+            </DialogTitle>
+          </DialogHeader>
+          <div className="text-center space-y-4">
+            <div className="mx-auto size-12 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 text-red-400 font-bold text-lg">
+              🎙️
+            </div>
+            <h3 className="text-base font-black">Acesso Bloqueado</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              O seu navegador bloqueou o microfone.
+              Para fazer ou receber chamadas, siga estes passos no Android/iOS:
+            </p>
+            <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
+              <p>🟢 <b>1.</b> No topo esquerdo (junto ao link do site), clique no símbolo de <b>Definições de Site / Cadeado / Info</b>.</p>
+              <p>🟢 <b>2.</b> Localize a opção <b>Microfone</b>.</p>
+              <p>🟢 <b>3.</b> Altere a definição para <b>Permitir</b>.</p>
+              <p>🟢 <b>4.</b> Se estiver na app, autorize o microfone quando solicitado pelo telemóvel.</p>
+            </div>
+          </div>
+          <Button 
+            onClick={() => {
+              setShowVoicePermissionDialog(false);
+              navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
+            }} 
+            className="w-full h-11 rounded-2xl bg-white text-black font-black hover:bg-zinc-200"
+          >
+            Entendido
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {/* Incoming Call Dialog */}
       <Dialog open={status.type === "ringing"} onOpenChange={(open) => !open && rejectCall()}>

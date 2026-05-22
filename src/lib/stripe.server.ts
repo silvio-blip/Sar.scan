@@ -129,7 +129,10 @@ export async function createStripeCheckoutInternal(data: {
     );
   }
 
-  const baseUrl = data.origin || "https://example.com";
+  let baseUrl = data.origin || "https://sar-scan.vercel.app";
+  if (baseUrl.startsWith("capacitor://") || baseUrl.includes("localhost") || baseUrl.startsWith("file://")) {
+    baseUrl = "https://sar-scan.vercel.app";
+  }
 
   console.log("[Stripe] Creating checkout session. User:", user.id, "Plan:", data.plan, "Trial:", data.trial);
   const planDef = PLANS_DEF.find((p) => p.id === data.plan);

@@ -30,7 +30,7 @@ export function getApiUrl(path: string): string {
   );
 
   if (isCapacitor || configuredBaseUrl) {
-    const baseUrl = configuredBaseUrl || "https://sar-scan.vercel.app";
+    const baseUrl = configuredBaseUrl || "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
     return `${baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl}${cleanPath}`;
   }
 
