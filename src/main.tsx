@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { getRouter } from "./router";
 import "./styles.css";
+import { CameraProvider } from "./lib/CameraContext";
 
 const router = getRouter();
 
@@ -11,7 +12,9 @@ if (!rootElement.innerHTML) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <React.StrictMode>
-      <RouterProvider router={router} />
+      <CameraProvider>
+        <RouterProvider router={router} />
+      </CameraProvider>
     </React.StrictMode>,
   );
 }

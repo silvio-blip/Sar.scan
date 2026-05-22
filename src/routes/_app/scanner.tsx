@@ -5,6 +5,7 @@ import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { isInstalledApp } from "@/lib/utils";
+import { useCamera } from "@/lib/CameraContext";
 import { Button } from "@/components/ui/button";
 import {
   Camera,
@@ -39,16 +40,22 @@ const today = () => new Date().toISOString().slice(0, 10);
 function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
   const qc = useQueryClient();
+  const { stream, streamOn, startCamera } = useCamera();
   useSubscriptionRealtime(user?.id);
   useRewardsRealtime(user?.id);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
-  const [streamOn, setStreamOn] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [detected, setDetected] = useState<ScannedFood[] | null>(null);
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
   const [picked, setPicked] = useState<NutritionFood | null>(null);
+
+  useEffect(() => {
+    if (videoElement && stream) {
+      videoElement.srcObject = stream;
+    }
+  }, [videoElement, stream]);
 
   const { data: usage } = useQuery({
     queryKey: ["scan_usage", user?.id],
@@ -132,48 +139,6 @@ function ScannerPage() {
     }
   }, [profile?.meta_prazo]);
 
-  useEffect(() => {
-    let currentStream: MediaStream | null = null;
-    let active = true;
-
-    const initCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-
-        if (!active) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-
-        currentStream = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          setStreamOn(true);
-        }
-      } catch (err) {
-        console.error("Camera access error:", err);
-        if (active) {
-          setStreamOn(false);
-          if (isInstalledApp()) {
-            toast.error("Erro ao acessar câmara. Ative a permissão de Câmara nas Definições do seu telemóvel (Definições > Aplicações > sar.scan > Permissões).");
-          } else {
-            toast.error("Erro ao acessar a câmara. Verifique se o seu navegador não bloqueou o acesso.");
-          }
-        }
-      }
-    };
-
-    initCamera();
-
-    return () => {
-      active = false;
-      if (currentStream) {
-        currentStream.getTracks().forEach((t) => t.stop());
-      }
-    };
-  }, []);
 
   const addWater = async (ml: number) => {
     if (!user) return;
@@ -236,11 +201,11 @@ function ScannerPage() {
   };
 
   const captureAndScan = async () => {
-    if (!videoRef.current || !streamOn) {
+    if (!videoElement || !streamOn) {
       toast.error("Câmera indisponível — use Galeria");
       return;
     }
-    const v = videoRef.current;
+    const v = videoElement;
     const canvas = document.createElement("canvas");
     canvas.width = v.videoWidth;
     canvas.height = v.videoHeight;
@@ -355,7 +320,7 @@ function ScannerPage() {
           >
             {/* Camera View */}
             <video
-              ref={videoRef}
+              ref={setVideoElement}
               autoPlay
               playsInline
               muted
@@ -404,15 +369,15 @@ function ScannerPage() {
 
              {!streamOn && (
               <div 
-                onClick={() => cameraRef.current?.click()}
+                onClick={startCamera}
                 className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/85 backdrop-blur-sm z-10 cursor-pointer active:bg-zinc-950 transition-all duration-300 group"
-                title="Clique para tirar foto com a sua câmera"
+                title="Clique para tentar ativar a câmera"
               >
                 <Camera className="size-10 text-accent mb-3 animate-pulse group-hover:scale-110 transition-transform" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#FAF7F2]/60 text-center px-8 leading-loose">
                   {isInstalledApp() ? "Câmera indisponível. Verifique as permissões de câmara nas Definições do telemóvel." : "Câmera Desabilitada"}
                   <br />
-                  <span className="text-accent font-black text-xs">{isInstalledApp() ? "Toque aqui" : "Clique aqui"}</span> para abrir {isInstalledApp() ? "a câmara do aparelho" : "nativamente"}
+                  <span className="text-accent font-black text-xs">{isInstalledApp() ? "Toque aqui" : "Clique aqui"}</span> para {isInstalledApp() ? "tentar reativar" : "tentar reativar o acesso"}
                 </span>
               </div>
             )}

@@ -310,7 +310,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Tentar obter acesso ao microfone - em apps nativas, isto aciona o pedido de permissão nativo
+        // se a WebView estiver bem configurada.
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true
+            } 
+        });
+        
         setLocalStream(stream);
         setStatus({ type: "calling" });
         fetchOtherUserProfile(targetId);
@@ -324,19 +332,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
 
-        // Wakeup signal - include our peerId if we want them to call us back (not used here yet but good practice)
+        // Wakeup signal
         sendCallSignal(targetId, "CALL_REQUEST", { peerId: peerIdRef.current });
-
-        // Note: Actual peer.call will happen when we receive CALL_RESPONSE from the target
-        // But for backward compatibility or if they use the direct user.id peerId, we can try to call directly after a small delay
-        // However, with the new handshake, we should wait for CALL_RESPONSE.
-        
-        // For now, let's also try calling the direct user.id as a fallback
-        // const call = currentPeer.call(targetId, stream);
-        // ... (this part will be handled in the signal listener)
       } catch (err) {
         console.error("Error starting call:", err);
-        toast.error("Erro ao acessar microfone. Verifique as suas permissões.");
+        // Se falhar, mostramos o diálogo explicativo que criámos anteriormente
         setShowVoicePermissionDialog(true);
         resetCall();
       }
@@ -346,8 +346,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const answerCall = useCallback(async () => {
     if (!incomingCallRef.current) {
-      // If we recovered from refresh, we don't have incomingCallRef yet.
-      // We signal the caller we are back so they might retry
       if (status.type === "ringing" && otherUser) {
         sendCallSignal(otherUser.id, "CALL_REQUEST");
       }
@@ -365,7 +363,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           .match({ caller_id: otherUser.id, receiver_id: user.id });
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Tentar obter acesso ao microfone no atendimento
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+              echoCancellation: true,
+              noiseSuppression: true
+          } 
+      });
       setLocalStream(stream);
       setStatus({ type: "connected" });
 
