@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useAuth } from "./auth-context";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { isInstalledApp } from "@/lib/utils";
 import Peer, { MediaConnection } from "peerjs";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -425,20 +426,23 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       n.onclick = () => {
         window.focus();
-        answerCall();
+        if (answerCallRef.current) {
+          answerCallRef.current();
+        }
         n.close();
       };
       activeNotificationRef.current = n;
     } catch (e) {
       console.error("[Notification] Error creating notification:", e);
     }
-  }, [answerCall]);
+  }, []);
 
   const fetchOtherUserProfileRef = useRef(fetchOtherUserProfile);
   const startVibrationRef = useRef(startVibration);
   const handleCallEndRef = useRef(handleCallEnd);
   const startCallRef = useRef(startCall);
   const showNotificationRef = useRef(showNotification);
+  const answerCallRef = useRef(answerCall);
 
   useEffect(() => {
     fetchOtherUserProfileRef.current = fetchOtherUserProfile;
@@ -446,7 +450,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     handleCallEndRef.current = handleCallEnd;
     startCallRef.current = startCall;
     showNotificationRef.current = showNotification;
-  }, [fetchOtherUserProfile, startVibration, handleCallEnd, startCall, showNotification]);
+    answerCallRef.current = answerCall;
+  }, [fetchOtherUserProfile, startVibration, handleCallEnd, startCall, showNotification, answerCall]);
 
   // Restore active calls on mount or when user changes
   useEffect(() => {
@@ -482,6 +487,61 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     restoreCall();
+  }, [user?.id]);
+
+  // Listen for active_calls database changes to synchronize call statuses in real-time across devices
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const activeCallsChannel = supabase.channel(`active_calls_sync_${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "active_calls",
+        },
+        async (payload) => {
+          const currentStatus = statusRef.current;
+          
+          if (payload.eventType === "INSERT") {
+            const newRow = payload.new;
+            if (newRow.receiver_id === user.id && currentStatus.type === "idle") {
+              fetchOtherUserProfileRef.current(newRow.caller_id);
+              setStatus({ type: "ringing" });
+              ringingAudioRef.current?.play().catch(console.error);
+              startVibrationRef.current();
+              showNotificationRef.current(newRow.caller_id);
+            }
+          } else if (payload.eventType === "UPDATE") {
+            const nextRow = payload.new;
+            if (nextRow.receiver_id === user.id && nextRow.status === "connected" && currentStatus.type === "ringing") {
+              ringingAudioRef.current?.pause();
+              stopVibration();
+              if (activeNotificationRef.current) {
+                activeNotificationRef.current.close();
+                activeNotificationRef.current = null;
+              }
+              setStatus({ type: "idle" });
+              setIncomingCall(null);
+            }
+          } else if (payload.eventType === "DELETE") {
+            const oldRow = payload.old;
+            const targetId = otherUserRef.current?.id;
+            if (targetId && (
+              (oldRow.caller_id === user.id && oldRow.receiver_id === targetId) ||
+              (oldRow.caller_id === targetId && oldRow.receiver_id === user.id)
+            )) {
+              handleCallEndRef.current(targetId, true);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(activeCallsChannel);
+    };
   }, [user?.id]);
 
   // Listen for Supabase Signals
@@ -723,6 +783,65 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
       <audio ref={remoteAudioRef} autoPlay />
 
+      {/* WhatsApp-style floating heads-up call banner at the top of the screen */}
+      {status.type === "ringing" && (
+        <motion.div
+          initial={{ y: -100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -100, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="fixed top-4 left-1/2 -translate-x-1/2 w-[min(92vw,400px)] z-[99999] bg-zinc-950/98 border border-white/10 p-4 rounded-[24px] shadow-2xl backdrop-blur-3xl flex items-center justify-between gap-3 text-white ring-1 ring-white/5 transition-all"
+        >
+          <div className="flex items-center gap-3 min-w-0" onClick={() => answerCall()}>
+            <div className="relative shrink-0">
+              <Avatar className="size-11 border border-white/10">
+                <AvatarImage src={otherUser?.avatar_url} />
+                <AvatarFallback className="bg-zinc-800 text-sm font-black text-white">
+                  {otherUser?.nome?.[0] || "?"}
+                </AvatarFallback>
+              </Avatar>
+              <span className="absolute -bottom-1 -right-1 size-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-zinc-900">
+                <Phone className="size-2 text-black fill-current animate-bounce" />
+              </span>
+            </div>
+            <div className="min-w-0">
+              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full inline-block mb-1">
+                Chamada de Voz
+              </span>
+              <p className="text-sm font-black text-white truncate leading-none mb-0.5">
+                {otherUser?.nome || "Utilizador"}
+              </p>
+              <p className="text-[10px] text-zinc-400 font-medium leading-none">
+                Toque para atender a chamada...
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                rejectCall();
+              }}
+              variant="destructive"
+              size="icon"
+              className="size-9 rounded-full bg-rose-500 hover:bg-rose-600 hover:scale-105 active:scale-95 transition-all text-white flex items-center justify-center shadow-lg shadow-rose-500/20"
+            >
+              <PhoneOff className="size-4" />
+            </Button>
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                answerCall();
+              }}
+              size="icon"
+              className="size-9 rounded-full bg-emerald-500 hover:bg-emerald-600 hover:scale-105 active:scale-95 transition-all text-black flex items-center justify-center shadow-lg shadow-emerald-500/20"
+            >
+              <Phone className="size-4" />
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Microphone Permission Help Dialog */}
       <Dialog open={showVoicePermissionDialog} onOpenChange={setShowVoicePermissionDialog}>
         <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-[340px] rounded-[32px] p-6 flex flex-col items-center gap-4">
@@ -736,16 +855,33 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
               🎙️
             </div>
             <h3 className="text-base font-black">Acesso Bloqueado</h3>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              O seu navegador bloqueou o microfone.
-              Para fazer ou receber chamadas, siga estes passos no Android/iOS:
-            </p>
-            <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
-              <p>🟢 <b>1.</b> No topo esquerdo (junto ao link do site), clique no símbolo de <b>Definições de Site / Cadeado / Info</b>.</p>
-              <p>🟢 <b>2.</b> Localize a opção <b>Microfone</b>.</p>
-              <p>🟢 <b>3.</b> Altere a definição para <b>Permitir</b>.</p>
-              <p>🟢 <b>4.</b> Se estiver na app, autorize o microfone quando solicitado pelo telemóvel.</p>
-            </div>
+            {isInstalledApp() ? (
+              <>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  O aplicativo não conseguiu acessar o microfone.
+                  Ative a permissão nas Definições do seu dispositivo móvel:
+                </p>
+                <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
+                  <p>🟢 <b>1.</b> Vá às <b>Definições / Ajustes</b> do seu dispositivo móvel.</p>
+                  <p>🟢 <b>2.</b> Aceda a <b>Aplicações / Gestor de Apps</b>.</p>
+                  <p>🟢 <b>3.</b> Selecione este aplicativo na lista.</p>
+                  <p>🟢 <b>4.</b> Clique em <b>Permissões</b> e ative o acesso ao <b>Microfone</b>.</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  O seu navegador bloqueou o microfone.
+                  Para fazer ou receber chamadas, siga estes passos no Android/iOS:
+                </p>
+                <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
+                  <p>🟢 <b>1.</b> No topo esquerdo (junto ao link do site), clique no símbolo de <b>Definições de Site / Cadeado / Info</b>.</p>
+                  <p>🟢 <b>2.</b> Localize a opção <b>Microfone</b>.</p>
+                  <p>🟢 <b>3.</b> Altere a definição para <b>Permitir</b>.</p>
+                  <p>🟢 <b>4.</b> Se estiver na app, autorize o microfone quando solicitado pelo telemóvel.</p>
+                </div>
+              </>
+            )}
           </div>
           <Button 
             onClick={() => {

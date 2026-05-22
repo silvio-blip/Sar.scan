@@ -25,7 +25,7 @@ export function Gauge({ current, target, label = "Metas" }: GaugeProps) {
             stroke="currentColor"
             strokeWidth={strokeWidth}
             strokeLinecap="round"
-            className="text-white/10"
+            className="text-secondary/50"
           />
           {/* Progress bar */}
           <motion.path
@@ -38,22 +38,22 @@ export function Gauge({ current, target, label = "Metas" }: GaugeProps) {
             initial={{ strokeDashoffset: circumference }}
             animate={{ strokeDashoffset }}
             transition={{ duration: 1.5, ease: "easeOut" }}
-            className="text-white"
+            className="text-primary"
             style={{
-              filter: "drop-shadow(0 0 12px rgba(255,255,255,0.3))",
+              filter: "drop-shadow(0 4px 10px oklch(0.36 0.05 135 / 10%))",
             }}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pt-6">
-          <span className="text-white/20 text-[8px] font-black uppercase tracking-[0.4em] mb-1">
+          <span className="text-muted-foreground text-[8px] font-black uppercase tracking-[0.4em] mb-1">
             {label}
           </span>
-          <div className="flex items-baseline gap-1">
-            <span className="text-4xl font-display font-black text-white tracking-tighter">
+          <div className="flex items-baseline gap-0.5">
+            <span className="text-4xl font-display font-black text-foreground tracking-tighter">
               {current}
             </span>
-            <span className="text-[10px] font-black text-white/20 uppercase tracking-widest ml-1">
-              / {target}
+            <span className="text-[9px] font-bold text-muted-foreground/60 uppercase tracking-widest ml-1">
+              / {target} kcal
             </span>
           </div>
         </div>

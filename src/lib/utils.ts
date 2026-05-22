@@ -36,3 +36,23 @@ export function getApiUrl(path: string): string {
 
   return cleanPath;
 }
+
+export function isInstalledApp(): boolean {
+  if (typeof window === "undefined") return false;
+  
+  // 1. Capacitor JS bridge or custom protocols
+  const isCapacitor = !!((window as any).Capacitor || (window as any).Capacitor?.Plugins);
+  const isCapacitorProtocol = ["capacitor:", "http-extension:", "file:", "ionic:"].includes(window.location.protocol);
+  
+  // 2. Standalone display mode (PWA installed)
+  const isPWA = window.matchMedia("(display-mode: standalone)").matches || 
+                (window.navigator as any).standalone === true ||
+                document.referrer.includes("android-app://");
+  
+  // 3. User agent cues typical of WebViews in Android / iOS apps
+  const ua = navigator.userAgent || "";
+  const isWebView = /wv|WebView|Android.*Version\/[0-9.]+/i.test(ua) || 
+                    (/iPhone|iPad|iPod/i.test(ua) && !/Safari/i.test(ua));
+
+  return isCapacitor || isCapacitorProtocol || isPWA || isWebView;
+}

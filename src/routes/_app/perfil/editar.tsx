@@ -63,24 +63,24 @@ function EditarPerfil() {
       <div className="flex items-center gap-4">
         <Link
           to="/perfil"
-          className="size-12 rounded-2xl glass flex items-center justify-center hover:bg-white/10 transition-all border-white/5 shadow-xl"
+          className="size-12 rounded-[18px] border border-border bg-card flex items-center justify-center hover:bg-secondary transition-all shadow-sm text-foreground"
         >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-2xl font-display font-black tracking-tight">Editar Perfil</h1>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Editar Perfil</h1>
       </div>
 
       <div className="flex flex-col items-center gap-4 py-4">
         <div className="relative group">
-          <Avatar className="size-28 ring-4 ring-white/5 shadow-2xl overflow-hidden">
+          <Avatar className="size-28 ring-4 ring-primary/20 bg-secondary shadow-md overflow-hidden">
             {avatarUrl && <AvatarImage src={avatarUrl} alt="avatar" className="object-cover" />}
-            <AvatarFallback className="bg-white/10 text-white text-3xl font-black">
+            <AvatarFallback className="bg-secondary text-primary text-3xl font-black">
               {initials}
             </AvatarFallback>
           </Avatar>
           <button
             onClick={() => fileRef.current?.click()}
-            className="absolute bottom-1 right-1 bg-white text-black rounded-full p-2.5 shadow-xl transition-all hover:scale-110 active:scale-90"
+            className="absolute bottom-1 right-1 bg-primary text-primary-foreground rounded-full p-2.5 shadow-md transition-all hover:scale-110 active:scale-90 hover:bg-primary/95"
             disabled={uploading}
           >
             {uploading ? (
@@ -97,37 +97,37 @@ function EditarPerfil() {
             onChange={onPickFile}
           />
         </div>
-        <p className="text-[10px] font-black uppercase tracking-widest text-white/30">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Toque na câmera para trocar a foto
         </p>
       </div>
 
-      <Card className="glass rounded-[32px] p-6 space-y-5 border-white/5 shadow-xl">
+      <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
         <div className="space-y-2">
-          <Label htmlFor="nome" className="text-[10px] font-black uppercase tracking-widest ml-1">
+          <Label htmlFor="nome" className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
             Nome de Exibição
           </Label>
           <Input
             id="nome"
             value={nome}
             onChange={(e) => setNome(e.target.value)}
-            className="h-12 rounded-2xl bg-white/5 border-white/10 focus:ring-2 ring-white/10"
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-[10px] font-black uppercase tracking-widest ml-1">
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
             Email (não editável)
           </Label>
           <Input
             value={profile?.email ?? ""}
             disabled
-            className="h-12 rounded-2xl bg-white/0 border-white/5 text-white/30"
+            className="h-12 rounded-2xl bg-secondary/10 border border-border/40 text-muted-foreground/50 font-medium"
           />
         </div>
       </Card>
 
       <Button
-        className="w-full h-16 rounded-[28px] bg-white text-black hover:bg-zinc-200 font-black uppercase tracking-widest text-xs shadow-xl shadow-white/5 transition-all active:scale-95"
+        className="w-full h-14 rounded-[24px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold uppercase tracking-widest text-[10px] shadow-sm transition-all active:scale-95"
         onClick={save}
         disabled={saving}
       >

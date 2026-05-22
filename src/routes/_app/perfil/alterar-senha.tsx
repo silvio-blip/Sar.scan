@@ -41,37 +41,59 @@ function AlterarSenha() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Link to="/perfil">
+    <div className="space-y-6 animate-in fade-in duration-700">
+      <div className="flex items-center gap-4">
+        <Link
+          to="/perfil"
+          className="size-12 rounded-[18px] border border-border bg-card flex items-center justify-center hover:bg-secondary transition-all shadow-sm text-foreground"
+        >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-xl font-bold">Alterar Senha</h1>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Alterar Senha</h1>
       </div>
-      <Card className="p-4 flex items-center gap-3">
-        <div className="size-10 rounded-full bg-primary-soft flex items-center justify-center">
-          <Lock className="size-4 text-primary" />
+      <Card className="bg-card rounded-[24px] p-5 flex items-center gap-4 border border-border shadow-sm text-foreground">
+        <div className="size-12 rounded-2xl bg-secondary flex items-center justify-center">
+          <Lock className="size-5 text-primary" strokeWidth={2.5} />
         </div>
         <div>
-          <div className="font-semibold">Segurança da conta</div>
-          <div className="text-xs text-muted-foreground">Use ao menos 6 caracteres</div>
+          <div className="font-bold text-base text-foreground">Segurança da conta</div>
+          <div className="text-xs text-muted-foreground/80">Use ao menos 6 caracteres</div>
         </div>
       </Card>
-      <Card className="p-4 space-y-3">
-        <div className="space-y-1.5">
-          <Label>Senha atual</Label>
-          <Input type="password" value={atual} onChange={(e) => setAtual(e.target.value)} />
+      <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
+        <div className="space-y-2">
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">Senha atual</Label>
+          <Input 
+            type="password" 
+            value={atual} 
+            onChange={(e) => setAtual(e.target.value)} 
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
+          />
         </div>
-        <div className="space-y-1.5">
-          <Label>Nova senha</Label>
-          <Input type="password" value={nova} onChange={(e) => setNova(e.target.value)} />
+        <div className="space-y-2">
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">Nova senha</Label>
+          <Input 
+            type="password" 
+            value={nova} 
+            onChange={(e) => setNova(e.target.value)} 
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
+          />
         </div>
-        <div className="space-y-1.5">
-          <Label>Confirmar nova senha</Label>
-          <Input type="password" value={conf} onChange={(e) => setConf(e.target.value)} />
+        <div className="space-y-2">
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">Confirmar nova senha</Label>
+          <Input 
+            type="password" 
+            value={conf} 
+            onChange={(e) => setConf(e.target.value)} 
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
+          />
         </div>
       </Card>
-      <Button className="w-full" onClick={submit} disabled={saving}>
+      <Button 
+        className="w-full h-14 rounded-[24px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold uppercase tracking-widest text-[10px] shadow-sm transition-all active:scale-95" 
+        onClick={submit} 
+        disabled={saving}
+      >
         {saving && <Loader2 className="size-4 animate-spin mr-2" />}Atualizar Senha
       </Button>
     </div>

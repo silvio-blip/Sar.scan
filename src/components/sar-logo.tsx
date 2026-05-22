@@ -22,12 +22,12 @@ export function SarLogo({
 
       <div className={`flex flex-col ${align === "center" ? "items-center" : "items-start"}`}>
         <h1
-          className={`font-display font-black tracking-tighter text-white ${sizes[size]} leading-none`}
+          className={`font-display font-black tracking-tighter text-foreground ${sizes[size]} leading-none`}
         >
           sar.scan
         </h1>
         {size !== "sm" && (
-          <span className="text-[10px] tracking-[0.4em] uppercase text-white/30 font-black">
+          <span className="text-[10px] tracking-[0.4em] uppercase text-muted-foreground/60 font-black">
             Architecture of Nutri
           </span>
         )}

@@ -224,19 +224,19 @@ function PremiumPage() {
       </div>
 
       {isPremium && (
-        <div className="glass rounded-[32px] p-6 border-white/20 bg-white/5 flex items-center gap-5 shadow-[0_20px_50px_rgba(255,255,255,0.05)] relative overflow-hidden group">
-          <div className="absolute inset-0 bg-gradient-to-r from-white/[0.02] to-transparent" />
-          <div className="size-16 rounded-[24px] bg-white text-black flex items-center justify-center shadow-2xl relative z-10 transition-transform group-hover:scale-105">
+        <div className="bg-secondary/40 rounded-[32px] p-6 border border-border flex items-center gap-5 shadow-sm relative overflow-hidden group">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.02] to-transparent" />
+          <div className="size-16 rounded-[24px] bg-primary text-primary-foreground flex items-center justify-center shadow-md relative z-10 transition-transform group-hover:scale-105 shrink-0">
             <Crown className="size-8" strokeWidth={2.5} />
           </div>
           <div className="flex-1 relative z-10">
-            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-1">
+            <div className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground mb-1">
               Status da Assinatura
             </div>
-            <div className="font-display font-black text-xl text-white uppercase tracking-tight flex items-center gap-2">
-              Ativa <div className="size-2 rounded-full bg-green-500 animate-pulse" />
+            <div className="font-display font-black text-xl text-foreground uppercase tracking-tight flex items-center gap-2">
+              Ativa <div className="size-2 rounded-full bg-emerald-600 animate-pulse" />
             </div>
-            <div className="text-xs text-white/60 font-semibold mt-1">
+            <div className="text-xs text-muted-foreground font-semibold mt-1">
               Plano {subscription?.plan || "Premium"} · {subscription?.scans_credits} créditos
             </div>
           </div>
@@ -262,32 +262,32 @@ function PremiumPage() {
                 }}
                 className={`group relative cursor-pointer overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 w-full ${
                   active
-                    ? "border-white bg-white/10 shadow-[0_0_40px_rgba(255,255,255,0.05)] ring-1 ring-white/40"
-                    : "border-white/5 bg-white/[0.03] hover:bg-white/[0.06]"
+                    ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20"
+                    : "border-border bg-card hover:bg-secondary/40"
                 }`}
               >
                 {p.badge && (
-                  <span className="absolute top-0 right-0 rounded-bl-[16px] bg-white px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-black shadow-lg">
+                  <span className="absolute top-0 right-0 rounded-bl-[16px] bg-accent px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-sm font-sans">
                     {p.badge}
                   </span>
                 )}
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div
-                      className={`text-xs font-black uppercase tracking-tighter ${active ? "text-white" : "text-muted-foreground"}`}
+                      className={`text-xs font-black uppercase tracking-tighter ${active ? "text-primary font-bold" : "text-muted-foreground"}`}
                     >
                       {p.label}
                     </div>
                     <div className="mt-1 flex items-baseline gap-1">
-                      <span className="text-3xl font-display font-black tracking-tighter text-white">
+                      <span className="text-3xl font-display font-black tracking-tighter text-foreground">
                         {p.price}
                       </span>
                       <span className="text-xs font-medium text-muted-foreground">{p.cycle}</span>
                     </div>
                   </div>
                   {active && (
-                    <div className="size-8 rounded-full bg-white flex items-center justify-center shadow-[0_0_20px_rgba(255,255,255,0.4)]">
-                      <Check className="size-5 text-black" strokeWidth={4} />
+                    <div className="size-8 rounded-full bg-primary flex items-center justify-center shadow-sm text-primary-foreground">
+                      <Check className="size-5" strokeWidth={4} />
                     </div>
                   )}
                 </div>
@@ -296,20 +296,20 @@ function PremiumPage() {
                   {p.perks.slice(0, 4).map((pk) => (
                     <div
                       key={pk}
-                      className="flex items-center gap-2 text-[11px] font-medium text-white/70"
+                      className="flex items-center gap-2 text-[11px] font-medium text-foreground/85"
                     >
-                      <div className="size-1.5 rounded-full bg-white/40" />
+                      <div className="size-1.5 rounded-full bg-primary/40" />
                       <span className="line-clamp-1">{pk}</span>
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-end">
+                <div className="mt-4 pt-4 border-t border-border flex items-center justify-end">
                   <Button
-                    className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-xl ${
+                    className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-sm ${
                       active 
-                        ? "bg-white text-black hover:bg-zinc-200" 
-                        : "bg-white/10 text-white hover:bg-white/20"
+                        ? "bg-primary text-primary-foreground hover:bg-primary/95" 
+                        : "bg-secondary text-foreground hover:bg-muted"
                     }`}
                     onClick={(e) => {
                       e.stopPropagation();
@@ -363,13 +363,13 @@ function PremiumPage() {
           ].map(({ Icon, t, d }) => (
             <div
               key={t}
-              className="glass rounded-[24px] p-4 flex items-center gap-4 border-white/5 shadow-lg group"
+              className="bg-card rounded-[24px] p-4 flex items-center gap-4 border border-border shadow-sm group"
             >
-              <div className="size-12 rounded-2xl bg-white/5 flex items-center justify-center shrink-0 group-hover:bg-white/10 transition-colors">
-                <Icon className="size-6 text-white" />
+              <div className="size-12 rounded-2xl bg-primary/5 flex items-center justify-center shrink-0 group-hover:bg-primary/10 transition-colors">
+                <Icon className="size-6 text-primary" />
               </div>
               <div className="min-w-0">
-                <div className="font-bold text-sm text-white tracking-tight">{t}</div>
+                <div className="font-bold text-sm text-foreground tracking-tight">{t}</div>
                 <div className="text-[11px] font-medium text-muted-foreground line-clamp-1">
                   {d}
                 </div>
@@ -380,37 +380,37 @@ function PremiumPage() {
       </div>
 
       <Dialog open={!!confirmingPlan} onOpenChange={(open) => !open && setConfirmingPlan(null)}>
-        <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+        <DialogContent className="max-w-md bg-card border border-border p-0 overflow-hidden rounded-[32px] text-foreground">
           <DialogHeader className="sr-only">
             <DialogTitle>Confirmar Ativação de Teste Grátis</DialogTitle>
           </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
-            <div className="absolute inset-x-0 top-0 h-40 bg-zinc-900/50" />
+            <div className="absolute inset-x-0 top-0 h-40 bg-secondary/50" />
             
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center mb-6 shadow-2xl"
+              className="relative z-10 size-20 rounded-[24px] bg-primary text-primary-foreground flex items-center justify-center mb-6 shadow-md"
             >
               <Gift className="size-10" />
             </motion.div>
 
-            <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
+            <h2 className="text-2xl font-display font-black tracking-tight text-foreground mb-2 uppercase">
               Comece 7 dias grátis
             </h2>
-            <p className="text-white/60 text-sm font-medium mb-8">
+            <p className="text-muted-foreground text-sm font-medium mb-8">
               Experimente todas as funções premium agora sem custos iniciais.
             </p>
 
             <div className="w-full space-y-3 mb-8">
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary/40 border border-border">
                 <div className="text-left">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Total Hoje</p>
-                  <p className="text-lg font-display font-black text-white">€0,00</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total Hoje</p>
+                  <p className="text-lg font-display font-black text-foreground">€0,00</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Após 7 dias</p>
-                  <p className="text-lg font-display font-black text-white">{confirmingPlan?.price}</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Após 7 dias</p>
+                  <p className="text-lg font-display font-black text-foreground">{confirmingPlan?.price}</p>
                 </div>
               </div>
             </div>
@@ -422,14 +422,14 @@ function PremiumPage() {
                   setConfirmingPlan(null);
                 }}
                 disabled={!!loading}
-                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all"
+                className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black text-sm shadow-md transition-all"
               >
                 {loading ? <Loader2 className="size-4 animate-spin" /> : "Ativar Teste Grátis"}
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => setConfirmingPlan(null)}
-                className="w-full h-12 text-white/40 hover:text-white hover:bg-white/5 font-bold text-xs"
+                className="w-full h-12 text-muted-foreground hover:text-foreground hover:bg-secondary/40 font-bold text-xs"
               >
                 Talvez depois
               </Button>

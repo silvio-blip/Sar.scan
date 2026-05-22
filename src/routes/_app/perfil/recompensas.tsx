@@ -50,47 +50,50 @@ function RecompensasPage() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Link to="/perfil">
+    <div className="space-y-6 animate-in fade-in duration-700">
+      <div className="flex items-center gap-4">
+        <Link
+          to="/perfil"
+          className="size-12 rounded-[18px] border border-border bg-card flex items-center justify-center hover:bg-secondary transition-all shadow-sm text-foreground"
+        >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Gift className="size-5 text-sage" /> Recompensas
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground flex items-center gap-2">
+          <Gift className="size-6 text-primary" /> Recompensas
         </h1>
       </div>
 
-      {isLoading && <Loader2 className="size-5 animate-spin mx-auto text-sage" />}
+      {isLoading && <Loader2 className="size-6 animate-spin mx-auto text-primary" />}
       {!isLoading && (!rewards || rewards.length === 0) && (
-        <Card className="p-8 text-center text-sm text-muted-foreground">
+        <Card className="p-8 text-center text-sm text-muted-foreground bg-card border border-border rounded-2xl shadow-sm">
           Nenhuma recompensa por enquanto. Continue ativo para ganhar bônus!
         </Card>
       )}
       {rewards?.map((r) => {
         const claimed = !!(r as { bonus_aplicado?: boolean }).bonus_aplicado;
         return (
-          <Card key={r.id} className={`p-4 space-y-2 ${claimed ? "opacity-60" : "border-sage/40"}`}>
-            <div className="flex items-start justify-between gap-2">
+          <Card key={r.id} className={`p-5 rounded-[24px] border bg-card transition-all ${claimed ? "opacity-60 border-border/40" : "border-border shadow-sm text-foreground"}`}>
+            <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold flex items-center gap-2">
+                <div className="font-bold text-base text-foreground flex items-center gap-2">
                   {r.titulo}
                   {!r.lida && (
-                    <span className="text-[10px] bg-sage text-background rounded-full px-2 py-0.5">
+                    <span className="text-[9px] font-black uppercase tracking-wider bg-accent text-accent-foreground rounded-full px-2 py-0.5">
                       NOVA
                     </span>
                   )}
                 </div>
                 {r.descricao && (
-                  <div className="text-xs text-muted-foreground mt-1">{r.descricao}</div>
+                  <div className="text-xs text-muted-foreground/95 mt-1 leading-relaxed">{r.descricao}</div>
                 )}
                 {r.bonus_scans > 0 && (
-                  <div className="text-xs text-sage font-medium mt-1">
+                  <div className="text-xs text-primary font-bold mt-1">
                     🎁 +{r.bonus_scans} scans bônus
                   </div>
                 )}
               </div>
               {claimed ? (
-                <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-semibold whitespace-nowrap shrink-0 mt-1">
                   <Check className="size-3" /> Reivindicada
                 </span>
               ) : (
@@ -98,7 +101,7 @@ function RecompensasPage() {
                   size="sm"
                   disabled={busyId === r.id}
                   onClick={() => claim(r.id, r.bonus_scans ?? 0)}
-                  className="bg-sage text-background hover:bg-sage/90"
+                  className="bg-primary text-primary-foreground hover:bg-primary/95 text-[10px] uppercase font-bold tracking-wider rounded-xl h-9 px-4 shrink-0 transition-transform active:scale-95 mt-1"
                 >
                   {busyId === r.id ? <Loader2 className="size-3 animate-spin" /> : "Reivindicar"}
                 </Button>

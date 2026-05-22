@@ -44,59 +44,59 @@
 }
 
 :root {
-  --radius: 1.25rem;
+  --radius: 1.5rem;
 
-  /* Dark premium palette — strictly monochrome and futuristic */
-  --background: oklch(0.08 0.01 160); /* Deepest near-black */
-  --foreground: oklch(0.98 0 0);
+  /* Premium Humanized Organic Moss & Cream Palette */
+  --background: oklch(0.98 0.01 75); /* Soft premium warm linen cream `#FAF7F2` */
+  --foreground: oklch(0.24 0.03 135); /* Luxurious deep slate forest grey `#1C2E24` */
 
-  --card: oklch(0.12 0.01 160 / 60%); /* Glassy card */
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.12 0.01 160 / 95%);
-  --popover-foreground: oklch(0.98 0 0);
+  --card: oklch(1 0 0); /* Pure luxury matte paper white `#FFFFFF` */
+  --card-foreground: oklch(0.24 0.03 135);
+  --popover: oklch(1 0 0 / 98%);
+  --popover-foreground: oklch(0.24 0.03 135);
 
-  --primary: oklch(0.98 0 0); /* Pure Brilliant White */
-  --primary-foreground: oklch(0.08 0 0);
-  --primary-soft: oklch(1 0 0 / 15%);
+  --primary: oklch(0.36 0.05 135); /* Elegant organic garden Moss Green `#2E4A3B` */
+  --primary-foreground: oklch(0.98 0.01 75);
+  --primary-soft: oklch(0.36 0.05 135 / 10%); /* Gentle moss translucent highlight */
 
-  --secondary: oklch(0.2 0.01 160);
-  --secondary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.94 0.01 75); /* Warm light almond `#F0ECE3` */
+  --secondary-foreground: oklch(0.24 0.03 135);
 
-  --muted: oklch(0.15 0.01 160);
-  --muted-foreground: oklch(0.55 0.01 160);
+  --muted: oklch(0.91 0.01 75); /* Clean pale warm parchment */
+  --muted-foreground: oklch(0.53 0.02 135); /* Soft sage-tinted grey for secondary reading */
 
-  --accent: oklch(1 0 0 / 10%);
+  --accent: oklch(0.68 0.12 45); /* Warm sun-kissed copper / sunset Apricot highlight `#E28C6A` */
   --accent-foreground: oklch(1 0 0);
 
-  --destructive: oklch(0.55 0.18 25);
+  --destructive: oklch(0.58 0.15 25);
   --destructive-foreground: oklch(0.98 0 0);
 
-  --border: oklch(1 0 0 / 6%);
-  --input: oklch(1 0 0 / 4%);
-  --ring: oklch(1 0 0 / 25%);
+  --border: oklch(0.24 0.03 135 / 10%); /* Delicate warm horizontal separators */
+  --input: oklch(0.24 0.03 135 / 4%);
+  --ring: oklch(0.36 0.05 135 / 25%);
 
-  --water: oklch(0.98 0 0);
-  --water-soft: oklch(1 0 0 / 10%);
+  --water: oklch(0.68 0.14 240); /* Pristine stream clear mineral blue `#4C9EEB` */
+  --water-soft: oklch(0.68 0.14 240 / 12%);
 
-  --premium-from: oklch(0.98 0 0);
-  --premium-to: oklch(0.6 0.01 160);
-  --premium: oklch(0.98 0 0);
+  --premium-from: oklch(0.36 0.05 135);
+  --premium-to: oklch(0.68 0.12 45);
+  --premium: oklch(0.36 0.05 135);
 
-  --sage: oklch(0.98 0 0);
+  --sage: oklch(0.36 0.05 135);
 
-  /* Advanced Glass system — Refined for monochrome */
-  --glass: oklch(0.2 0.01 160 / 60%);
-  --glass-strong: oklch(0.08 0.01 160 / 92%);
-  --glass-border: oklch(1 0 0 / 12%);
-  --glow: 0 0 40px oklch(1 0 0 / 15%);
-  --gradient-soft: radial-gradient(circle at top, oklch(0.12 0.01 160) 0%, oklch(0.05 0 0) 100%);
-  --gradient-sage: linear-gradient(135deg, oklch(0.98 0 0) 0%, oklch(0.5 0.01 160) 100%);
+  /* Advanced Glass system — Refined for organic warm */
+  --glass: oklch(1 0 0 / 85%);
+  --glass-strong: oklch(1 0 0 / 94%);
+  --glass-border: oklch(0.24 0.03 135 / 12%);
+  --glow: 0 12px 45px oklch(0.36 0.05 135 / 8%);
+  --gradient-soft: linear-gradient(to bottom, oklch(0.98 0.01 75) 0%, oklch(0.95 0.01 75) 100%);
+  --gradient-sage: linear-gradient(135deg, oklch(0.36 0.05 135) 0%, oklch(0.53 0.02 135) 100%);
 
-  --chart-1: oklch(0.78 0.1 130);
-  --chart-2: oklch(0.72 0.14 230);
-  --chart-3: oklch(0.72 0.2 45);
-  --chart-4: oklch(0.65 0.18 290);
-  --chart-5: oklch(0.65 0.2 25);
+  --chart-1: oklch(0.36 0.05 135);
+  --chart-2: oklch(0.68 0.12 45);
+  --chart-3: oklch(0.78 0.10 80);
+  --chart-4: oklch(0.68 0.14 240);
+  --chart-5: oklch(0.58 0.15 25);
 }
 
 @layer base {

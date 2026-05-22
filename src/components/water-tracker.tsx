@@ -31,21 +31,21 @@ export function WaterTracker({ currentMl, targetMl, onAdd }: WaterTrackerProps) 
   };
 
   return (
-    <div className="flex flex-col items-center gap-2 py-1">
+    <div className="flex flex-col items-center gap-3 py-2">
       {/* Unit & Increment Selector */}
       <div className="flex items-center gap-3">
         <button
           onClick={() => cycleParams("left")}
-          className="text-white/20 hover:text-white transition active:scale-95 p-1"
+          className="text-muted-foreground/45 hover:text-foreground transition active:scale-95 p-1"
         >
-          <ChevronLeft className="size-4" />
+          <ChevronLeft className="size-4" strokeWidth={3} />
         </button>
 
         <button
           onClick={toggleUnit}
-          className="bg-white/90 rounded-full px-4 py-1 flex items-center justify-center min-w-[100px] shadow-lg active:scale-95 transition-transform"
+          className="bg-primary text-primary-foreground rounded-full px-5 py-1 flex items-center justify-center min-w-[100px] shadow-[0_4px_12px_rgba(46,74,59,0.12)] active:scale-95 transition-transform"
         >
-          <span className="text-black font-black text-[10px] uppercase tracking-widest">
+          <span className="font-black text-[10px] uppercase tracking-widest">
             {currentIncrement >= 1000 ? (currentIncrement / 1000).toFixed(1) : currentIncrement}
             {currentIncrement >= 1000 ? "L" : "ml"}
           </span>
@@ -53,9 +53,9 @@ export function WaterTracker({ currentMl, targetMl, onAdd }: WaterTrackerProps) 
 
         <button
           onClick={() => cycleParams("right")}
-          className="text-white/20 hover:text-white transition active:scale-95 p-1"
+          className="text-muted-foreground/45 hover:text-foreground transition active:scale-95 p-1"
         >
-          <ChevronRight className="size-4" />
+          <ChevronRight className="size-4" strokeWidth={3} />
         </button>
       </div>
 
@@ -63,12 +63,12 @@ export function WaterTracker({ currentMl, targetMl, onAdd }: WaterTrackerProps) 
       <div className="flex items-center gap-4 w-full px-4">
         <button
           onClick={() => onAdd(-currentIncrement)}
-          className="text-white/40 hover:text-white active:scale-75 transition-all p-1"
+          className="text-muted-foreground/40 hover:text-foreground active:scale-75 transition-all p-1"
         >
           <Minus className="size-5" strokeWidth={4} />
         </button>
 
-        <div className="flex gap-1 items-center h-4 flex-1 justify-center">
+        <div className="flex gap-1.5 items-center h-3 flex-1 justify-center">
           {Array.from({ length: 8 }).map(
             (
               _,
@@ -78,8 +78,8 @@ export function WaterTracker({ currentMl, targetMl, onAdd }: WaterTrackerProps) 
                 key={i}
                 className={`h-full w-2 rounded-full transition-all duration-700 ${
                   i < currentSegments
-                    ? "bg-gradient-to-t from-[#00FF00] to-[#00CC00] shadow-[0_0_10px_rgba(0,255,0,0.5)]"
-                    : "bg-white/10"
+                    ? "bg-water shadow-[0_2px_8px_var(--color-water-soft)]"
+                    : "bg-secondary"
                 }`}
               />
             ),
@@ -88,17 +88,17 @@ export function WaterTracker({ currentMl, targetMl, onAdd }: WaterTrackerProps) 
 
         <button
           onClick={() => onAdd(currentIncrement)}
-          className="text-white/40 hover:text-white active:scale-75 transition-all p-1"
+          className="text-muted-foreground/40 hover:text-foreground active:scale-75 transition-all p-1"
         >
           <Plus className="size-5" strokeWidth={4} />
         </button>
       </div>
 
       <div className="flex flex-col items-center">
-        <span className="text-[10px] font-black text-white/40 mb-1">
+        <span className="text-[10px] font-black text-muted-foreground">
           {(currentMl / 1000).toFixed(1)}L Consumidos
         </span>
-        <span className="text-[9px] font-black uppercase tracking-[0.4em] text-white/10">Água</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.35em] text-primary/40 mt-0.5">Água</span>
       </div>
     </div>
   );

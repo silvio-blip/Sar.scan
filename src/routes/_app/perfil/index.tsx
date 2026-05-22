@@ -57,10 +57,10 @@ function PerfilPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      <h1 className="text-3xl font-display font-black tracking-tight">Perfil</h1>
+      <h1 className="text-3xl font-display font-black tracking-tight text-foreground">Perfil</h1>
 
       <div className="flex flex-col items-center text-center gap-4">
-        <Avatar className="size-24 ring-4 ring-white/5 overflow-hidden shadow-2xl">
+        <Avatar className="size-24 ring-4 ring-primary/15 overflow-hidden shadow-md">
           {profile?.avatar_url && (
             <AvatarImage
               src={profile.avatar_url}
@@ -68,25 +68,25 @@ function PerfilPage() {
               className="object-cover w-full h-full"
             />
           )}
-          <AvatarFallback className="bg-white/10 text-white text-xl font-black">
+          <AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
             {initials}
           </AvatarFallback>
         </Avatar>
         <div className="space-y-1">
-          <div className="font-black text-xl tracking-tight">{profile?.nome ?? "—"}</div>
-          <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground opacity-60">
+          <div className="font-extrabold text-xl tracking-tight text-foreground">{profile?.nome ?? "—"}</div>
+          <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
             {profile?.email}
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 flex-wrap pb-2 mt-2">
+        <div className="flex items-center justify-center gap-2 flex-wrap pb-2 mt-1">
           {isPremium && (
-            <span className="text-[10px] bg-white/10 text-white border border-white/10 font-black uppercase tracking-widest rounded-full px-3 py-1 flex items-center gap-1.5 shadow-lg">
+            <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 font-black uppercase tracking-widest rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-sm">
               <Crown className="size-3" /> Premium
             </span>
           )}
           {isAdmin && (
-            <span className="text-[10px] bg-white/10 text-white border border-white/10 font-black uppercase tracking-widest rounded-full px-3 py-1 flex items-center gap-1.5 shadow-lg">
+            <span className="text-[10px] bg-accent/10 text-accent border border-accent/20 font-black uppercase tracking-widest rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-sm">
               <Shield className="size-3" /> Admin
             </span>
           )}
@@ -94,18 +94,18 @@ function PerfilPage() {
         <Button
           variant="outline"
           size="sm"
-          className="rounded-full border-white/10 bg-white/5 font-bold px-6 h-9 transition-all hover:bg-white/10"
+          className="rounded-full border border-border bg-secondary hover:bg-muted font-bold px-6 h-9 transition-all text-foreground"
           asChild
         >
           <Link to="/perfil/editar">
-            <Pencil className="size-3.5 mr-2" /> Editar Perfil
+            <Pencil className="size-3.5 mr-2 text-primary" /> Editar Perfil
           </Link>
         </Button>
       </div>
 
       {isAdmin && (
         <Link to="/admin" className="block transform transition hover:scale-[1.02] active:scale-95">
-          <Card className="p-4 bg-gradient-to-r from-zinc-300 to-zinc-600 text-black border-0 shadow-xl rounded-[24px]">
+          <Card className="p-4 bg-primary text-primary-foreground border-0 shadow-md rounded-[24px]">
             <div className="flex items-center justify-center gap-2 font-black uppercase tracking-widest text-[10px]">
               <Shield className="size-4" /> Painel de Administração
             </div>
@@ -117,20 +117,20 @@ function PerfilPage() {
         to="/perfil/recompensas"
         className="block transform transition hover:scale-[1.02] active:scale-95"
       >
-        <Card className="glass rounded-[32px] p-5 flex items-center gap-4 border-white/5 shadow-xl">
-          <div className="size-12 rounded-2xl bg-white/5 flex items-center justify-center">
-            <Gift className="size-5 text-white" />
+        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
+          <div className="size-12 rounded-2xl bg-accent/15 flex items-center justify-center">
+            <Gift className="size-5 text-accent" />
           </div>
           <div className="flex-1">
-            <div className="font-bold text-sm flex items-center gap-2">
+            <div className="font-bold text-sm text-foreground flex items-center gap-2">
               Recompensas{" "}
               {novas > 0 && (
-                <span className="text-[9px] bg-white text-black font-black uppercase tracking-widest rounded-full px-2 py-1 shadow-lg">
+                <span className="text-[9px] bg-accent text-white font-black uppercase tracking-widest rounded-full px-2 py-1 shadow-sm font-sans">
                   {novas} nova(s)
                 </span>
               )}
             </div>
-            <div className="text-[11px] text-muted-foreground font-medium opacity-60">
+            <div className="text-[11px] text-muted-foreground font-semibold">
               Reivindique scans bônus enviados pelo admin
             </div>
           </div>
@@ -138,7 +138,7 @@ function PerfilPage() {
         </Card>
       </Link>
 
-      <div className="border-t border-white/5" />
+      <div className="border-t border-border" />
 
       <div className="space-y-3">
         <Row
@@ -168,19 +168,19 @@ function PerfilPage() {
         />
       </div>
 
-      <div className="border-t border-white/5" />
+      <div className="border-t border-border" />
 
       <Link
         to="/perfil/alterar-senha"
         className="block transform transition hover:scale-[1.02] active:scale-95"
       >
-        <Card className="glass rounded-[32px] p-5 flex items-center gap-4 border-white/5 shadow-xl">
-          <div className="size-12 rounded-2xl bg-white/5 flex items-center justify-center">
-            <Lock className="size-5 text-white" />
+        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
+          <div className="size-12 rounded-2xl bg-secondary flex items-center justify-center">
+            <Lock className="size-5 text-foreground" />
           </div>
           <div className="flex-1">
-            <div className="font-bold text-sm">Alterar Senha</div>
-            <div className="text-[11px] text-muted-foreground font-medium opacity-60">
+            <div className="font-bold text-sm text-foreground">Alterar Senha</div>
+            <div className="text-[11px] text-muted-foreground font-semibold">
               Mudar sua senha de acesso
             </div>
           </div>
@@ -190,7 +190,7 @@ function PerfilPage() {
 
       <Button
         variant="outline"
-        className="w-full h-14 rounded-[28px] border-white/10 bg-white/0 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 font-bold uppercase tracking-widest text-[10px] transition-all"
+        className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
         onClick={signOut}
       >
         <LogOut className="size-4 mr-2" /> Sair da Conta
@@ -202,9 +202,9 @@ function PerfilPage() {
 function ShortcutCard({ to, Icon, label }: { to: string; Icon: typeof Crown; label: string }) {
   return (
     <Link to={to} className="transform transition hover:scale-105 active:scale-95">
-      <Card className="glass rounded-[28px] p-4 flex flex-col items-center gap-2 text-center hover:bg-white/5 transition-all border-white/5 border shadow-xl">
-        <div className="size-11 rounded-2xl bg-white/5 flex items-center justify-center">
-          <Icon className="size-5 text-white" />
+      <Card className="bg-card rounded-[28px] p-4 flex flex-col items-center gap-2 text-center hover:bg-secondary/40 transition-all border border-border shadow-sm">
+        <div className="size-11 rounded-2xl bg-secondary flex items-center justify-center">
+          <Icon className="size-5 text-foreground" />
         </div>
         <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           {label}
@@ -229,20 +229,20 @@ function Row({
 }) {
   return (
     <Link to={to} className="block transform transition hover:scale-[1.01] active:scale-[0.99]">
-      <Card className="glass rounded-[32px] p-5 flex items-center gap-4 border-white/5 shadow-xl">
-        <div className="size-12 rounded-2xl bg-white/5 flex items-center justify-center">
-          <Icon className="size-5 text-white" />
+      <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
+        <div className="size-12 rounded-2xl bg-secondary flex items-center justify-center">
+          <Icon className="size-5 text-foreground" />
         </div>
         <div className="flex-1">
-          <div className="font-bold text-sm flex items-center gap-2 text-white">
+          <div className="font-bold text-sm flex items-center gap-2 text-foreground">
             {label}
-            {premium && <Crown className="size-4 text-zinc-400 animate-pulse" />}
+            {premium && <Crown className="size-4 text-accent animate-pulse" />}
           </div>
-          <div className="text-[11px] font-medium text-muted-foreground opacity-60 line-clamp-1">
+          <div className="text-[11px] font-semibold text-muted-foreground line-clamp-1">
             {sub}
           </div>
         </div>
-        <ChevronRight className="size-4 text-muted-foreground/40" />
+        <ChevronRight className="size-4 text-muted-foreground/50" />
       </Card>
     </Link>
   );

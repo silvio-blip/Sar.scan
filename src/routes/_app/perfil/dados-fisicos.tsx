@@ -41,53 +41,53 @@ function DadosPage() {
       <div className="flex items-center gap-4">
         <Link
           to="/perfil"
-          className="size-12 rounded-2xl glass flex items-center justify-center hover:bg-white/10 transition-all border-white/5 shadow-xl"
+          className="size-12 rounded-[18px] border border-border bg-card flex items-center justify-center hover:bg-secondary transition-all shadow-sm text-foreground"
         >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-2xl font-display font-black tracking-tight">Dados Físicos</h1>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Dados Físicos</h1>
       </div>
 
-      <Card className="glass rounded-[32px] p-6 space-y-5 border-white/5 shadow-xl">
+      <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
         <div className="space-y-2">
-          <Label className="text-[10px] font-black uppercase tracking-widest ml-1">
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">
             Idade (anos)
           </Label>
           <Input
             type="number"
             value={idade}
             onChange={(e) => setIdade(+e.target.value)}
-            className="h-12 rounded-2xl bg-white/5 border-white/10 focus:ring-2 ring-white/10"
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-[10px] font-black uppercase tracking-widest ml-1">Peso (kg)</Label>
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">Peso (kg)</Label>
           <Input
             type="number"
             value={peso}
             onChange={(e) => setPeso(+e.target.value)}
-            className="h-12 rounded-2xl bg-white/5 border-white/10 focus:ring-2 ring-white/10"
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-[10px] font-black uppercase tracking-widest ml-1">
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">
             Altura (cm)
           </Label>
           <Input
             type="number"
             value={altura}
             onChange={(e) => setAltura(+e.target.value)}
-            className="h-12 rounded-2xl bg-white/5 border-white/10 focus:ring-2 ring-white/10"
+            className="h-12 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold"
           />
         </div>
       </Card>
 
       <Button
-        className="w-full h-16 rounded-[28px] bg-white text-black hover:bg-zinc-200 font-black uppercase tracking-widest text-xs shadow-xl shadow-white/5 transition-all active:scale-95"
+        className="w-full h-14 rounded-[24px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold uppercase tracking-widest text-[10px] shadow-sm transition-all active:scale-95"
         onClick={save}
         disabled={saving}
       >
-        {saving && <Loader2 className="size-4 animate-spin mr-2" />}Salvar
+        {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : "Salvar Alterações"}
       </Button>
     </div>
   );

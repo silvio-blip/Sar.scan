@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { isInstalledApp } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Camera,
@@ -153,7 +154,14 @@ function ScannerPage() {
         }
       } catch (err) {
         console.error("Camera access error:", err);
-        if (active) setStreamOn(false);
+        if (active) {
+          setStreamOn(false);
+          if (isInstalledApp()) {
+            toast.error("Erro ao acessar câmara. Ative a permissão de Câmara nas Definições do seu telemóvel (Definições > Aplicações > sar.scan > Permissões).");
+          } else {
+            toast.error("Erro ao acessar a câmara. Verifique se o seu navegador não bloqueou o acesso.");
+          }
+        }
       }
     };
 
@@ -302,35 +310,34 @@ function ScannerPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in duration-1000">
+    <div className="flex flex-col gap-4 animate-in fade-in duration-1000 select-none">
       {/* Top Header */}
       <header className="flex items-center justify-between px-2 pt-2">
         <SarLogo size="sm" align="left" />
         <div className="flex flex-col items-end">
-          <div className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20">
-            Scans
+          <div className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/80">
+            Scans Restantes
           </div>
-          <div className="text-sm font-display font-black text-white mt-0.5">
+          <div className="text-sm font-display font-black text-foreground mt-0.5">
             <CreditDisplay value={remaining} />
           </div>
         </div>
       </header>
 
-      {/* Main Container - Flat background as requested */}
-      <section className="p-2 pb-8 flex flex-col items-center gap-6 relative overflow-hidden">
-        {/* No explicit border/background for the container, just the elements on the black bg */}
+      {/* Main Container - Warm sand aesthetic */}
+      <section className="p-2 pb-6 flex flex-col items-center gap-6 relative overflow-hidden">
 
-        {/* Metas Gauge - Smallized */}
-        <div className="w-full flex flex-col items-center transform scale-[0.8] mt-2 relative z-10">
+        {/* Metas Gauge - Smaller and warm */}
+        <div className="w-full flex flex-col items-center transform scale-[0.85] mt-1 relative z-10">
           <Gauge
             current={Math.round(consumption ?? 0)}
             target={profile?.meta_calorias ?? 2000}
-            label="Metas"
+            label="Kcal de Hoje"
           />
         </div>
 
-        {/* Water Tracker - Integrated */}
-        <div className="w-full relative z-10 -mt-6">
+        {/* Water Tracker */}
+        <div className="w-full relative z-10 -mt-4">
           <WaterTracker
             currentMl={water ?? 0}
             targetMl={profile?.meta_agua ?? 2000}
@@ -339,14 +346,14 @@ function ScannerPage() {
         </div>
 
         {/* Camera/Results View Area */}
-        <div className="w-full relative min-h-[400px]">
+        <div className="w-full relative min-h-[360px]">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="relative w-full aspect-square rounded-[40px] bg-black/40 overflow-hidden border border-white/5 shadow-inner group"
+            className="relative w-full aspect-square rounded-[36px] bg-secondary/35 overflow-hidden border border-border shadow-inner group"
           >
-            {/* Camera View - Always mounted to prevent losing stream reference */}
+            {/* Camera View */}
             <video
               ref={videoRef}
               autoPlay
@@ -357,39 +364,39 @@ function ScannerPage() {
               }`}
             />
 
-            {/* Static Result Image - Shown while analyzing or reviewing results */}
+            {/* Static Result Image */}
             {(scanning || detected) && scanPhoto && (
               <motion.img
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 src={scanPhoto}
-                className="absolute inset-0 w-full h-full object-cover grayscale-[20%]"
+                className="absolute inset-0 w-full h-full object-cover"
               />
             )}
 
-            <div className="absolute inset-0 bg-gradient-to-b from-white/5 via-transparent to-black/20" />
+            <div className="absolute inset-0 bg-gradient-to-b from-primary/[0.04] via-transparent to-black/20" />
 
-            {/* Brackets */}
-            <div className="absolute inset-4 pointer-events-none z-20">
-              <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-white rounded-tl-3xl opacity-40" />
-              <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-white rounded-tr-3xl opacity-40" />
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-white rounded-bl-3xl opacity-40" />
-              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-white rounded-br-3xl opacity-40" />
+            {/* Brackets (Organic Green instead of cold white) */}
+            <div className="absolute inset-5 pointer-events-none z-20">
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-primary rounded-tl-2xl opacity-60" />
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-primary rounded-tr-2xl opacity-60" />
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary rounded-bl-2xl opacity-60" />
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary rounded-br-2xl opacity-60" />
 
-              {/* Scanning Line */}
+              {/* Scanning Green Line */}
               <motion.div
                 animate={{ top: scanning ? ["10%", "90%", "10%"] : ["35%", "65%", "35%"] }}
                 transition={{ duration: scanning ? 1.5 : 4, repeat: Infinity, ease: "easeInOut" }}
-                className={`absolute left-4 right-4 h-[2px] transition-all duration-500 ${scanning ? "bg-white shadow-[0_0_20px_white] opacity-100" : "bg-white opacity-20"} blur-[1px]`}
+                className={`absolute left-4 right-4 h-[2px] transition-all duration-500 ${scanning ? "bg-primary shadow-[0_0_15px_var(--color-primary)] opacity-100" : "bg-primary opacity-20"} blur-[0.5px]`}
               />
             </div>
 
             {scanning && (
               <div className="absolute inset-0 bg-black/40 backdrop-blur-[4px] flex items-center justify-center z-30">
                 <div className="flex flex-col items-center gap-4">
-                  <div className="size-16 rounded-full border-4 border-white/10 border-t-white animate-spin" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white">
-                    Analisando Imagem
+                  <div className="size-12 rounded-full border-4 border-white/10 border-t-white animate-spin" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.25em] text-white">
+                    Analisando Alimento...
                   </span>
                 </div>
               </div>
@@ -398,49 +405,49 @@ function ScannerPage() {
              {!streamOn && (
               <div 
                 onClick={() => cameraRef.current?.click()}
-                className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm z-10 cursor-pointer active:bg-black/90 transition-all duration-300 group"
+                className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/85 backdrop-blur-sm z-10 cursor-pointer active:bg-zinc-950 transition-all duration-300 group"
                 title="Clique para tirar foto com a sua câmera"
               >
-                <Camera className="size-10 text-[#FF8D21] mb-3 animate-pulse group-hover:scale-110 transition-transform" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-white/50 text-center px-8 leading-loose">
-                  Câmera do Navegador Desativada
+                <Camera className="size-10 text-accent mb-3 animate-pulse group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-[#FAF7F2]/60 text-center px-8 leading-loose">
+                  {isInstalledApp() ? "Câmera indisponível. Verifique as permissões de câmara nas Definições do telemóvel." : "Câmera Desabilitada"}
                   <br />
-                  <span className="text-[#FF8D21] font-black text-xs">Clique aqui</span> para abrir de forma nativa
-                  <br />
-                  e tirar foto do seu prato
+                  <span className="text-accent font-black text-xs">{isInstalledApp() ? "Toque aqui" : "Clique aqui"}</span> para abrir {isInstalledApp() ? "a câmara do aparelho" : "nativamente"}
                 </span>
               </div>
             )}
           </motion.div>
         </div>
 
-        {/* Capture Button container - Only show when no results */}
+        {/* Capture Buttons */}
         {!detected && !picked && (
-          <div className="flex items-center justify-center gap-10 mt-2">
+          <div className="flex items-center justify-center gap-8 mt-1">
             <button
               onClick={() => fileRef.current?.click()}
               disabled={scanning}
-              className="size-14 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center transition-all hover:bg-white/10 active:scale-90 disabled:opacity-30"
+              className="size-13 rounded-[20px] bg-secondary hover:bg-muted border border-border flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
+              title="Upload da Galeria"
             >
-              <Upload className="size-6 text-white/40" />
+              <Upload className="size-5 text-muted-foreground" />
             </button>
 
             <button
               onClick={captureAndScan}
               disabled={scanning || !streamOn}
-              className="group relative size-24 rounded-full flex items-center justify-center transition-all duration-700 active:scale-90 disabled:opacity-30"
+              className="group relative size-20 rounded-full flex items-center justify-center transition-all duration-500 active:scale-95 disabled:opacity-30"
             >
-              <div className="absolute inset-0 rounded-full bg-white/20 blur-2xl group-hover:scale-110 transition-transform opacity-0 group-hover:opacity-100" />
-              <div className="size-20 rounded-full bg-[#E0E0E0] shadow-2xl flex items-center justify-center z-10 transition-transform group-hover:scale-105 active:scale-95">
-                <div className="size-16 rounded-full border-4 border-white/40" />
+              <div className="absolute inset-0 rounded-full bg-primary/10 blur-xl group-hover:scale-110 transition-transform opacity-100" />
+              <div className="size-18 rounded-full bg-primary text-primary-foreground shadow-md flex items-center justify-center z-10 transition-transform group-hover:scale-105">
+                <div className="size-14 rounded-full border-2 border-primary-foreground/30" />
               </div>
             </button>
 
             <Link
               to="/diario"
-              className="size-14 rounded-3xl bg-white/5 border border-white/10 flex items-center justify-center transition-all hover:bg-white/10 active:scale-90"
+              className="size-13 rounded-[20px] bg-secondary hover:bg-muted border border-border flex items-center justify-center transition-all active:scale-90"
+              title="Registros Recentes"
             >
-              <History className="size-6 text-white/40" />
+              <History className="size-5 text-muted-foreground" />
             </Link>
           </div>
         )}
@@ -476,45 +483,44 @@ function ScannerPage() {
         onChange={onPickGallery}
       />
 
-      {/* Suggested Section */}
-      <section className="w-full space-y-10 pt-10 border-t border-white/10">
+      {/* Suggested Section - Humanized Journal lists */}
+      <section className="w-full space-y-5 pt-8 border-t border-border">
         <div className="flex items-center justify-between px-2">
-          <h2 className="font-display font-black text-2xl text-white tracking-tight">Sugestões</h2>
+          <h2 className="font-display font-black text-2xl text-foreground tracking-tight">Sugestões</h2>
           <Link
             to="/buscar"
-            className="text-[10px] text-white/40 font-black uppercase tracking-[0.2em] hover:text-white transition-all"
+            className="text-[10px] text-primary font-black uppercase tracking-[0.2em] hover:opacity-80 transition-all"
           >
-            Explorar tudo
+            Ver tudo
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-2 gap-4">
           {sugestoes?.slice(0, 4).map((f, i) => (
             <motion.button
               key={`${f.nome}-${i}`}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 + i * 0.1 }}
+              transition={{ delay: 0.15 + i * 0.05 }}
               onClick={() => setPicked(f)}
-              className="glass rounded-[40px] p-3 text-left hover:bg-white/5 transition-all duration-500 flex flex-col gap-4 group border-white/5 shadow-2xl relative overflow-hidden"
+              className="bg-card rounded-[32px] p-3 text-left hover:bg-secondary/40 transition-all duration-300 flex flex-col gap-3 group border border-border shadow-sm relative overflow-hidden"
             >
-              <div className="absolute inset-0 bg-white/[0.01]" />
-              <div className="relative aspect-square w-full rounded-[32px] overflow-hidden shadow-inner">
+              <div className="relative aspect-square w-full rounded-[24px] overflow-hidden shadow-sm border border-border">
                 <FoodImage
                   src={f.foto_url}
                   alt={f.nome}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out grayscale-[20%] group-hover:grayscale-0"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
-                <div className="absolute bottom-3 right-3 glass-strong px-2.5 py-1 rounded-full text-[10px] font-black text-white shadow-xl border border-white/10">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-60" />
+                <div className="absolute bottom-2.5 right-2.5 bg-white/95 px-2 py-0.5 rounded-full text-[9px] font-black text-zinc-900 border border-zinc-200">
                   {Math.round(f.cal)} kcal
                 </div>
               </div>
-              <div className="px-2 pb-2">
-                <div className="font-bold text-sm text-white line-clamp-2 tracking-tight leading-snug min-h-[2.5rem]">
+              <div className="px-1.5 pb-1">
+                <div className="font-bold text-xs text-foreground line-clamp-2 tracking-tight leading-snug min-h-[2rem]">
                   {f.nome}
                 </div>
-                <div className="text-[9px] font-black uppercase tracking-[0.2em] text-white/20 mt-2">
-                  Toque para adicionar
+                <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80 mt-1.5">
+                  Adicionar ao diário
                 </div>
               </div>
             </motion.button>

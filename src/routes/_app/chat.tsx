@@ -19,6 +19,7 @@ import {
   X,
   PhoneOff,
   UserPlus,
+  UserCheck,
   Check,
   CheckCheck,
   Clock,
@@ -51,7 +52,8 @@ import Peer, { MediaConnection } from "peerjs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useCall } from "@/lib/CallContext";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { isInstalledApp } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/chat")({ component: ChatPage });
 
@@ -190,7 +192,7 @@ function MessageCard({
   isSending?: boolean;
   repliedTo?: any;
   onReply: () => void;
-  onDelete: () => void;
+  onDelete: (forAll: boolean) => void;
   onScrollToReply: (id: string) => void;
   view: string;
   isSelected: boolean;
@@ -203,6 +205,8 @@ function MessageCard({
   const [playbackRate, setPlaybackRate] = useState(1);
   const [progress, setProgress] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [showActionsDialog, setShowActionsDialog] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const cycleRate = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -253,8 +257,11 @@ function MessageCard({
     timerRef.current = setTimeout(() => {
       isHoldingRef.current = true;
       if (!isSelectionMode) {
+        setShowActionsDialog(true);
+        if (navigator.vibrate) navigator.vibrate(40);
+      } else {
         onToggleSelection();
-        if (navigator.vibrate) navigator.vibrate(50);
+        if (navigator.vibrate) navigator.vibrate(10);
       }
     }, 600);
   };
@@ -267,6 +274,7 @@ function MessageCard({
       if (!isHoldingRef.current) {
         if (isSelectionMode) {
           onToggleSelection();
+          if (navigator.vibrate) navigator.vibrate(10);
         } else if (m.reply_to_id) {
           onScrollToReply(m.reply_to_id);
         }
@@ -286,6 +294,23 @@ function MessageCard({
     if (e.buttons === 1 && isSelectionMode && !isSelected) {
       onToggleSelection();
       if (navigator.vibrate) navigator.vibrate(10);
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isSelectionMode) return;
+    setShowActionsDialog(true);
+    if (navigator.vibrate) navigator.vibrate(30);
+  };
+
+  const handleBubbleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isSelectionMode) {
+      onToggleSelection();
+      if (navigator.vibrate) navigator.vibrate(10);
+    } else {
+      // Tap behavior when not in selection mode (reply list navigation, etc.)
     }
   };
 
@@ -312,11 +337,11 @@ function MessageCard({
           onClick={onToggleSelection}
           className={`size-6 rounded-full border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer ${
             isSelected
-              ? "bg-emerald-500 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.4)]"
-              : "border-white/20 bg-white/5"
+              ? "bg-primary border-primary shadow-[0_0_15px_rgba(46,74,59,0.2)]"
+              : "border-border bg-secondary"
           }`}
         >
-          {isSelected && <Check className="size-3.5 text-black" strokeWidth={4} />}
+          {isSelected && <Check className="size-3.5 text-primary-foreground" strokeWidth={4} />}
         </motion.div>
       )}
 
@@ -324,35 +349,41 @@ function MessageCard({
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
+        onContextMenu={handleContextMenu}
+        onClick={handleBubbleClick}
         style={{ touchAction: "pan-y" }}
-        className={`max-w-[70%] md:max-w-[85%] rounded-[18px] px-3.5 py-2 text-sm shadow-xl border backdrop-blur-xl relative overflow-hidden transition-all active:scale-[0.98] cursor-pointer select-none ${
-          isSelected ? "ring-2 ring-emerald-500/50 border-emerald-500/50 bg-emerald-500/10" : ""
+        className={`max-w-[70%] md:max-w-[85%] rounded-[18px] px-3.5 py-2 text-sm shadow-sm border backdrop-blur-xl relative overflow-hidden transition-all active:scale-[0.98] cursor-pointer select-none ${
+          isSelected ? "ring-2 ring-primary/50 border-primary/50 bg-primary/5" : ""
         } ${
           isMe
-            ? "bg-white/10 text-white rounded-tr-none border-white/20 font-medium"
-            : "bg-zinc-900/20 text-zinc-100 rounded-tl-none border-white/10 font-medium"
+            ? "bg-primary text-primary-foreground rounded-tr-none border-primary/20 font-medium"
+            : "bg-card text-foreground rounded-tl-none border-border font-medium"
         }`}
       >
         {/* Visual selection indicator (colored bar on the side) */}
-        {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />}
+        {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />}
 
         <div className="flex flex-col gap-0.5 max-w-full">
           {m.type === "call_log" ? (
             <div className="flex items-center gap-2 py-1">
-              <div className="size-8 rounded-full bg-white/5 flex items-center justify-center">
-                <Phone className="size-4 text-emerald-500" />
+              <div className={`size-8 rounded-full flex items-center justify-center ${isMe ? "bg-white/10" : "bg-secondary"}`}>
+                <Phone className={`size-4 ${isMe ? "text-primary-foreground" : "text-primary"}`} />
               </div>
               <div className="flex flex-col">
-                <span className="text-[11px] font-black uppercase tracking-wider text-white/90">
+                <span className={`text-[11px] font-black uppercase tracking-wider ${isMe ? "text-primary-foreground" : "text-foreground"}`}>
                   Chamada
                 </span>
-                <span className="text-[10px] text-white/40">{m.content}</span>
+                <span className={`text-[10px] ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}>{m.content}</span>
               </div>
             </div>
           ) : m.audio_url ? (
             <div className="flex flex-col gap-1 min-w-[140px] max-w-[220px] py-0.5">
               {repliedTo && (
-                <div className="bg-white/5 rounded-lg p-2 border-l-2 border-primary mb-1 text-[11px] opacity-60 truncate">
+                <div className={`rounded-lg p-2 border-l-2 border-accent mb-1 text-[11px] truncate ${
+                  isMe 
+                    ? "bg-white/10 text-primary-foreground/70 border-white/20" 
+                    : "bg-secondary text-muted-foreground border-primary"
+                }`}>
                   {repliedTo.content || "Voz"}
                 </div>
               )}
@@ -360,16 +391,20 @@ function MessageCard({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="size-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 shrink-0"
+                  className={`size-9 rounded-full shrink-0 border ${
+                    isMe 
+                      ? "bg-white/10 hover:bg-white/20 border-white/20 text-white" 
+                      : "bg-secondary hover:bg-muted border-border text-foreground"
+                  }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleAudio();
                   }}
                 >
                   {isPlaying ? (
-                    <Pause className="size-4 fill-white" />
+                    <Pause className={`size-4 ${isMe ? "fill-primary-foreground text-primary-foreground" : "fill-primary text-primary"}`} />
                   ) : (
-                    <Play className="size-4 fill-white translate-x-[1px]" />
+                    <Play className={`size-4 translate-x-[0.5px] ${isMe ? "fill-primary-foreground text-primary-foreground" : "fill-primary text-primary"}`} />
                   )}
                 </Button>
                 <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -377,15 +412,19 @@ function MessageCard({
                     isPlaying={isPlaying}
                     progress={progress}
                     playbackRate={playbackRate}
-                    color={isMe ? "#10b981" : "#10b981"}
+                    color={isMe ? "#FAF7F2" : "#2E4A3B"}
                   />
                   <div className="flex justify-between items-center px-1 mt-1">
-                    <span className="text-[8px] font-black opacity-60 uppercase tracking-tighter tabular-nums">
+                    <span className={`text-[8px] font-black uppercase tracking-tighter tabular-nums ${isMe ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
                       {formatAudioDuration(m.audio_duration || 0)}
                     </span>
                     <button
                       onClick={cycleRate}
-                      className="text-[9px] font-black bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded-md transition-colors border border-white/5"
+                      className={`text-[9px] font-black px-1.5 py-0.5 rounded-md transition-colors border ${
+                        isMe 
+                          ? "bg-white/10 hover:bg-white/20 border-white/20 text-white" 
+                          : "bg-secondary hover:bg-muted border-border text-foreground"
+                      }`}
                     >
                       {playbackRate}x
                     </button>
@@ -403,29 +442,35 @@ function MessageCard({
           ) : (
             <>
               {repliedTo && (
-                <div className="bg-white/5 rounded-lg p-2 border-l-2 border-primary mb-1 text-[11px] opacity-60 truncate">
+                <div className={`rounded-lg p-2 border-l-2 border-accent mb-1 text-[11px] truncate ${
+                  isMe 
+                    ? "bg-white/10 text-primary-foreground/70 border-white/20" 
+                    : "bg-secondary text-muted-foreground border-primary"
+                }`}>
                   {repliedTo.content || "Voz"}
                 </div>
               )}
               <div className="break-words leading-snug">
                 {isMe ? (
-                  <div className="whitespace-pre-wrap text-white">{m.content}</div>
+                  <div className="whitespace-pre-wrap text-primary-foreground font-medium">{m.content}</div>
                 ) : (
-                  <div className="prose prose-invert prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-white/5 prose-pre:p-3 prose-pre:rounded-lg prose-ul:list-disc prose-ol:list-decimal">
+                  <div className="prose prose-sm max-w-none prose-zinc prose-p:leading-relaxed prose-pre:bg-secondary/40 prose-pre:p-3 prose-pre:rounded-lg prose-ul:list-disc prose-ol:list-decimal text-foreground font-medium">
                     <Markdown remarkPlugins={[remarkGfm]}>{m.content}</Markdown>
                   </div>
                 )}
               </div>
             </>
           )}
-          <div className="flex items-center justify-end gap-1 mt-0.5 text-[8px] font-black tracking-tight self-end opacity-40">
+          <div className={`flex items-center justify-end gap-1 mt-0.5 text-[8px] font-black tracking-tight self-end ${
+            isMe ? "text-primary-foreground/50" : "text-muted-foreground/60"
+          }`}>
             <span>{time}</span>
             {isMe && view !== "ai" && (
               <div className="flex ml-0.5">
                 {m.is_sending ? (
                   <Check className="size-2.5 text-white/40" strokeWidth={3} />
                 ) : m.is_read ? (
-                  <CheckCheck className="size-2.5 text-emerald-500" strokeWidth={3} />
+                  <CheckCheck className="size-2.5 text-accent" strokeWidth={3} />
                 ) : (
                   <CheckCheck className="size-2.5 text-white/20" strokeWidth={2} />
                 )}
@@ -434,6 +479,110 @@ function MessageCard({
           </div>
         </div>
       </div>
+
+      {/* Message action context sheet / options modal */}
+      <Dialog open={showActionsDialog} onOpenChange={setShowActionsDialog}>
+        <DialogContent className="bg-zinc-950/98 border-white/10 text-white max-w-[320px] rounded-[32px] p-5 flex flex-col gap-3 shadow-2xl backdrop-blur-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Opções da Mensagem</DialogTitle>
+            <DialogDescription>Selecione uma ação para realizar nesta mensagem.</DialogDescription>
+          </DialogHeader>
+
+          <div className="text-center pb-2 border-b border-white/5">
+            <h3 className="text-xs font-black uppercase tracking-widest text-zinc-400">Opções da Mensagem</h3>
+          </div>
+          
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-4 h-12 rounded-2xl hover:bg-white/5 text-zinc-100 font-bold text-sm"
+            onClick={() => {
+              setShowActionsDialog(false);
+              onReply();
+            }}
+          >
+            <Undo2 className="size-4 shrink-0 text-primary" />
+            <span>Responder</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-4 h-12 rounded-2xl hover:bg-white/5 text-zinc-100 font-bold text-sm"
+            onClick={() => {
+              setShowActionsDialog(false);
+              onToggleSelection();
+            }}
+          >
+            <Check className="size-4 shrink-0 text-primary" />
+            <span>Selecionar Mensagem</span>
+          </Button>
+
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-4 h-12 rounded-2xl hover:bg-rose-500/10 hover:text-rose-400 text-rose-500 font-bold text-sm"
+            onClick={() => {
+              setShowActionsDialog(false);
+              setShowDeleteConfirm(true);
+            }}
+          >
+            <Trash2 className="size-4 shrink-0 text-rose-500" />
+            <span>Eliminar</span>
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* High-fidelity Deletion Confirmation Dialog */}
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent className="bg-zinc-950/98 border-white/10 text-white max-w-[320px] rounded-[32px] p-6 flex flex-col items-center gap-4 text-center shadow-2xl backdrop-blur-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Eliminar Mensagem?</DialogTitle>
+            <DialogDescription>Confirmar a remoção ou eliminação desta mensagem do chat.</DialogDescription>
+          </DialogHeader>
+
+          <div className="size-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
+            <Trash2 className="size-6" />
+          </div>
+          
+          <div className="space-y-1">
+            <h3 className="text-base font-black tracking-tight text-white">Eliminar Mensagem?</h3>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Deseja realmente apagar esta mensagem do seu chat?
+              {isMe && " Se escolher apagar para todos, os outros utilizadores também não conseguirão vê-la."}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 w-full mt-2">
+            <Button
+              className="w-full h-11 rounded-2xl bg-zinc-800 text-white hover:bg-zinc-700 font-bold text-xs uppercase tracking-wider transition-all"
+              onClick={() => {
+                onDelete(false); // deletes only for me
+                setShowDeleteConfirm(false);
+              }}
+            >
+              Remover para mim
+            </Button>
+
+            {isMe && view !== "ai" && (
+              <Button
+                className="w-full h-11 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-600/20 transition-all"
+                onClick={() => {
+                  onDelete(true); // deletes for everyone
+                  setShowDeleteConfirm(false);
+                }}
+              >
+                Remover para todos
+              </Button>
+            )}
+
+            <Button
+              variant="ghost"
+              className="w-full h-11 rounded-2xl hover:bg-white/5 text-zinc-400 hover:text-white font-bold text-xs uppercase tracking-wider transition-all"
+              onClick={() => setShowDeleteConfirm(false)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
@@ -455,6 +604,7 @@ function ChatPage() {
   const qc = useQueryClient();
 
   const [view, setView] = useState<ChatView>("list");
+  const [socialTab, setSocialTab] = useState<"chats" | "ai_assistant">("chats");
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [usageLimit, setUsageLimit] = useState<{ count: number; limit: number } | null>(null);
   const [selectedUser, setSelectedUser] = useState<{
@@ -499,7 +649,11 @@ function ChatPage() {
       }, 1000);
     } catch (err) {
       console.error("Error starting recording:", err);
-      toast.error("Erro ao acessar microfone");
+      if (isInstalledApp()) {
+        toast.error("Erro ao aceder ao microfone. Ative a permissão de Microfone nas Definições do seu telemóvel (Definições > Aplicações > sar.scan > Permissões).");
+      } else {
+        toast.error("Erro ao aceder ao microfone. Verifique se o seu navegador não bloqueou o acesso.");
+      }
     }
   };
 
@@ -963,7 +1117,7 @@ function ChatPage() {
         if (m.is_deleted_for_all) {
           return (
             <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"} mb-2`}>
-              <div className="text-[11px] text-white/20 italic bg-white/5 px-3 py-1 rounded-full border border-white/5">
+              <div className="text-[11px] text-muted-foreground/60 italic bg-secondary/80 px-4 py-1.5 rounded-full border border-border shadow-sm">
                 Esta mensagem foi apagada
               </div>
             </div>
@@ -985,7 +1139,7 @@ function ChatPage() {
               setReplyTo(m);
               if (inputRef.current) inputRef.current.focus();
             }}
-            onDelete={deleteMessage}
+            onDelete={(forAll) => deleteMessage(m.id, forAll)}
             onScrollToReply={scrollToMessage}
             view={view}
           />
@@ -1201,17 +1355,33 @@ function ChatPage() {
     }
   };
 
-  const inviteFriends = () => {
+  const inviteFriends = async () => {
     const url = window.location.origin;
     if (navigator.share) {
-      navigator.share({
-        title: "Venha treinar comigo!",
-        text: "Estou usando este app incrível para nutrição e treinos. Vem conferir!",
-        url: url,
-      });
+      try {
+        await navigator.share({
+          title: "Venha treinar comigo!",
+          text: "Estou usando este app incrível para nutrição e treinos. Vem conferir!",
+          url: url,
+        });
+      } catch (err: any) {
+        if (err.name === "AbortError") {
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success("Link copiado! Compartilhe com seus amigos.");
+        } catch (_) {
+          // ignore clipboard errors
+        }
+      }
     } else {
-      navigator.clipboard.writeText(url);
-      toast.success("Link copiado! Compartilhe com seus amigos.");
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copiado! Compartilhe com seus amigos.");
+      } catch (_) {
+        // ignore clipboard errors
+      }
     }
   };
 
@@ -1248,12 +1418,12 @@ function ChatPage() {
       {view === "list" && (
         <>
           <div className="flex items-center justify-between px-1">
-            <h1 className="text-3xl font-display font-black tracking-tight">Social</h1>
+            <h1 className="text-3xl font-display font-black tracking-tight text-foreground">Social</h1>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-11 rounded-full bg-white/5 hover:bg-white/10"
+                className="size-11 rounded-full bg-secondary text-foreground hover:bg-secondary/80 border border-border/40 shadow-sm"
                 onClick={inviteFriends}
               >
                 <Share2 className="size-5" />
@@ -1261,12 +1431,12 @@ function ChatPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className={`relative size-11 rounded-full ${view === "requests" ? "bg-primary text-black" : "bg-white/5"}`}
+                className={`relative size-11 rounded-full border shadow-sm ${view === "requests" ? "bg-primary text-primary-foreground border-primary" : "bg-secondary text-foreground hover:bg-secondary/80 border-border/40"}`}
                 onClick={() => setView("requests")}
               >
-                <UserPlus className="size-5" />
+                <UserCheck className="size-5" />
                 {friendRequests && friendRequests.length > 0 && (
-                  <span className="absolute -top-1 -right-1 size-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-black border-2 border-black animate-bounce text-white shadow-lg">
+                  <span className="absolute -top-1 -right-1 size-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-black border-2 border-background animate-bounce text-white shadow-lg">
                     {friendRequests.length}
                   </span>
                 )}
@@ -1276,24 +1446,24 @@ function ChatPage() {
 
           <div className="flex gap-2">
             <div className="relative flex-1 group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-white/30 group-focus-within:text-primary transition-colors" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Pesquisar Amigos..."
-                className="pl-12 h-14 rounded-2xl bg-white/5 border-white/5 focus:ring-2 ring-primary/20"
+                className="pl-12 h-14 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold placeholder:text-muted-foreground/60"
               />
               {search && (
                 <button
                   onClick={() => setSearch("")}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="size-4" />
                 </button>
               )}
             </div>
             <Button
-              className="size-14 rounded-2xl bg-primary hover:bg-primary/90 text-black font-black animate-in zoom-in duration-300"
+              className="size-14 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-black animate-in zoom-in duration-300"
               onClick={() => {
                 setView("find-friends");
                 setSearch("");
@@ -1307,215 +1477,351 @@ function ChatPage() {
             {/* Unified Chat List */}
             <div className="space-y-6">
               {search ? (
-                <div className="space-y-4">
-                  <h2 className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-1">
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
                     Resultados da Busca
                   </h2>
                   {filteredFriends && filteredFriends.length > 0 ? (
-                    filteredFriends.map((p: any) => {
-                      const friendData = myFriends?.find(
-                        (f) => f.sender_id === p.id || f.receiver_id === p.id,
-                      );
-                      const isAccepted = friendData?.status === "accepted";
+                    <div className="grid gap-3">
+                      {filteredFriends.map((p: any) => {
+                        const friendData = myFriends?.find(
+                          (f) => f.sender_id === p.id || f.receiver_id === p.id,
+                        );
+                        const isAccepted = friendData?.status === "accepted";
 
-                      return (
-                        <Card
-                          key={p.id}
-                          className="p-4 flex items-center justify-between bg-white/[0.03] backdrop-blur-sm border-white/[0.05] hover:bg-white/[0.08] cursor-pointer transition-all rounded-[32px] group"
-                          onClick={() => openDm(p)}
-                        >
-                          <div className="flex items-center gap-4 min-w-0">
-                            <Avatar className="size-14 aspect-square rounded-2xl shrink-0">
-                              <AvatarImage src={p.avatar_url || ""} className="object-cover" />
-                              <AvatarFallback className="bg-white/10">
-                                {p.nome?.[0] || "?"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <p className="text-sm font-bold truncate text-white/90 group-hover:text-primary">
-                                {p.nome || "Usuário"}
-                              </p>
-                              <p className="text-[11px] text-white/40 truncate">
-                                {isAccepted ? "Amigo" : "Expandir rede"}
-                              </p>
-                            </div>
-                          </div>
-                        </Card>
-                      );
-                    })
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-white/20">
-                      <Search className="size-12 mb-4 opacity-10" />
-                      <p className="text-sm font-medium">Nenhum usuário encontrado</p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  {/* Recentes / Conversas Ativas */}
-                  {recentChats && recentChats.length > 0 && (
-                    <div className="space-y-3">
-                      <h2 className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-1">
-                        Conversas Recentes
-                      </h2>
-                      {recentChats.map((chat: any) => {
-                        const isMe = chat.sender_id === user?.id;
-                        const isUnread = !isMe && !chat.is_read;
                         return (
                           <Card
-                            key={chat.otherId}
-                            className={`p-4 flex items-center gap-4 border-white/[0.05] backdrop-blur-sm cursor-pointer transition-colors rounded-[32px] group ${
-                              isUnread
-                                ? "bg-white/[0.08] border-white/10 shadow-lg shadow-white/5"
-                                : "bg-white/[0.03] hover:bg-white/[0.08]"
-                            }`}
-                            onClick={() =>
-                              openDm({
-                                id: chat.otherId,
-                                nome: chat.profile?.nome,
-                                avatar_url: chat.profile?.avatar_url,
-                              })
-                            }
+                            key={p.id}
+                            className="p-4 flex items-center justify-between bg-card border border-border hover:bg-secondary/50 cursor-pointer transition-all rounded-[24px] group text-foreground shadow-sm hover:scale-[1.01]"
+                            onClick={() => openDm(p)}
                           >
-                            <div className="relative">
+                            <div className="flex items-center gap-4 min-w-0">
                               <Avatar className="size-14 aspect-square rounded-2xl shrink-0">
-                                <AvatarImage
-                                  src={chat.profile?.avatar_url || ""}
-                                  className="object-cover"
-                                />
-                                <AvatarFallback className="bg-white/10">
-                                  {chat.profile?.nome?.[0] || "?"}
+                                <AvatarImage src={p.avatar_url || ""} className="object-cover" />
+                                <AvatarFallback className="bg-secondary text-primary font-black">
+                                  {p.nome?.[0] || "?"}
                                 </AvatarFallback>
                               </Avatar>
-                              {isUnread && (
-                                <div className="absolute -top-1 -right-1 size-4 bg-emerald-500 rounded-full border-2 border-black animate-pulse" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-0.5">
-                                <p
-                                  className={`text-sm truncate transition-colors ${isUnread ? "font-black text-white" : "font-bold text-white/90 group-hover:text-primary"}`}
-                                >
-                                  {chat.profile?.nome || "Usuário"}
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold truncate text-foreground group-hover:text-primary transition-colors">
+                                  {p.nome || "Usuário"}
                                 </p>
-                              </div>
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                {isMe && (
-                                  <div className="flex shrink-0">
-                                    {chat.is_read ? (
-                                      <CheckCheck
-                                        className="size-3 text-emerald-500"
-                                        strokeWidth={3}
-                                      />
-                                    ) : (
-                                      <CheckCheck
-                                        className="size-3 text-white/20"
-                                        strokeWidth={2}
-                                      />
-                                    )}
-                                  </div>
-                                )}
-                                <p
-                                  className={`text-[11px] truncate max-w-[200px] ${isUnread ? "text-white font-bold" : "text-white/40 font-medium"}`}
-                                >
-                                  {chat.content.length > 40
-                                    ? chat.content.substring(0, 40) + "..."
-                                    : chat.content}
+                                <p className="text-[11px] text-muted-foreground/85 truncate font-medium">
+                                  {isAccepted ? "Amigo" : "Expandir rede"}
                                 </p>
                               </div>
                             </div>
+                            <ChevronRight className="size-5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                           </Card>
                         );
                       })}
                     </div>
-                  )}
-
-                  {/* Amigos sem conversa ainda */}
-                  {filteredFriends?.filter((f) => !recentChats?.some((c) => c.otherId === f.id))
-                    .length > 0 && (
-                    <div className="space-y-3">
-                      <h2 className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-1">
-                        Amigos
-                      </h2>
-                      {filteredFriends
-                        ?.filter((f) => !recentChats?.some((c) => c.otherId === f.id))
-                        .map((friend: any) => (
-                          <Card
-                            key={friend.id}
-                            className="p-4 flex items-center gap-4 bg-white/[0.03] backdrop-blur-sm border-white/[0.05] hover:bg-white/[0.08] cursor-pointer transition-colors rounded-[28px] group"
-                            onClick={() => openDm(friend)}
-                          >
-                            <Avatar className="size-12 rounded-xl shrink-0">
-                              <AvatarImage src={friend.avatar_url || ""} className="object-cover" />
-                              <AvatarFallback className="bg-white/10">
-                                {friend.nome?.[0] || "?"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold truncate group-hover:text-primary transition-colors">
-                                {friend.nome || "Usuário"}
-                              </p>
-                              <p className="text-[10px] text-white/30 truncate">
-                                Começar nova conversa
-                              </p>
-                            </div>
-                          </Card>
-                        ))}
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/45 bg-secondary/10 rounded-[28px] border border-dashed border-border">
+                      <Search className="size-12 mb-4 opacity-40" />
+                      <p className="text-sm font-semibold">Nenhum usuário encontrado</p>
                     </div>
                   )}
-
-                  {/* Empty State */}
-                  {!recentChats?.length && !filteredFriends?.length && (
-                    <div className="py-20 text-center opacity-40 bg-zinc-900/50 rounded-[40px] border border-dashed border-white/10">
-                      <MessagesSquare className="size-16 mx-auto mb-4 text-white/20" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">
-                        Sua lista está vazia
-                      </p>
-                      <Button
-                        variant="link"
-                        className="mt-2 text-primary text-[11px]"
-                        onClick={() => setView("find-friends")}
-                      >
-                        LOCALIZAR NOVOS USUÁRIOS
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* AI Meet-ups Always Last */}
-                  <div className="space-y-3">
-                    <h2 className="text-[10px] font-black uppercase tracking-widest text-white/40 ml-1">
-                      Assistente
-                    </h2>
-                    <Card
-                      className={`p-4 flex items-center gap-4 border-white/[0.05] backdrop-blur-sm cursor-pointer transition-all rounded-[32px] group ${
-                        view === "ai"
-                          ? "bg-primary/20 border-primary/30"
-                          : "bg-white/[0.03] hover:bg-white/[0.08]"
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Premium Social Navigation Tabs */}
+                  <div className="flex bg-secondary/40 p-1 sm:p-1.5 rounded-[20px] sm:rounded-[22px] border border-border/60 gap-1 shadow-sm">
+                    <button
+                      onClick={() => setSocialTab("chats")}
+                      className={`flex-1 py-3 px-2 text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-[12px] sm:rounded-[14px] transition-all flex items-center justify-center gap-2 ${
+                        socialTab === "chats"
+                          ? "bg-primary text-primary-foreground shadow-sm scale-[1.01]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/20"
                       }`}
-                      onClick={() => {
-                        if (canAccessAI) setView("ai");
-                        else navigate({ to: "/premium" });
-                      }}
                     >
-                      <div className="size-14 rounded-2xl bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center shadow-lg shadow-primary/20">
-                        <Sparkles className="size-7 text-white fill-white/20" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="text-sm font-black text-white">MEET-UP AI</p>
-                          <Badge
-                            variant="secondary"
-                            className="text-[8px] bg-primary/20 text-primary border-none"
-                          >
-                            PREMIUM
-                          </Badge>
-                        </div>
-                        <p className="text-[11px] text-white/40">Assistente pessoal de network</p>
-                      </div>
-                      <ChevronRight className="size-5 text-white/20 group-hover:text-primary transition-colors" />
-                    </Card>
+                      <MessagesSquare className="size-4 shrink-0" />
+                      <span>
+                        <span className="inline-block sm:hidden">Amigos</span>
+                        <span className="hidden sm:inline-block">Mensagens e Amigos</span>
+                      </span>
+                      {recentChats?.some((c: any) => c.sender_id !== user?.id && !c.is_read) && (
+                        <span className="size-2 bg-emerald-500 rounded-full animate-pulse shadow-md shrink-0" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setSocialTab("ai_assistant")}
+                      className={`flex-1 py-3 px-2 text-[11px] sm:text-xs font-black uppercase tracking-wider rounded-[12px] sm:rounded-[14px] transition-all flex items-center justify-center gap-2 ${
+                        socialTab === "ai_assistant"
+                          ? "bg-primary text-primary-foreground shadow-sm scale-[1.01]"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/20"
+                      }`}
+                    >
+                      <Sparkles className="size-4 shrink-0" />
+                      <span>
+                        <span className="inline-block sm:hidden">Nutri IA</span>
+                        <span className="hidden sm:inline-block">Assistente IA</span>
+                      </span>
+                      {canAccessAI && (
+                        <Badge className="text-[8px] bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 border-none font-bold px-1 py-0 shrink-0">LIVE</Badge>
+                      )}
+                    </button>
                   </div>
-                </>
+
+                  {/* Tab Contents */}
+                  {socialTab === "chats" ? (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.25 }}
+                      className="space-y-6"
+                    >
+                      {/* Recentes / Conversas Ativas */}
+                      {recentChats && recentChats.length > 0 && (
+                        <div className="space-y-3">
+                          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                            Conversas Recentes
+                          </h2>
+                          <div className="grid gap-3">
+                            {recentChats.map((chat: any) => {
+                              const isMe = chat.sender_id === user?.id;
+                              const isUnread = !isMe && !chat.is_read;
+                              return (
+                                <Card
+                                  key={chat.otherId}
+                                  className={`p-4 flex items-center gap-4 border cursor-pointer transition-all rounded-[24px] group shadow-sm hover:scale-[1.01] hover:shadow-md ${
+                                    isUnread
+                                      ? "bg-emerald-500/10 border-emerald-500/30 ring-1 ring-emerald-500/15"
+                                      : "bg-card border-border hover:bg-secondary/60"
+                                  }`}
+                                  onClick={() =>
+                                    openDm({
+                                      id: chat.otherId,
+                                      nome: chat.profile?.nome,
+                                      avatar_url: chat.profile?.avatar_url,
+                                      shadowState: true,
+                                    } as any)
+                                  }
+                                >
+                                  <div className="relative shrink-0">
+                                    <Avatar className="size-14 aspect-square rounded-2xl shrink-0">
+                                      <AvatarImage
+                                        src={chat.profile?.avatar_url || ""}
+                                        className="object-cover"
+                                      />
+                                      <AvatarFallback className="bg-secondary text-primary font-black">
+                                        {chat.profile?.nome?.[0] || "?"}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    {isUnread && (
+                                      <div className="absolute -top-1 -right-1 size-4 bg-emerald-500 rounded-full border-2 border-background animate-pulse" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                      <p
+                                        className={`text-sm truncate transition-colors ${isUnread ? "font-black text-foreground" : "font-semibold text-foreground/90 group-hover:text-primary"}`}
+                                      >
+                                        {chat.profile?.nome || "Usuário"}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      {isMe && (
+                                        <div className="flex shrink-0">
+                                          {chat.is_read ? (
+                                            <CheckCheck
+                                              className="size-3.5 text-emerald-500"
+                                              strokeWidth={3}
+                                            />
+                                          ) : (
+                                            <CheckCheck
+                                              className="size-3.5 text-muted-foreground/50"
+                                              strokeWidth={2}
+                                            />
+                                          )}
+                                        </div>
+                                      )}
+                                      <p
+                                        className={`text-[11px] truncate max-w-[200px] ${isUnread ? "text-foreground font-bold" : "text-muted-foreground font-medium"}`}
+                                      >
+                                        {chat.content.length > 40
+                                          ? chat.content.substring(0, 40) + "..."
+                                          : chat.content}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <ChevronRight className="size-5 text-muted-foreground/35 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                                </Card>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Amigos sem conversa ainda */}
+                      {filteredFriends?.filter((f) => !recentChats?.some((c) => c.otherId === f.id))
+                        .length > 0 && (
+                        <div className="space-y-3">
+                          <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                            Amigos na Rede
+                          </h2>
+                          <div className="grid gap-3">
+                            {filteredFriends
+                              ?.filter((f) => !recentChats?.some((c) => c.otherId === f.id))
+                              .map((friend: any) => (
+                                <Card
+                                  key={friend.id}
+                                  className="p-4 flex items-center gap-4 bg-card border border-border hover:bg-secondary/60 cursor-pointer transition-all rounded-[24px] group shadow-sm text-foreground hover:scale-[1.01] hover:shadow-md"
+                                  onClick={() => openDm(friend)}
+                                >
+                                  <Avatar className="size-12 rounded-xl shrink-0">
+                                    <AvatarImage src={friend.avatar_url || ""} className="object-cover" />
+                                    <AvatarFallback className="bg-secondary text-primary font-black">
+                                      {friend.nome?.[0] || "?"}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+                                      {friend.nome || "Usuário"}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground font-medium">
+                                      Começar nova conversa
+                                    </p>
+                                  </div>
+                                  <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
+                                </Card>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Empty State */}
+                      {!recentChats?.length && !filteredFriends?.length && (
+                        <div className="py-20 text-center bg-secondary/10 rounded-[32px] border border-dashed border-border text-foreground px-6">
+                          <MessagesSquare className="size-14 mx-auto mb-4 text-muted-foreground/30" />
+                          <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1">
+                            Sua lista está vazia
+                          </p>
+                          <p className="text-[11px] text-muted-foreground/80 max-w-xs mx-auto mb-4 font-medium">
+                            Encontre esportistas e parceiros de corrida para decolar nos treinos juntos.
+                          </p>
+                          <Button
+                            variant="link"
+                            className="mt-2 text-primary font-bold text-[11px] uppercase tracking-wider"
+                            onClick={() => setView("find-friends")}
+                          >
+                            LOCALIZAR NOVOS USUÁRIOS
+                          </Button>
+                        </div>
+                      )}
+                    </motion.div>
+                  ) : (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.25 }}
+                      className="space-y-6"
+                    >
+                      {/* AI Premium Hero Cover */}
+                      <Card className="relative overflow-hidden p-6 bg-gradient-to-br from-primary/10 via-emerald-500/5 to-transparent border border-primary/20 rounded-[28px] shadow-lg">
+                        <div className="absolute top-0 right-0 -mr-6 -mt-6 size-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+                        
+                        <div className="flex items-start gap-4">
+                          <div className="size-14 rounded-2xl bg-gradient-to-br from-primary to-emerald-600 flex items-center justify-center shadow-lg shadow-primary/20 shrink-0">
+                            <Sparkles className="size-7 text-white fill-white/20 animate-pulse" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <h3 className="text-lg font-display font-black tracking-tight text-foreground">Meet-Up AI</h3>
+                              <Badge className="text-[8px] bg-primary/25 text-primary border-none hover:bg-primary/25 font-black">
+                                PREMIUM
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-foreground/90 font-semibold leading-relaxed">
+                              Seu treinador inteligente de socialização, nutrição e rotina física.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Feature Pillar Badges */}
+                        <div className="grid grid-cols-1 gap-3.5 mt-6 pt-5 border-t border-border/60">
+                          <div className="flex items-start gap-3">
+                            <span className="p-1 rounded-lg bg-primary/10 text-primary shrink-0 mt-0.5">
+                              <UserCheck className="size-4" />
+                            </span>
+                            <div>
+                              <p className="text-xs font-bold text-foreground">Networking Esportivo</p>
+                              <p className="text-[11px] text-muted-foreground">Como quebrar o gelo com parceiros de treino e propor caminhos.</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-start gap-3">
+                            <span className="p-1 rounded-lg bg-emerald-500/10 text-emerald-500 shrink-0 mt-0.5">
+                              <Sparkles className="size-4 text-emerald-500" />
+                            </span>
+                            <div>
+                              <p className="text-xs font-bold text-foreground">Conselhos de Saúde & Dieta</p>
+                              <p className="text-[11px] text-muted-foreground">Macronutrientes, snacks pré-treino saudáveis e dúvidas de suplementação.</p>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+
+                      {/* Interactive Prompt Suggestion Chips */}
+                      <div className="space-y-3">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground ml-1">
+                          Ideias de Perguntas Rápidas
+                        </h4>
+                        <div className="grid gap-2">
+                          {[
+                            {
+                              text: "Sugerir mensagens iniciais para quebrar o gelo com amigos de treino",
+                              label: "🤝 Mensagens para quebrar o gelo",
+                            },
+                            {
+                              text: "Me dê ideias de snacks proteicos rápidos antes do treino",
+                              label: "🍌 Lanches proteicos pré-treino",
+                            },
+                            {
+                              text: "Dicas essenciais para manter o foco e constância nos exercícios",
+                              label: "🔥 Como manter a consistência diária",
+                            },
+                            {
+                              text: "Como convidar alguém para treinar junto na academia de forma natural?",
+                              label: "💪 Convidar para treinar junto",
+                            },
+                          ].map((chip, index) => (
+                            <button
+                              key={index}
+                              onClick={() => {
+                                setInput(chip.text);
+                                if (canAccessAI) {
+                                  setView("ai");
+                                } else {
+                                  navigate({ to: "/premium" });
+                                }
+                              }}
+                              className="w-full text-left p-4 rounded-2xl bg-secondary/25 border border-border/80 hover:border-primary/40 hover:bg-secondary/40 text-xs font-semibold text-foreground/85 hover:text-foreground transition-all flex items-center justify-between group shadow-sm"
+                            >
+                              <span>{chip.label}</span>
+                              <ChevronRight className="size-4 text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Launch Button CTA */}
+                      <Button
+                        size="lg"
+                        className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-black text-xs uppercase tracking-wider shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2"
+                        onClick={() => {
+                          if (canAccessAI) setView("ai");
+                          else navigate({ to: "/premium" });
+                        }}
+                      >
+                        <Sparkles className="size-4 fill-white/10 animate-pulse" />
+                        Abrir Chat do Assistente IA
+                      </Button>
+                    </motion.div>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -1528,7 +1834,7 @@ function ChatPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-full bg-white/5"
+              className="rounded-full bg-secondary text-foreground hover:bg-secondary/80 border border-border/40"
               onClick={() => {
                 setView("list");
                 setSearch("");
@@ -1536,35 +1842,35 @@ function ChatPage() {
             >
               <ArrowLeft className="size-5" />
             </Button>
-            <h1 className="text-3xl font-display font-black tracking-tight">Novos Amigos</h1>
+            <h1 className="text-3xl font-display font-black tracking-tight text-foreground">Novos Amigos</h1>
           </div>
 
           <div className="relative group px-1">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 size-4 text-white/30 group-focus-within:text-primary transition-colors" />
+            <Search className="absolute left-5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Nome ou e-mail..."
-              className="pl-12 h-14 rounded-2xl bg-white/5 border-white/5 focus:ring-2 ring-primary/20"
+              className="pl-12 h-14 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-foreground font-semibold placeholder:text-muted-foreground/60"
             />
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-4 px-1 custom-scrollbar pb-10">
             {/* Invite Section */}
             {!search && (
-              <Card className="p-6 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-dashed border-primary/20 rounded-[32px] text-center space-y-4 mb-6">
+              <Card className="p-6 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-[28px] text-center space-y-4 mb-6">
                 <div className="size-16 rounded-full bg-primary/20 mx-auto flex items-center justify-center">
                   <Share2 className="size-8 text-primary" />
                 </div>
                 <div className="space-y-1">
-                  <h3 className="text-lg font-black tracking-tight">Convidar Amigos</h3>
-                  <p className="text-xs text-white/40 px-6">
+                  <h3 className="text-lg font-black tracking-tight text-foreground">Convidar Amigos</h3>
+                  <p className="text-xs text-muted-foreground px-6 font-medium">
                     Compartilhe o FitTrack AI e treine junto com seus amigos!
                   </p>
                 </div>
                 <Button
                   onClick={inviteFriends}
-                  className="w-full h-12 rounded-2xl bg-primary text-black font-black uppercase tracking-wider text-[11px]"
+                  className="w-full h-12 rounded-2xl bg-primary hover:bg-primary/95 text-primary-foreground font-black uppercase tracking-wider text-[11px]"
                 >
                   Compartilhar Link
                 </Button>
@@ -1573,7 +1879,7 @@ function ChatPage() {
 
             {loadingSearch
               ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-20 w-full rounded-3xl bg-white/5 animate-pulse" />
+                  <div key={i} className="h-20 w-full rounded-2xl bg-secondary/30 animate-pulse border border-border" />
                 ))
               : profiles?.map((p) => {
                   const friendData = myFriends?.find(
@@ -1585,39 +1891,39 @@ function ChatPage() {
                   return (
                     <Card
                       key={p.id}
-                      className="p-3 flex items-center gap-4 bg-white/5 border-white/5 hover:bg-white/10 cursor-pointer transition-all rounded-3xl group"
+                      className="p-3 flex items-center gap-4 bg-card border border-border hover:bg-secondary/55 cursor-pointer transition-all rounded-[28px] group text-foreground shadow-sm"
                       onClick={() => openProfile(p)}
                     >
-                      <Avatar className="size-14 aspect-square rounded-2xl border border-white/5 shadow-2xl group-hover:scale-105 transition-transform shrink-0">
+                      <Avatar className="size-14 aspect-square rounded-2xl border border-border group-hover:scale-105 transition-transform shrink-0">
                         <AvatarImage src={p.avatar_url || ""} className="object-cover" />
-                        <AvatarFallback className="bg-white/10">
+                        <AvatarFallback className="bg-secondary text-primary font-black">
                           {p.nome?.[0] || "?"}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black truncate">{p.nome || "Usuário"}</p>
-                        <p className="text-[10px] text-white/30 truncate">{p.email}</p>
+                        <p className="text-sm font-bold truncate text-foreground">{p.nome || "Usuário"}</p>
+                        <p className="text-[10px] text-muted-foreground truncate">{p.email}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         {isAccepted ? (
-                          <div className="size-10 rounded-xl bg-green-500/10 flex items-center justify-center">
+                          <div className="size-10 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
                             <Check className="size-4 text-green-500" />
                           </div>
                         ) : isPending ? (
-                          <div className="size-10 rounded-xl bg-white/5 flex items-center justify-center">
-                            <Clock className="size-4 text-white/20" />
+                          <div className="size-10 rounded-xl bg-secondary border border-border flex items-center justify-center">
+                            <Clock className="size-4 text-muted-foreground/60" />
                           </div>
                         ) : (
                           <Button
                             variant="default"
                             size="icon"
-                            className="size-10 rounded-xl bg-primary hover:bg-primary/80"
+                            className="size-10 rounded-xl bg-primary hover:bg-primary/95 text-primary-foreground"
                             onClick={(e) => {
                               e.stopPropagation();
                               sendFriendRequest(p.id);
                             }}
                           >
-                            <PlusCircle className="size-4 text-black" />
+                            <PlusCircle className="size-4" />
                           </Button>
                         )}
                       </div>
@@ -1626,9 +1932,9 @@ function ChatPage() {
                 })}
 
             {!loadingSearch && (!profiles || profiles.length === 0) && (
-              <div className="py-20 text-center opacity-40">
-                <Search className="size-12 mx-auto mb-4 text-white/20" />
-                <p className="text-xs font-black uppercase tracking-[0.2em]">Ninguém encontrado</p>
+              <div className="py-20 text-center opacity-60">
+                <Search className="size-12 mx-auto mb-4 text-muted-foreground/30" />
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">Ninguém encontrado</p>
               </div>
             )}
           </div>
@@ -1641,38 +1947,38 @@ function ChatPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="rounded-full bg-white/5"
+              className="rounded-full bg-secondary text-foreground hover:bg-secondary/45 border border-border/40"
               onClick={() => setView("list")}
             >
               <ArrowLeft className="size-5" />
             </Button>
-            <h1 className="text-3xl font-display font-black tracking-tight">Convites</h1>
+            <h1 className="text-3xl font-display font-black tracking-tight text-foreground">Convites</h1>
           </div>
 
           <div className="grid gap-3">
             {friendRequests?.map((r: any) => (
               <Card
                 key={r.id}
-                className="p-5 flex items-center gap-4 bg-white/5 border-white/10 hover:bg-white/10 transition-all rounded-[32px] group"
+                className="p-5 flex items-center gap-4 bg-card border border-border hover:bg-secondary/55 transition-all rounded-[28px] group text-foreground shadow-sm"
               >
-                <Avatar className="size-16 aspect-square rounded-2xl border-2 border-white/5 shadow-2xl shrink-0">
+                <Avatar className="size-16 aspect-square rounded-2xl border border-border shadow-md shrink-0">
                   <AvatarImage src={r.sender?.avatar_url || ""} className="object-cover" />
-                  <AvatarFallback className="bg-white/10 text-xl font-bold">
+                  <AvatarFallback className="bg-secondary text-primary text-xl font-bold">
                     {r.sender?.nome?.[0] || "?"}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
-                  <p className="text-lg font-black tracking-tight leading-none mb-1">
+                  <p className="text-lg font-black tracking-tight leading-none mb-1 text-foreground">
                     {r.sender?.nome || "Anônimo"}
                   </p>
-                  <p className="text-[10px] text-white/30 font-black uppercase tracking-widest">
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
                     Deseja ser seu amigo
                   </p>
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex gap-2 mt-45 sm:mt-4">
                     <Button
                       variant="default"
                       size="sm"
-                      className="flex-1 h-10 rounded-xl bg-white text-black hover:bg-zinc-200 font-black text-[11px] uppercase tracking-wider"
+                      className="flex-1 h-10 rounded-xl bg-primary hover:bg-primary/95 text-primary-foreground font-black text-[11px] uppercase tracking-wider"
                       onClick={() => acceptFriendRequest(r.id)}
                     >
                       Aceitar
@@ -1680,7 +1986,7 @@ function ChatPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-10 w-10 p-0 rounded-xl bg-white/5 hover:bg-white/10"
+                      className="h-10 w-10 p-0 rounded-xl bg-secondary text-foreground hover:bg-secondary/80 border border-border"
                       onClick={async () => {
                         await supabase.from("friends").delete().eq("id", r.id);
                         qc.invalidateQueries({ queryKey: ["friend_requests"] });
@@ -1697,15 +2003,15 @@ function ChatPage() {
 
           {!friendRequests?.length && (
             <div className="py-32 text-center space-y-4">
-              <div className="size-20 rounded-full bg-white/5 mx-auto flex items-center justify-center opacity-20">
-                <UserPlus className="size-10" />
+              <div className="size-20 rounded-2xl bg-secondary border border-border mx-auto flex items-center justify-center text-primary shadow-sm">
+                <UserCheck className="size-10" />
               </div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-white/20">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground">
                 Caixa de entrada vazia
               </p>
               <Button
                 variant="ghost"
-                className="text-[10px] font-black uppercase text-primary"
+                className="text-[11px] font-black uppercase text-primary tracking-wider hover:underline hover:bg-transparent h-auto p-0"
                 onClick={() => setView("list")}
               >
                 Explorar usuários
@@ -1796,13 +2102,13 @@ function ChatPage() {
       </Dialog>
 
       {(view === "dm" || view === "ai") && (
-        <div className="flex flex-col h-full fixed inset-0 z-50 bg-black pt-6 animate-in slide-in-from-right-4 duration-300">
+        <div className="flex flex-col h-full fixed inset-0 z-50 bg-background pt-6 animate-in slide-in-from-right-4 duration-300">
           <div className="flex items-center gap-4 mb-4 px-6">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setView("list")}
-              className="rounded-full bg-white/5 h-10 w-10"
+              className="rounded-full bg-secondary hover:bg-muted text-foreground h-10 w-10"
             >
               <ArrowLeft className="size-5" />
             </Button>
@@ -1810,21 +2116,21 @@ function ChatPage() {
               {view === "ai" ? (
                 <>
                   <div className="size-10 rounded-xl bg-primary flex items-center justify-center">
-                    <Crown className="size-5 text-black" />
+                    <Crown className="size-5 text-primary-foreground" />
                   </div>
                   <div>
-                    <h2 className="text-xs font-black uppercase tracking-tight">
+                    <h2 className="text-xs font-black uppercase tracking-tight text-foreground">
                       IA Nutricionista
                     </h2>
-                    <p className="text-[10px] text-green-500 font-black uppercase tracking-widest">
+                    <p className="text-[10px] text-primary font-black uppercase tracking-widest">
                       Ativa Agora
                     </p>
                   </div>
                   {usageInfo && usageInfo.limit !== -1 && (
                     <div className="ml-auto flex flex-col items-end">
-                      <div className="px-2 py-1 rounded-md bg-white/5 border border-white/10 flex flex-col items-center">
-                        <span className="text-[8px] font-black tracking-widest text-white/30 uppercase leading-none mb-0.5">Uso Diário</span>
-                        <span className="text-[10px] font-bold text-white leading-none">
+                      <div className="px-2 py-1 rounded-xl bg-secondary border border-border flex flex-col items-center">
+                        <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase leading-none mb-0.5">Uso Diário</span>
+                        <span className="text-[10px] font-black text-primary leading-none">
                           {usageInfo.count} / {usageInfo.limit}
                         </span>
                       </div>
@@ -1834,11 +2140,11 @@ function ChatPage() {
               ) : (
                 <>
                   <Avatar
-                    className="size-11 aspect-square rounded-2xl border border-white/10 cursor-pointer hover:border-white/20 transition-all shrink-0"
+                    className="size-11 aspect-square rounded-2xl border border-border cursor-pointer hover:border-primary/20 transition-all shrink-0"
                     onClick={() => selectedUser && openProfile(selectedUser)}
                   >
                     <AvatarImage src={selectedUser?.avatar_url || ""} className="object-cover" />
-                    <AvatarFallback className="bg-zinc-800">
+                    <AvatarFallback className="bg-secondary text-primary font-black">
                       {selectedUser?.nome?.[0] || "?"}
                     </AvatarFallback>
                   </Avatar>
@@ -1846,10 +2152,10 @@ function ChatPage() {
                     className="flex-1 min-w-0"
                     onClick={() => selectedUser && openProfile(selectedUser)}
                   >
-                    <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors cursor-pointer">
+                    <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors cursor-pointer text-foreground">
                       {selectedUser?.nome || "Usuário"}
                     </h2>
-                    <p className="text-[10px] text-white/30 font-black uppercase tracking-tighter">
+                    <p className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">
                       Social Match
                     </p>
                   </div>
@@ -1857,7 +2163,7 @@ function ChatPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-11 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5"
+                      className="size-11 rounded-2xl bg-secondary hover:bg-muted text-foreground border border-border"
                       onClick={() => startCall(selectedUser!.id)}
                     >
                       <Phone className="size-5" />
@@ -1871,22 +2177,22 @@ function ChatPage() {
           <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-6 mb-2 custom-scrollbar flex flex-col pt-4 overscroll-behavior-contain">
             {view === "ai" && !canAccessAI ? (
               <div className="my-auto">
-                <Card className="p-8 text-center space-y-6 bg-gradient-to-br from-primary/20 to-transparent border-primary/20 rounded-[40px]">
-                  <div className="size-20 rounded-[32px] bg-white mx-auto flex items-center justify-center shadow-2xl shadow-white/20">
-                    <Lock className="size-10 text-black" />
+                <Card className="p-8 text-center space-y-6 bg-gradient-to-br from-primary/10 to-transparent border-primary/10 rounded-[40px] shadow-sm">
+                  <div className="size-20 rounded-[32px] bg-primary mx-auto flex items-center justify-center shadow-lg shadow-primary/10">
+                    <Lock className="size-10 text-primary-foreground" />
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-display font-black">Recurso Premium</h2>
-                    <p className="text-sm text-white/50 px-4">
+                    <h2 className="text-2xl font-display font-black text-foreground">Recurso Premium</h2>
+                    <p className="text-sm text-muted-foreground px-4">
                       Tire dúvidas em tempo real com nosso especialista nutricional via IA.
                     </p>
-                    <p className="text-[10px] text-white/30 font-black uppercase tracking-widest mt-2">
+                    <p className="text-[10px] text-muted-foreground/60 font-black uppercase tracking-widest mt-2">
                       Exclusivo para planos Mensal e Anual
                     </p>
                   </div>
                   <Button
                     asChild
-                    className="w-full h-14 rounded-2xl bg-white text-black hover:bg-white/90 font-black uppercase tracking-wider"
+                    className="w-full h-14 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-wider shadow-sm"
                   >
                     <Link to="/premium">
                       <Crown className="size-5 mr-2" /> Assinar Premium
@@ -1896,19 +2202,19 @@ function ChatPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="text-center py-4 opacity-20">
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] border border-white/10 inline-block px-4 py-1 rounded-full text-white">
+                <div className="text-center py-4">
+                  <p className="text-[9px] font-black uppercase tracking-[0.25em] border border-border inline-block px-4 py-1 rounded-full text-muted-foreground bg-secondary/50">
                     Início da Conversa
                   </p>
                 </div>
                 {renderMessages()}
                 {sending && (
                   <div className="flex justify-start animate-in fade-in duration-300">
-                    <div className="bg-zinc-900 border border-white/5 rounded-2xl px-5 py-3">
+                    <div className="bg-card border border-border rounded-2xl px-5 py-3 shadow-sm">
                       <div className="flex gap-1.5 items-center">
-                        <div className="size-1.5 bg-white/30 rounded-full animate-bounce" />
-                        <div className="size-1.5 bg-white/30 rounded-full animate-bounce [animation-delay:0.2s]" />
-                        <div className="size-1.5 bg-white/30 rounded-full animate-bounce [animation-delay:0.4s]" />
+                        <div className="size-1.5 bg-primary/30 rounded-full animate-bounce" />
+                        <div className="size-1.5 bg-primary/30 rounded-full animate-bounce [animation-delay:0.2s]" />
+                        <div className="size-1.5 bg-primary/30 rounded-full animate-bounce [animation-delay:0.4s]" />
                       </div>
                     </div>
                   </div>
@@ -1918,7 +2224,7 @@ function ChatPage() {
             )}
           </div>
 
-          <div className="p-2.5 sm:p-3 bg-zinc-950/80 backdrop-blur-3xl pb-[var(--android-bottom-offset,32px)] relative">
+          <div className="p-2 sm:p-3 pb-[calc(var(--android-bottom-offset,16px)+12px)] relative bg-transparent">
             {isSelectionMode ? (
               <motion.div
                 initial={{ y: 50, opacity: 0 }}
@@ -1926,18 +2232,18 @@ function ChatPage() {
                 exit={{ y: 50, opacity: 0 }}
                 className="flex items-center justify-center absolute inset-x-0 -top-20 px-4 pointer-events-none"
               >
-                <div className="bg-zinc-900/95 backdrop-blur-3xl border border-white/10 h-16 rounded-full shadow-2xl flex items-center px-2 gap-1 pointer-events-auto ring-1 ring-white/5 max-w-full overflow-hidden">
+                <div className="bg-card backdrop-blur-3xl border border-border h-16 rounded-full shadow-2xl flex items-center px-2 gap-1 pointer-events-auto ring-1 ring-primary/5 max-w-full overflow-hidden">
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={clearSelection}
-                    className="size-12 rounded-full hover:bg-white/5"
+                    className="size-12 rounded-full hover:bg-secondary text-foreground"
                   >
                     <X className="size-5" />
                   </Button>
 
-                  <div className="px-4 h-10 flex items-center bg-white/5 rounded-full border border-white/5">
-                    <p className="text-sm font-black text-white whitespace-nowrap">
+                  <div className="px-4 h-10 flex items-center bg-secondary rounded-full border border-border">
+                    <p className="text-sm font-black text-foreground whitespace-nowrap">
                       {selectedMessageIds.size}
                     </p>
                   </div>
@@ -1948,7 +2254,7 @@ function ChatPage() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-12 rounded-full hover:bg-white/5 text-primary"
+                          className="size-12 rounded-full hover:bg-secondary text-primary"
                           onClick={() => {
                             const id = Array.from(selectedMessageIds)[0];
                             const m = (view === "ai" ? aiMsgs : directMsgs)?.find(
@@ -1981,7 +2287,7 @@ function ChatPage() {
                     >
                       <Button
                         size="sm"
-                        className="bg-white/5 hover:bg-white/10 text-white rounded-full px-4 h-10 font-bold text-[10px] uppercase tracking-wider"
+                        className="bg-secondary hover:bg-muted text-foreground rounded-full px-4 h-10 font-bold text-[10px] uppercase tracking-wider"
                         onClick={() => deleteSelectedMessages(false)}
                       >
                         Só para mim
@@ -1998,10 +2304,10 @@ function ChatPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="size-10 rounded-full"
+                        className="size-10 rounded-full text-foreground/45 hover:bg-secondary"
                         onClick={() => setShowDeleteOptions(false)}
                       >
-                        <ArrowLeft className="size-4 opacity-40" />
+                        <ArrowLeft className="size-4" />
                       </Button>
                     </motion.div>
                   )}
@@ -2009,12 +2315,12 @@ function ChatPage() {
               </motion.div>
             ) : (
               replyTo && (
-                <div className="flex items-center justify-between bg-zinc-800/80 backdrop-blur-md p-3 rounded-t-2xl border-x border-t border-white/10 mb-[-1px] animate-in slide-in-from-bottom-2">
+                <div className="flex items-center justify-between bg-secondary/95 backdrop-blur-md p-3 rounded-t-2xl border-x border-t border-border mb-[-1px] animate-in slide-in-from-bottom-2">
                   <div className="flex items-center gap-3">
                     <Undo2 className="size-4 text-primary" />
                     <div className="min-w-0">
                       <p className="text-[10px] font-bold text-primary uppercase">Respondendo</p>
-                      <p className="text-xs text-white/60 truncate max-w-[200px]">
+                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">
                         {replyTo.content}
                       </p>
                     </div>
@@ -2022,7 +2328,7 @@ function ChatPage() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="size-6 text-white/40"
+                    className="size-6 text-muted-foreground/50 hover:text-foreground"
                     onClick={() => setReplyTo(null)}
                   >
                     <X className="size-4" />
@@ -2032,8 +2338,8 @@ function ChatPage() {
             )}
             <div className="flex gap-2 max-w-4xl mx-auto items-center">
               {isRecording ? (
-                <div className="flex-1 flex items-center justify-between bg-zinc-900 rounded-xl h-12 px-4 border border-primary/20">
-                  <div className="flex items-center gap-3">
+                <div className="flex-1 flex items-center justify-between bg-secondary/40 rounded-xl h-12 px-4 shadow-none">
+                  <div className="flex items-center gap-3 text-foreground">
                     <div className="size-2 bg-red-500 rounded-full animate-pulse" />
                     <span className="text-xs font-black mono tabular-nums opacity-60">
                       {formatTime(recordingTime)}
@@ -2044,14 +2350,14 @@ function ChatPage() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-10 rounded-full text-white/40 hover:text-white"
+                      className="size-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
                       onClick={cancelRecording}
                     >
                       <Trash className="size-5" />
                     </Button>
                     <Button
                       size="sm"
-                      className="bg-primary text-black rounded-xl px-4 h-10 font-bold text-[10px] uppercase tracking-wider"
+                      className="bg-primary text-primary-foreground rounded-xl px-4 h-10 font-black text-[10px] uppercase tracking-wider"
                       onClick={stopRecording}
                     >
                       Parar
@@ -2059,12 +2365,12 @@ function ChatPage() {
                   </div>
                 </div>
               ) : audioBlob ? (
-                <div className="flex-1 flex items-center justify-between bg-zinc-900 rounded-xl h-12 px-4 border border-emerald-500/20">
+                <div className="flex-1 flex items-center justify-between bg-secondary/40 rounded-xl h-12 px-4 shadow-none">
                   <div className="flex items-center gap-2">
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-10 rounded-full bg-white/5 border border-white/5"
+                      className="size-10 rounded-full bg-card border border-border text-foreground hover:bg-muted"
                       onClick={() => {
                         if (isPreviewing) {
                           previewAudioRef.current?.pause();
@@ -2079,9 +2385,9 @@ function ChatPage() {
                         }
                       }}
                     >
-                      {isPreviewing ? <Pause className="size-5" /> : <Play className="size-5" />}
+                      {isPreviewing ? <Pause className="size-5 text-foreground" /> : <Play className="size-5 text-foreground" />}
                     </Button>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-primary">
                       Áudio Pronto
                     </span>
                   </div>
@@ -2089,14 +2395,14 @@ function ChatPage() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="size-10 rounded-full text-white/40 hover:text-white"
+                      className="size-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
                       onClick={() => setAudioBlob(null)}
                     >
                       <X className="size-5" />
                     </Button>
                     <Button
                       size="icon"
-                      className="size-10 rounded-full bg-emerald-500 text-black hover:bg-emerald-600 shadow-lg shadow-emerald-500/20"
+                      className="size-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 shadow-md shadow-primary/10"
                       onClick={sendAudio}
                       disabled={sending}
                     >
@@ -2112,13 +2418,13 @@ function ChatPage() {
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Escreva algo..."
                     onKeyDown={(e) => e.key === "Enter" && send()}
-                    className="bg-white/5 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-xs sm:text-sm h-12 rounded-xl flex-1 px-4 shadow-inner"
+                    className="bg-secondary/40 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-foreground text-xs sm:text-sm h-12 rounded-xl flex-1 px-4 shadow-none"
                   />
                   {input.trim() || (view === "ai" && !input.trim()) ? (
                     <Button
                       onClick={send}
                       disabled={sending || !input.trim() || (view === "ai" && !canAccessAI)}
-                      className="size-12 rounded-xl bg-white text-black hover:bg-zinc-200 shadow-xl transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center shrink-0"
+                      className="size-12 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 shadow-md transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center shrink-0"
                     >
                       <SendIcon className="size-5" />
                     </Button>
@@ -2126,9 +2432,9 @@ function ChatPage() {
                     <Button
                       onClick={startRecording}
                       disabled={sending}
-                      className="size-12 rounded-xl bg-white/5 text-white hover:bg-white/10 border border-white/10 shadow-xl transition-all active:scale-95 flex items-center justify-center shrink-0"
+                      className="size-12 rounded-xl bg-secondary/40 text-primary hover:bg-secondary/60 transition-all active:scale-95 flex items-center justify-center shrink-0 shadow-none"
                     >
-                      <Mic className="size-5" />
+                      <Mic className="size-5 text-primary" />
                     </Button>
                   )}
                 </>
@@ -2140,43 +2446,43 @@ function ChatPage() {
     </div>
 
       <Dialog open={showLimitModal} onOpenChange={setShowLimitModal}>
-        <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
+        <DialogContent className="max-w-md bg-card border border-border p-0 overflow-hidden rounded-[32px] text-foreground">
           <DialogHeader className="sr-only">
             <DialogTitle>Limite de Chat Atingido</DialogTitle>
           </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
-            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/5 to-transparent" />
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-secondary/50 to-transparent" />
             
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
-              className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center mb-6 shadow-2xl"
+              className="relative z-10 size-20 rounded-[24px] bg-primary text-primary-foreground flex items-center justify-center mb-6 shadow-lg shadow-primary/10"
             >
               <Lock className="size-10" />
             </motion.div>
 
-            <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
+            <h2 className="text-2xl font-display font-black tracking-tight text-foreground mb-2 uppercase">
               Limite Atingido
             </h2>
-            <p className="text-white/60 text-sm font-medium mb-8">
+            <p className="text-muted-foreground text-sm font-medium mb-8">
               Você atingiu o limite de {usageLimit?.limit} interações mensais do seu plano. 
               {subscription?.plan === "monthly" ? " Faça o upgrade para o plano Anual e tenha acesso ilimitado!" : " Assine o Premium para continuar conversando."}
             </p>
 
             <div className="w-full space-y-3 mb-8">
-              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-left">
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary/60 border border-border text-left">
                 <div className="flex items-center gap-3">
-                  <div className="size-8 rounded-xl bg-white/5 flex items-center justify-center">
-                    <Sparkles className="size-4 text-white" />
+                  <div className="size-8 rounded-xl bg-secondary flex items-center justify-center border border-border">
+                    <Sparkles className="size-4 text-primary" />
                   </div>
                   <div>
-                    <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Seu Plano</p>
-                    <p className="text-sm font-bold text-white uppercase">{subscription?.plan || "Gratuito"}</p>
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Seu Plano</p>
+                    <p className="text-sm font-black text-foreground uppercase">{subscription?.plan || "Gratuito"}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-black text-white/30 uppercase tracking-widest">Uso</p>
-                  <p className="text-sm font-bold text-white">{usageLimit?.count} / {usageLimit?.limit}</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Uso</p>
+                  <p className="text-sm font-black text-foreground">{usageLimit?.count} / {usageLimit?.limit}</p>
                 </div>
               </div>
             </div>
@@ -2187,15 +2493,15 @@ function ChatPage() {
                   setShowLimitModal(false);
                   navigate({ to: "/premium" });
                 }}
-                className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all group"
+                className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black text-sm shadow-md transition-all group"
               >
                 Ver Planos Ilimitados
-                <Crown className="ml-2 size-4 text-black group-hover:scale-110 transition-transform" />
+                <Crown className="ml-2 size-4 text-primary-foreground group-hover:scale-110 transition-transform" />
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => setShowLimitModal(false)}
-                className="w-full h-12 text-white/40 hover:text-white hover:bg-white/5 font-bold text-xs"
+                className="w-full h-12 text-muted-foreground hover:text-foreground hover:bg-secondary font-bold text-xs rounded-full"
               >
                 Entendi
               </Button>

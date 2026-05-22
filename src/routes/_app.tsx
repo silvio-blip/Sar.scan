@@ -98,20 +98,20 @@ function AppLayout() {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-black grid place-items-center">
-        <Loader2 className="size-12 animate-spin text-white" />
+      <div className="min-h-screen bg-background grid place-items-center">
+        <Loader2 className="size-12 animate-spin text-primary" />
       </div>
     );
   if (!user) return <Navigate to="/login" />;
   if (profile && !profile.onboarding_done) return <Navigate to="/onboarding" />;
 
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center font-sans tracking-tight antialiased">
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center font-sans tracking-tight antialiased selection:bg-primary/20">
       {showIntro && <IntroAnimation onDone={handleIntroDone} />}
 
-      <main className="flex-1 w-full max-w-[480px] bg-black/40 px-6 pt-12 overflow-hidden relative shadow-2xl border-x border-white/5 pb-[var(--main-padding-bottom,160px)]">
-        {/* Subtle monochrome glow at the top */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 bg-white/5 blur-[100px] pointer-events-none" />
+      <main className="flex-1 w-full max-w-[480px] bg-card px-6 pt-12 overflow-hidden relative shadow-xl border-x border-border pb-[var(--main-padding-bottom,160px)]">
+        {/* Delicate organic glow at the top */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 bg-primary/5 blur-[80px] pointer-events-none" />
 
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
           <Outlet />
@@ -120,9 +120,9 @@ function AppLayout() {
 
       <nav 
         style={{ bottom: "var(--android-nav-bottom, 32px)" }}
-        className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(92vw,420px)] px-4 transition-all duration-300"
+        className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(94vw,440px)] px-4 transition-all duration-300"
       >
-        <div className="glass-strong rounded-[40px] px-3 py-3 flex items-center justify-around shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10">
+        <div className="glass-strong rounded-[44px] px-2 py-2 flex items-center justify-around shadow-[0_16px_40px_rgba(46,74,59,0.08)] border border-border">
           {tabs.map(({ to, Icon, label }) => {
             const active = loc.pathname.startsWith(to);
             return (
@@ -130,13 +130,13 @@ function AppLayout() {
                 key={to}
                 to={to}
                 aria-label={label}
-                className={`relative flex items-center justify-center size-14 rounded-2xl transition-all duration-500 ${
+                className={`relative flex items-center justify-center size-13 rounded-[28px] transition-all duration-300 ${
                   active
-                    ? "bg-white text-black shadow-[0_0_30px_rgba(255,255,255,0.4)] scale-110"
-                    : "text-white/20 hover:text-white/60"
+                    ? "bg-primary text-primary-foreground shadow-[0_8px_20px_rgba(46,74,59,0.25)] scale-105 font-bold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
                 }`}
               >
-                <Icon className="size-6" strokeWidth={active ? 3 : 2} />
+                <Icon className="size-5.5" strokeWidth={active ? 2.5 : 2} />
               </Link>
             );
           })}

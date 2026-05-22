@@ -94,15 +94,15 @@ export function BuscarPage() {
     <div className="space-y-6 animate-in fade-in duration-700">
       <div className="flex items-center gap-4">
         <div className="flex-1">
-          <h1 className="text-2xl font-display font-black tracking-tight">Buscar Alimento</h1>
-          <p className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wider opacity-60">
+          <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Buscar Alimento</h1>
+          <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
             {popular?.length ?? 0} alimentos na base local
           </p>
         </div>
       </div>
 
-      <div className="glass rounded-[28px] flex items-center gap-4 px-6 py-4 border-white/10 shadow-inner group focus-within:ring-2 ring-white/10 transition-all">
-        <Search className="size-5 text-muted-foreground group-focus-within:text-white transition-colors" />
+      <div className="bg-secondary rounded-[24px] flex items-center gap-4 px-5 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
+        <Search className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors" strokeWidth={2.5} />
         <input
           value={q}
           onChange={(e) => {
@@ -110,7 +110,7 @@ export function BuscarPage() {
             setVariants(null);
           }}
           placeholder="O que você comeu?"
-          className="flex-1 bg-transparent outline-none text-sm font-medium placeholder:text-muted-foreground/30"
+          className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground/60"
         />
       </div>
 
@@ -119,22 +119,21 @@ export function BuscarPage() {
           <Button
             onClick={buscarIA}
             disabled={aiBusy}
-            className="w-full h-14 rounded-[24px] bg-white text-black hover:bg-zinc-200 font-black shadow-lg shadow-white/10 border border-white/10"
+            className="w-full h-12 rounded-[20px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold shadow-sm transition-all"
           >
             {aiBusy ? (
               <Loader2 className="size-5 animate-spin mr-2" />
             ) : (
               <Sparkles className="size-5 mr-2" />
             )}
-            Analisar "{q}" com IA
+            Analisar com IA: "{q}"
           </Button>
         )
       ) : (
-        <div className="glass rounded-[24px] p-4 flex items-center gap-3 justify-center text-[10px] font-black uppercase tracking-widest border-white/10 shadow-xl overflow-hidden relative">
-          <div className="absolute inset-0 bg-white/5" />
-          <Crown className="size-4 text-white relative z-10" />
-          <span className="text-muted-foreground relative z-10">
-            Premium busca qualquer alimento com IA
+        <div className="bg-secondary/40 rounded-[20px] p-4 flex items-center gap-3 justify-center text-[10px] font-black uppercase tracking-widest border border-border/80 shadow-sm overflow-hidden relative">
+          <Crown className="size-4 text-accent relative z-10 animate-pulse" />
+          <span className="text-foreground/80 relative z-10 font-bold font-sans">
+            Assine o Premium para buscar qualquer comida por IA
           </span>
         </div>
       )}
@@ -142,7 +141,7 @@ export function BuscarPage() {
       {variants && (
         <button
           onClick={() => setVariants(null)}
-          className="text-[10px] text-white font-black uppercase tracking-widest hover:opacity-100 opacity-70 transition-opacity"
+          className="text-[10px] text-primary font-black uppercase tracking-widest hover:opacity-85 transition-opacity"
         >
           ← Voltar à lista popular
         </button>
@@ -153,11 +152,11 @@ export function BuscarPage() {
           {Array.from({ length: 4 }).map((_, i) => (
             <div
               key={i}
-              className="glass rounded-[32px] p-4 space-y-3 animate-pulse border-white/5"
+              className="bg-secondary/30 rounded-[28px] p-4 space-y-3 animate-pulse border border-border/40"
             >
-              <div className="aspect-square rounded-[24px] bg-white/5" />
-              <div className="h-4 bg-white/5 rounded-full w-3/4" />
-              <div className="h-3 bg-white/5 rounded-full w-1/2" />
+              <div className="aspect-square rounded-[20px] bg-secondary/50" />
+              <div className="h-4 bg-secondary/50 rounded-full w-3/4" />
+              <div className="h-3 bg-secondary/50 rounded-full w-1/2" />
             </div>
           ))}
         </div>
@@ -168,22 +167,22 @@ export function BuscarPage() {
           <button
             key={`${f.nome}-${i}`}
             onClick={() => setSelected(f)}
-            className="rounded-[40px] border border-white/5 bg-white/[0.03] backdrop-blur-2xl p-3 text-left transition-all duration-500 hover:bg-white/[0.08] hover:-translate-y-1 active:scale-95 flex flex-col gap-3 shadow-2xl group relative overflow-hidden"
+            className="rounded-[28px] border border-border/50 bg-card p-3 text-left transition-all duration-300 hover:bg-secondary/20 hover:border-border active:scale-95 flex flex-col gap-2.5 shadow-sm group relative overflow-hidden"
           >
-            <div className="relative aspect-square w-full rounded-[32px] overflow-hidden shadow-inner">
+            <div className="relative aspect-square w-full rounded-[20px] overflow-hidden shadow-sm border border-border">
               <FoodImage
                 src={f.foto_url}
                 alt={f.nome}
                 eager={i < 4}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-out grayscale-[20%] group-hover:grayscale-0"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
-              <div className="absolute bottom-3 right-3 glass-strong px-2.5 py-1 rounded-full text-[10px] font-black text-white shadow-xl border border-white/10">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-60" />
+              <div className="absolute bottom-2 right-2 bg-white/95 px-2 py-0.5 rounded-full text-[9px] font-black text-zinc-900 border border-zinc-200">
                 {Math.round(f.cal)} kcal
               </div>
             </div>
-            <div className="px-2 pb-2 space-y-1.5 flex-1 flex flex-col justify-between">
-              <div className="font-bold text-sm text-foreground line-clamp-2 tracking-tight leading-snug min-h-[2.5rem]">
+            <div className="px-1 pb-1 space-y-2 flex-1 flex flex-col justify-between">
+              <div className="font-bold text-xs text-foreground line-clamp-2 tracking-tight leading-snug min-h-[2rem]">
                 {f.nome}
               </div>
               <div className="flex items-center gap-1.5 overflow-hidden">
@@ -194,12 +193,12 @@ export function BuscarPage() {
                 ].map((m) => (
                   <div
                     key={m.l}
-                    className="flex-1 bg-white/[0.04] py-1.5 rounded-xl border border-white/5 text-center"
+                    className="flex-1 bg-secondary/30 py-1 rounded-lg border border-border/30 text-center"
                   >
-                    <div className="text-[8px] font-black uppercase text-white/30 mb-0.5">
+                    <div className="text-[7.5px] font-black uppercase text-muted-foreground mb-0.5">
                       {m.l}
                     </div>
-                    <div className="text-[10px] font-black text-white/80">{Math.round(m.v)}g</div>
+                    <div className="text-[10px] font-black text-foreground">{Math.round(m.v)}g</div>
                   </div>
                 ))}
               </div>

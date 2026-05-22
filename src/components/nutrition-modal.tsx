@@ -23,10 +23,10 @@ type Props = {
 };
 
 const BLOCKS = [
-  { key: "cal", label: "Calorias", unit: "", Icon: Flame, color: "text-zinc-200" },
-  { key: "carb", label: "Carbos", unit: "g", Icon: Wheat, color: "text-zinc-400" },
-  { key: "prot", label: "Proteína", unit: "g", Icon: Beef, color: "text-white" },
-  { key: "gord", label: "Gordura", unit: "g", Icon: Droplet, color: "text-zinc-500" },
+  { key: "cal", label: "Calorias", unit: "", Icon: Flame, color: "text-accent" },
+  { key: "carb", label: "Carbos", unit: "g", Icon: Wheat, color: "text-amber-600" },
+  { key: "prot", label: "Proteína", unit: "g", Icon: Beef, color: "text-primary" },
+  { key: "gord", label: "Gordura", unit: "g", Icon: Droplet, color: "text-sky-500" },
 ] as const;
 
 export function NutritionModal({ food, onClose, onAdd }: Props) {
@@ -71,7 +71,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
 
   return (
     <Dialog open={!!food} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm rounded-[32px] border border-white/10 bg-black/80 backdrop-blur-3xl p-0 overflow-hidden shadow-2xl">
+      <DialogContent className="max-w-sm rounded-[32px] border border-border bg-card p-0 overflow-hidden shadow-xl text-foreground">
         <DialogTitle className="sr-only">Adicionar alimento</DialogTitle>
         <DialogDescription className="sr-only">Ajuste a porção e adicione</DialogDescription>
         {food && (
@@ -84,7 +84,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                 className="h-full w-full object-cover"
                 roundedPlaceholder={false}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
               <input
                 ref={fileRef}
                 type="file"
@@ -97,7 +97,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   <Button
                     size="icon"
                     variant="secondary"
-                    className="size-10 rounded-full glass border-white/10 shadow-xl"
+                    className="size-10 rounded-full bg-white/90 text-zinc-900 border border-zinc-200 hover:bg-white shadow-md"
                     onClick={() => setPhotoUrl(null)}
                     disabled={uploading}
                   >
@@ -107,16 +107,16 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                 <Button
                   size="sm"
                   variant="secondary"
-                  className="rounded-full h-10 glass border-white/10 shadow-xl gap-2 px-4"
+                  className="rounded-full h-10 bg-white/90 text-zinc-900 border border-zinc-200 hover:bg-white shadow-md gap-2 px-4"
                   onClick={() => fileRef.current?.click()}
                   disabled={uploading}
                 >
                   {uploading ? (
-                    <Loader2 className="size-4 animate-spin text-white" />
+                    <Loader2 className="size-4 animate-spin text-zinc-900" />
                   ) : (
-                    <Camera className="size-4 text-white" />
+                    <Camera className="size-4 text-zinc-900" />
                   )}
-                  <span className="text-xs font-bold uppercase tracking-widest text-white">
+                  <span className="text-xs font-bold uppercase tracking-widest text-zinc-900">
                     {photoUrl ? "Trocar" : "Adicionar foto"}
                   </span>
                 </Button>
@@ -125,58 +125,58 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
 
             <div className="space-y-6 p-6 -mt-6 relative z-10">
               <div className="space-y-1">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40">
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
                   Resumo Nutricional
                 </p>
-                <h3 className="text-2xl font-display font-black tracking-tight text-white">
+                <h3 className="text-2xl font-display font-black tracking-tight text-foreground">
                   {food.nome}
                 </h3>
               </div>
 
-              <div className="flex items-center justify-between rounded-[24px] glass border-white/5 p-2">
+              <div className="flex items-center justify-between rounded-[24px] bg-secondary border border-border p-2 text-foreground">
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="rounded-2xl size-12 hover:bg-white/5"
+                  className="rounded-2xl size-12 hover:bg-secondary-foreground/10 text-foreground"
                   onClick={() => setPorcoes(Math.max(0.5, porcoes - 0.5))}
                 >
                   <Minus className="size-5" />
                 </Button>
                 <div className="text-center px-4">
-                  <div className="text-2xl font-black tabular-nums tracking-tighter">
+                  <div className="text-2.5xl font-black tabular-nums tracking-tighter text-foreground">
                     {porcoes}×
                   </div>
-                  <div className="text-[9px] font-black uppercase tracking-[0.25em] text-white/30">
+                  <div className="text-[9px] font-black uppercase tracking-[0.25em] text-muted-foreground/60">
                     porção
                   </div>
                 </div>
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="rounded-2xl size-12 hover:bg-white/5"
+                  className="rounded-2xl size-12 hover:bg-secondary-foreground/10 text-foreground"
                   onClick={() => setPorcoes(porcoes + 0.5)}
                 >
                   <Plus className="size-5" />
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 text-foreground">
                 {BLOCKS.map(({ key, label, unit, Icon, color }) => {
                   const v = (food as Record<string, unknown>)[key] as number;
                   return (
                     <div
                       key={key}
-                      className="rounded-[24px] border border-white/5 bg-white/[0.03] p-4 group transition-colors hover:bg-white/[0.06]"
+                      className="rounded-[24px] border border-border/80 bg-secondary/30 p-4 group transition-colors hover:bg-secondary/50"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="size-10 rounded-2xl bg-white/5 flex items-center justify-center shrink-0">
-                          <Icon className={`size-5 ${color}`} />
+                        <div className="size-10 rounded-2xl bg-secondary flex items-center justify-center shrink-0">
+                          <Icon className={`size-5 ${color}`} strokeWidth={2.5} />
                         </div>
                         <div className="min-w-0">
-                          <div className="text-[9px] font-black uppercase tracking-widest text-white/30 truncate">
+                          <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground truncate">
                             {label}
                           </div>
-                          <div className="font-black text-lg tabular-nums tracking-tight text-white group-hover:scale-105 transition-transform origin-left">
+                          <div className="font-display font-black text-lg tabular-nums tracking-tight text-foreground group-hover:scale-105 transition-transform origin-left">
                             {Math.round(v * porcoes)}
                             {unit}
                           </div>
@@ -190,14 +190,14 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <Button
                   variant="outline"
-                  className="h-14 rounded-[24px] border-white/10 bg-transparent font-bold uppercase tracking-widest text-[10px] hover:bg-white/5"
+                  className="h-14 rounded-[24px] border border-border bg-secondary font-bold uppercase tracking-widest text-[10px] hover:bg-muted text-foreground"
                   onClick={onClose}
                   disabled={busy}
                 >
                   Cancelar
                 </Button>
                 <Button
-                  className="h-14 rounded-[24px] bg-white text-black hover:bg-zinc-200 font-black uppercase tracking-widest text-[10px] shadow-xl shadow-white/5"
+                  className="h-14 rounded-[24px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold uppercase tracking-widest text-[10px] shadow-sm"
                   onClick={handleAdd}
                   disabled={busy}
                 >
