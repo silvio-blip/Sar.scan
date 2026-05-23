@@ -145,6 +145,40 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try {
           addLog(`Iniciando câmera padrão (modo: ${activeMode})...`);
 
+          // Solicitando permissão nativa via Capacitor antes das chamadas de API de mídia
+          const cap = (window as any).Capacitor;
+          if (cap && cap.Plugins) {
+            const { Camera } = cap.Plugins;
+            if (Camera && typeof Camera.requestPermissions === "function") {
+              try {
+                addLog(
+                  "[CameraContext] Solicitando permissão nativa de câmera via Capacitor Camera...",
+                );
+                const check = await Camera.checkPermissions();
+                if (check?.camera !== "granted") {
+                  const res = await Camera.requestPermissions({ permissions: ["camera"] });
+                  addLog("[CameraContext] Resposta da permissão nativa de câmera:", res);
+                } else {
+                  addLog("[CameraContext] Permissão nativa de câmera já concedida.");
+                }
+              } catch (e) {
+                addLog("[CameraContext] Erro ao solicitar permissão nativa via Camera plugin:", e);
+              }
+            }
+            const BarcodeScanner = cap.Plugins.BarcodeScanner || cap.Plugins.BarcodeScannerPlugin;
+            if (BarcodeScanner && typeof BarcodeScanner.requestCameraPermission === "function") {
+              try {
+                addLog("[CameraContext] Solicitando permissão nativa via BarcodeScanner...");
+                await BarcodeScanner.requestCameraPermission();
+              } catch (e) {
+                addLog(
+                  "[CameraContext] Erro ao solicitar permissão nativa via BarcodeScanner plugin:",
+                  e,
+                );
+              }
+            }
+          }
+
           // Se já houver um stream inativo ou antigo, limpamos antes de abrir o novo
           if (streamRef.current) {
             addLog("Limpando track antiga antes de iniciar a nova...");

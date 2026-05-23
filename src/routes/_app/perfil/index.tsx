@@ -31,6 +31,9 @@ function PerfilPage() {
   const { user, profile, isAdmin, isPremium, signOut } = useAuth();
   useRewardsRealtime(user?.id);
 
+  const [showToken, setShowToken] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const { data: rewards } = useQuery({
     queryKey: ["rewards", user?.id],
     enabled: !!user,

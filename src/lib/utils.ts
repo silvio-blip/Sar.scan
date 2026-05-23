@@ -12,18 +12,8 @@ export function getApiUrl(path: string): string {
     return cleanPath;
   }
 
-  // If we are running on standard web browser (http/https), relative paths are ALWAYS safe
-  if (window.location.protocol.startsWith("http")) {
-    console.log(`[getApiUrl] Returning relative path for web context: ${cleanPath}`);
-    return cleanPath;
-  }
-
   // Explicitly configured URL takes precedence
   const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL;
-  if (configuredBaseUrl) {
-    console.log(`[getApiUrl] Using configured VITE_API_BASE_URL: ${configuredBaseUrl}`);
-    return `${configuredBaseUrl.endsWith("/") ? configuredBaseUrl.slice(0, -1) : configuredBaseUrl}${cleanPath}`;
-  }
 
   const ua = navigator.userAgent || "";
   const isMobile = /Android|iPhone|iPad|iPod/i.test(ua);
@@ -36,7 +26,32 @@ export function getApiUrl(path: string): string {
     (window.location.hostname === "localhost" && isMobile)
   );
 
-  // Fallback to absolute service endpoint for native wrappers
+  // If in Capacitor, we MUST return absolute API URL
+  if (isCapacitor) {
+    if (configuredBaseUrl) {
+      console.log(`[getApiUrl] Capacitor client using VITE_API_BASE_URL: ${configuredBaseUrl}`);
+      return `${configuredBaseUrl.endsWith("/") ? configuredBaseUrl.slice(0, -1) : configuredBaseUrl}${cleanPath}`;
+    }
+    const baseUrl = import.meta.env.DEV
+      ? "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
+      : "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
+
+    const finalUrl = `${baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl}${cleanPath}`;
+    console.warn(`[getApiUrl] Capacitor fallback to absolute URL: ${finalUrl}`);
+    return finalUrl;
+  }
+
+  // If we are running on standard web browser (http/https), relative paths are ALWAYS safe
+  if (window.location.protocol.startsWith("http")) {
+    console.log(`[getApiUrl] Returning relative path for web context: ${cleanPath}`);
+    return cleanPath;
+  }
+
+  if (configuredBaseUrl) {
+    console.log(`[getApiUrl] Using configured VITE_API_BASE_URL: ${configuredBaseUrl}`);
+    return `${configuredBaseUrl.endsWith("/") ? configuredBaseUrl.slice(0, -1) : configuredBaseUrl}${cleanPath}`;
+  }
+
   const baseUrl = import.meta.env.DEV
     ? "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
     : "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
