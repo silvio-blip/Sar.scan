@@ -45,7 +45,9 @@ function DadosPage() {
         >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Dados Físicos</h1>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+          Dados Físicos
+        </h1>
       </div>
 
       <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
@@ -61,7 +63,9 @@ function DadosPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">Peso (kg)</Label>
+          <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">
+            Peso (kg)
+          </Label>
           <Input
             type="number"
             value={peso}

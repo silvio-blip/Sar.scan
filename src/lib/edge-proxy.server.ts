@@ -4,8 +4,6 @@ import { getAppSettings } from "./settings.server.js";
 
 type Body = Record<string, unknown> | undefined;
 
-const MODEL = "gemini-flash-lite-latest";
-
 function getAdminSafe() {
   try {
     return supabaseAdmin;
@@ -20,13 +18,24 @@ async function getGeminiKey() {
   if (_cachedKey) return _cachedKey;
 
   const settings = await getAppSettings();
-  const key = settings.gemini_api_key || process.env.GEMINI_API_KEY;
+  console.log("[Edge] Settings object keys:", Object.keys(settings));
+  console.log("[Edge] Settings object content:", JSON.stringify(settings));
   
+  const key = settings.gemini_api_key || process.env.GEMINI_API_KEY;
+
   if (key) {
     _cachedKey = key;
+    console.log("[Edge] Gemini key successfully retrieved (first 5 chars):", key.substring(0, 5) + "***");
     return key;
   }
+  
+  console.error("[Edge] Gemini key NOT found!");
   throw new Error("Chave Gemini não configurada (não encontrada em app_settings nem environment)");
+}
+
+async function getGeminiModel() {
+  const settings = await getAppSettings();
+  return settings.gemini_model || process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
@@ -39,6 +48,7 @@ async function geminiCall(opts: {
   maxTokens?: number;
 }) {
   const key = await getGeminiKey();
+  const model = await getGeminiModel();
   const body: Record<string, unknown> = {
     contents: opts.contents,
     generationConfig: {
@@ -51,7 +61,7 @@ async function geminiCall(opts: {
   if (opts.systemInstruction) {
     body.systemInstruction = { parts: [{ text: opts.systemInstruction }] };
   }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -138,7 +148,7 @@ async function handleSearchFoodAi(body: Body) {
   if (mode === "popular") {
     const admin = getAdminSafe();
     if (!admin) return { alimentos: [] };
-    
+
     const { data } = await (admin as any)
       .from("foods_basic")
       .select("nome, cal, carb, prot, gord, foto_url")
@@ -193,12 +203,10 @@ async function handleNutritionChat(body: Body) {
       const admin = getAdminSafe();
       if (admin) {
         // Persist user message and assistant reply
-        await (admin as any)
-          .from("chat_messages")
-          .insert([
-            { user_id: userId, role: "user", content: message },
-            { user_id: userId, role: "assistant", content: reply }
-          ]);
+        await (admin as any).from("chat_messages").insert([
+          { user_id: userId, role: "user", content: message },
+          { user_id: userId, role: "assistant", content: reply },
+        ]);
       }
     } catch (e) {
       console.error("chat persist failed", e);
@@ -279,7 +287,8 @@ async function getUserStatus(userId: string) {
     (admin as any).from("profiles").select("email").eq("id", userId).maybeSingle(),
   ]);
 
-  const isAdmin = roles?.some((r: any) => r.role === "admin") || profile?.email === "silviok5000@gmail.com";
+  const isAdmin =
+    roles?.some((r: any) => r.role === "admin") || profile?.email === "silviok5000@gmail.com";
 
   // Se não existir subscription, criamos uma 'free' por padrão como solicitado
   if (!sub) {
@@ -322,20 +331,27 @@ async function checkEligibility(userId: string) {
   const credits = status?.scans_credits ?? 0;
   if (credits > 0) return { type: "paid" as const, val: credits };
 
-  throw new Error("Você atingiu o limite de 3 scans gratuitos por dia. Assine um plano para continuar escaneando ou aguarde amanhã!");
+  throw new Error(
+    "Você atingiu o limite de 3 scans gratuitos por dia. Assine um plano para continuar escaneando ou aguarde amanhã!",
+  );
 }
 
-async function deductScan(userId: string, eligibility: { type: "free" | "paid" | "admin"; val: number }) {
+async function deductScan(
+  userId: string,
+  eligibility: { type: "free" | "paid" | "admin"; val: number },
+) {
   if (eligibility.type === "admin") return; // Admin não deduz nada
 
   const admin = getAdminSafe();
   const today = new Date().toISOString().split("T")[0];
 
   if (eligibility.type === "free") {
-    await (admin as any).from("scan_usage").upsert(
-      { user_id: userId, data: today, count: eligibility.val + 1 },
-      { onConflict: "user_id,data" }
-    );
+    await (admin as any)
+      .from("scan_usage")
+      .upsert(
+        { user_id: userId, data: today, count: eligibility.val + 1 },
+        { onConflict: "user_id,data" },
+      );
   } else {
     await (admin as any)
       .from("subscriptions")
@@ -349,21 +365,27 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
 
   try {
     // Proteção de IA para chats e buscas inteligentes
-    if (data.name === "nutrition-chat" || data.name === "search-food-ai" || data.name === "scan-food") {
+    if (
+      data.name === "nutrition-chat" ||
+      data.name === "search-food-ai" ||
+      data.name === "scan-food"
+    ) {
       if (!userId) throw new Error("Usuário não identificado");
       const status = await getUserStatus(userId);
-      
+
       // Admin sempre liberado
       if (!status?.isAdmin) {
         if (data.name === "nutrition-chat" && !status?.ai_agent_enabled) {
-          throw new Error("O chat da inteligência artificial está disponível apenas para assinantes pagantes.");
+          throw new Error(
+            "O chat da inteligência artificial está disponível apenas para assinantes pagantes.",
+          );
         }
       }
     }
     // search-food-ai e scan-food são liberados na trial.
     // nutrition-chat é apenas para assinantes (após trial).
     // ...
-    
+
     switch (data.name) {
       case "search-food-ai": {
         if (!userId) throw new Error("Usuário não identificado");
@@ -384,7 +406,7 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
         const eligibility = await checkEligibility(userId);
         const result = await handleScanFood(data.body);
         if (result.ok) {
-           await deductScan(userId, eligibility);
+          await deductScan(userId, eligibility);
         }
         return result;
       }

@@ -2,5 +2,5 @@
   "name": "Sar.scan",
   "description": "Nutrição inteligente e escaneamento de alimentos com IA. Controle seu diário calórico de forma simples.",
   "requestFramePermissions": ["camera", "microphone"],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

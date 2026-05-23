@@ -19,7 +19,8 @@ export function CreditDisplay({ value }: CreditDisplayProps) {
     }
 
     // Skip animation if we are returning from a successful checkout (to avoid "floating +150" noise)
-    const isSuccessReturn = typeof window !== "undefined" && window.location.search.includes("success=1");
+    const isSuccessReturn =
+      typeof window !== "undefined" && window.location.search.includes("success=1");
 
     if (value !== prevValue) {
       if (isSuccessReturn) {
@@ -30,7 +31,7 @@ export function CreditDisplay({ value }: CreditDisplayProps) {
 
       const diff =
         typeof value === "number" && typeof prevValue === "number" ? value - prevValue : 0;
-      
+
       // Se a diferença for grande (ex: +30, +150), não mostramos a animação flutuante
       // mas ainda atualizamos o número com a animação de troca do AnimatePresence.
       setAnimating(Math.abs(diff) > 0 && Math.abs(diff) < 10);

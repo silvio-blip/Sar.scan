@@ -20,27 +20,32 @@ export async function getAppSettings(): Promise<AppSettings> {
 
   try {
     const admin = supabaseAdmin;
-    const { data, error } = await (admin as any)
-      .from("app_settings")
-      .select("key, value");
+    console.log("[Settings] Iniciando busca na tabela app_settings...");
+    
+    // Explicitly use the admin client to select from app_settings
+    const { data, error } = await (admin as any).from("app_settings").select("key, value");
 
     if (error) {
-      console.error("[Settings] Erro ao buscar no banco app_settings:", error.message);
+      console.error("[Settings] ERRO AO BUSCAR NO BANCO (from app_settings):", JSON.stringify(error, null, 2));
       return (_settingsCache || {}) as AppSettings;
     }
 
     const settings: AppSettings = {};
-    if (data) {
-      console.log(`[Settings] Sucesso ao carregar ${data.length} chaves do banco de dados.`);
+    if (data && Array.isArray(data)) {
+      console.log(`[Settings] Sucesso na query, retornou ${data.length} linhas.`);
       for (const row of data) {
-        settings[row.key] = row.value;
+        if (row.key && row.value) {
+          settings[row.key] = row.value;
+          console.log(`[Settings] Carregado: ${row.key}`);
+        }
       }
     } else {
-      console.warn("[Settings] Nenhum dado retornado da tabela app_settings.");
+      console.warn("[Settings] Nenhum dado retornado ou formato inválido da tabela app_settings.", data);
     }
 
     _settingsCache = settings;
     _lastFetch = now;
+    console.log("[Settings] Configurações carregadas:", Object.keys(settings));
     return settings;
   } catch (e) {
     console.error("[Settings] Erro crítico ao buscar configurações:", e);
@@ -54,7 +59,7 @@ export async function getAppSettings(): Promise<AppSettings> {
 export async function getSetting(key: string, envName?: string): Promise<string | undefined> {
   const settings = await getAppSettings();
   if (settings[key]) return settings[key];
-  
+
   if (envName) {
     return process.env[envName];
   }

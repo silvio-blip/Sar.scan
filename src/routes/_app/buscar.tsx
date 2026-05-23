@@ -94,7 +94,9 @@ export function BuscarPage() {
     <div className="space-y-6 animate-in fade-in duration-700">
       <div className="flex items-center gap-4">
         <div className="flex-1">
-          <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Buscar Alimento</h1>
+          <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+            Buscar Alimento
+          </h1>
           <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
             {popular?.length ?? 0} alimentos na base local
           </p>
@@ -102,7 +104,10 @@ export function BuscarPage() {
       </div>
 
       <div className="bg-secondary rounded-[24px] flex items-center gap-4 px-5 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
-        <Search className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors" strokeWidth={2.5} />
+        <Search
+          className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors"
+          strokeWidth={2.5}
+        />
         <input
           value={q}
           onChange={(e) => {

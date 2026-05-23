@@ -9,7 +9,10 @@ async function loadKeys() {
   const settings = await getAppSettings();
   const secret = settings.stripe_secret_key || process.env.STRIPE_SECRET_KEY || "";
   if (!secret) throw new Error("stripe_secret_key not set in app_settings or environment");
-  return { secret, webhookSecret: settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET || "" };
+  return {
+    secret,
+    webhookSecret: settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET || "",
+  };
 }
 
 export async function getStripe() {
@@ -21,9 +24,30 @@ export async function getStripe() {
 }
 
 export const PLANS_DEF = [
-  { id: "weekly", label: "sar.scan Semanal", amount: 499, interval: "week", scans: 30, trial_days: 7 },
-  { id: "monthly", label: "sar.scan Mensal", amount: 1999, interval: "month", scans: 150, trial_days: 7 },
-  { id: "yearly", label: "sar.scan Anual", amount: 9999, interval: "year", scans: 1200, trial_days: 7 },
+  {
+    id: "weekly",
+    label: "sar.scan Semanal",
+    amount: 499,
+    interval: "week",
+    scans: 30,
+    trial_days: 7,
+  },
+  {
+    id: "monthly",
+    label: "sar.scan Mensal",
+    amount: 1999,
+    interval: "month",
+    scans: 150,
+    trial_days: 7,
+  },
+  {
+    id: "yearly",
+    label: "sar.scan Anual",
+    amount: 9999,
+    interval: "year",
+    scans: 1200,
+    trial_days: 7,
+  },
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];
 
@@ -98,11 +122,49 @@ export async function createStripeCheckoutInternal(data: {
     .eq("plan", data.plan)
     .maybeSingle();
 
-  const prodTyped = prod as { price_id: string } | null;
-  if (error || !prodTyped)
-    throw new Error(
-      "Plano ainda não sincronizado. Peça ao admin para clicar em 'Sincronizar planos'.",
-    );
+  let prodTyped = prod as { price_id: string } | null;
+  if (error || !prodTyped) {
+    console.log(`[Stripe] Plan ${data.plan} not found in database. Attempting automatic sync...`);
+    try {
+      const plan = PLANS_DEF.find((p) => p.id === data.plan);
+      if (!plan) throw new Error("Plano inválido");
+
+      const product = await stripe.products.create({
+        name: plan.label,
+        metadata: { plan: plan.id, scans: String(plan.scans) },
+      });
+      const productId = product.id;
+
+      const price = await stripe.prices.create({
+        product: productId!,
+        unit_amount: plan.amount,
+        currency: "eur",
+        recurring: { interval: plan.interval as any },
+      });
+      const priceId = price.id;
+
+      const { data: inserted } = await (supabaseAdmin as any)
+        .from("stripe_products")
+        .upsert({
+          plan: plan.id,
+          product_id: productId,
+          price_id: priceId,
+          amount: plan.amount,
+          currency: "eur",
+          interval: plan.interval,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      prodTyped = inserted as { price_id: string } | null;
+    } catch (syncErr: any) {
+      console.error("[Stripe] Automatic plan sync failed:", syncErr);
+      throw new Error(
+        "Plano ainda não sincronizado. Vá para a página de administração para sincronizar planos ou verifique sua chave do Stripe no banco de dados.",
+      );
+    }
+  }
 
   const { data: sub } = await (supabaseAdmin as any)
     .from("subscriptions")
@@ -130,13 +192,20 @@ export async function createStripeCheckoutInternal(data: {
   }
 
   let baseUrl = data.origin || "https://sar-scan.vercel.app";
-  if (baseUrl.startsWith("capacitor://") || baseUrl.includes("localhost") || baseUrl.startsWith("file://")) {
+  if (baseUrl.startsWith("capacitor://") || baseUrl.startsWith("file://")) {
     baseUrl = "https://sar-scan.vercel.app";
   }
 
-  console.log("[Stripe] Creating checkout session. User:", user.id, "Plan:", data.plan, "Trial:", data.trial);
+  console.log(
+    "[Stripe] Creating checkout session. User:",
+    user.id,
+    "Plan:",
+    data.plan,
+    "Trial:",
+    data.trial,
+  );
   const planDef = PLANS_DEF.find((p) => p.id === data.plan);
-  
+
   try {
     const subscriptionData: any = {
       metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
@@ -168,7 +237,7 @@ export async function createStripeCheckoutInternal(data: {
       "bancontact",
       "ideal",
       "revolut_pay",
-      "link"
+      "link",
     ];
 
     console.log("[Stripe] Creating checkout session with stable subscription methods...");
@@ -176,7 +245,7 @@ export async function createStripeCheckoutInternal(data: {
       ...sessionOptions,
       payment_method_types: checkoutMethods as any,
     });
-    
+
     console.log("[Stripe] Session created successfully:", session.id);
     return { url: session.url };
   } catch (stripeErr: any) {

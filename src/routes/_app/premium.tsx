@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { createStripeCheckout, syncStripePlans } from "@/lib/stripe.functions";
+import { isInstalledApp } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,15 +26,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogDescription,
-  DialogFooter
+  DialogFooter,
 } from "@/components/ui/dialog";
 
 export const Route = createFileRoute("/_app/premium")({ component: PremiumPage });
@@ -125,8 +126,66 @@ function PremiumPage() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [purchasedPlan, setPurchasedPlan] = useState<PlanDef | null>(null);
   const [confirmingPlan, setConfirmingPlan] = useState<PlanDef | null>(null);
+  const [showExternalRedirectOverlay, setShowExternalRedirectOverlay] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const triggerAppReturnDeepLinks = useCallback(() => {
+    console.log("[DeepLink] Iniciando redirecionamento para o App...");
+
+    // Tentar fechar a janela se estivermos num CustomTab/WebView/InAppBrowser que nos chamou
+    try {
+      window.close();
+    } catch (e) {
+      console.log("window.close() ignorado pelo navegador:", e);
+    }
+
+    const planParam = purchasedPlan?.id || selected;
+    const isTrial = location.search.includes("trial=1");
+
+    // Lista de deep links com maior probabilidade de correspondência
+    const customSchemes = [
+      `sarscan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
+      `sar-scan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
+      `foodscanner://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
+      `com.sar.scan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
+    ];
+
+    // Android Intent seguro que força abertura direta da aplicação com Package com.sar.scan
+    const androidIntent = `intent://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}#Intent;scheme=sarscan;package=com.sar.scan;S.browser_fallback_url=${encodeURIComponent(window.location.origin + "/premium?success=1")};end`;
+
+    // Navegar de forma não obstrutiva através de frames ocultos nos esquemas customizados
+    let idx = 0;
+    const attemptNextOption = () => {
+      if (idx < customSchemes.length) {
+        const urlToTry = customSchemes[idx];
+        console.log("[DeepLink] Tentando esquema customizado:", urlToTry);
+        const iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.src = urlToTry;
+        document.body.appendChild(iframe);
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 200);
+        idx++;
+        setTimeout(attemptNextOption, 250);
+      } else {
+        console.log("[DeepLink] Utilizando Intent do Android como recurso final:", androidIntent);
+        window.location.href = androidIntent;
+      }
+    };
+
+    attemptNextOption();
+  }, [purchasedPlan, selected, location.search]);
+
+  useEffect(() => {
+    if (showExternalRedirectOverlay) {
+      const timer = setTimeout(() => {
+        triggerAppReturnDeepLinks();
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [showExternalRedirectOverlay, triggerAppReturnDeepLinks]);
 
   useEffect(() => {
     const search = new URLSearchParams(location.search);
@@ -139,9 +198,17 @@ function PremiumPage() {
       const likelyPlanId = planFromUrl || selected;
       const likelyPlan = PLANS.find((p) => p.id === likelyPlanId) || PLANS[1];
       setPurchasedPlan(likelyPlan);
-      setShowSuccessModal(true);
 
       if (refresh) refresh();
+
+      // Se o utilizador finalizou o checkout num navegador de telemóvel externo (não instalado WebView)
+      // Mostramos o overlay animado para reabrir a aplicação nativa de forma mágica.
+      if (!isInstalledApp()) {
+        setShowExternalRedirectOverlay(true);
+      } else {
+        setShowSuccessModal(true);
+      }
+
       // Limpamos a URL para não disparar de novo, mas mantemos o estado do modal
       navigate({ to: "/premium", search: {}, replace: true });
     }
@@ -158,10 +225,10 @@ function PremiumPage() {
     if (!user || !session?.access_token) return;
     setLoading(planId);
     try {
-      const { url } = await createStripeCheckout({ 
-        token: session.access_token, 
+      const { url } = await createStripeCheckout({
+        token: session.access_token,
         plan: planId,
-        trial: trial
+        trial: trial,
       });
       if (url) window.location.href = url;
     } catch (e: any) {
@@ -202,13 +269,13 @@ function PremiumPage() {
         </div>
 
         {!isPremium && (
-          <motion.div 
+          <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             className="w-full max-w-sm"
           >
             <Button
-              onClick={() => setConfirmingPlan(PLANS[1])} // Default trial to Monthly 
+              onClick={() => setConfirmingPlan(PLANS[1])} // Default trial to Monthly
               className="w-full h-16 rounded-full bg-gradient-to-r from-zinc-100 to-white text-black hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-black flex flex-col items-center justify-center gap-0 shadow-[0_20px_50px_rgba(255,255,255,0.15)] ring-1 ring-white/50 group"
             >
               <div className="flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -307,8 +374,8 @@ function PremiumPage() {
                 <div className="mt-4 pt-4 border-t border-border flex items-center justify-end">
                   <Button
                     className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-sm ${
-                      active 
-                        ? "bg-primary text-primary-foreground hover:bg-primary/95" 
+                      active
+                        ? "bg-primary text-primary-foreground hover:bg-primary/95"
                         : "bg-secondary text-foreground hover:bg-muted"
                     }`}
                     onClick={(e) => {
@@ -386,7 +453,7 @@ function PremiumPage() {
           </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
             <div className="absolute inset-x-0 top-0 h-40 bg-secondary/50" />
-            
+
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -405,12 +472,18 @@ function PremiumPage() {
             <div className="w-full space-y-3 mb-8">
               <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary/40 border border-border">
                 <div className="text-left">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Total Hoje</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                    Total Hoje
+                  </p>
                   <p className="text-lg font-display font-black text-foreground">€0,00</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Após 7 dias</p>
-                  <p className="text-lg font-display font-black text-foreground">{confirmingPlan?.price}</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+                    Após 7 dias
+                  </p>
+                  <p className="text-lg font-display font-black text-foreground">
+                    {confirmingPlan?.price}
+                  </p>
                 </div>
               </div>
             </div>
@@ -447,14 +520,18 @@ function PremiumPage() {
             {/* Background elements */}
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/10 to-transparent" />
             <div className="absolute top-10 size-40 bg-white/5 rounded-full blur-3xl" />
-            
+
             <motion.div
               initial={{ scale: 0, rotate: -20 }}
               animate={{ scale: 1, rotate: 0 }}
               transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.1 }}
               className="relative z-10 size-20 rounded-[24px] bg-white text-black flex items-center justify-center shadow-2xl mb-6 font-display font-black text-2xl"
             >
-              {purchasedPlan?.trialDays ? "7" : <CircleCheckBig className="size-10" strokeWidth={2.5} />}
+              {purchasedPlan?.trialDays ? (
+                "7"
+              ) : (
+                <CircleCheckBig className="size-10" strokeWidth={2.5} />
+              )}
             </motion.div>
 
             <motion.div
@@ -464,10 +541,12 @@ function PremiumPage() {
               className="relative z-10"
             >
               <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
-                {purchasedPlan?.trialDays ? "Teste Grátis Ativado!" : `Plano ${purchasedPlan?.label} Ativado!`}
+                {purchasedPlan?.trialDays
+                  ? "Teste Grátis Ativado!"
+                  : `Plano ${purchasedPlan?.label} Ativado!`}
               </h2>
               <p className="text-white/60 text-sm font-medium mb-8">
-                {purchasedPlan?.trialDays 
+                {purchasedPlan?.trialDays
                   ? `Você tem 7 dias para explorar todas as ferramentas Premium sem custo.`
                   : "Parabéns! Você acaba de desbloquear o acesso total ao sar.scan."}
               </p>
@@ -478,7 +557,12 @@ function PremiumPage() {
                 </div>
                 {[
                   { icon: Zap, text: `${purchasedPlan?.scans} créditos iniciais adicionados` },
-                  { icon: Bot, text: purchasedPlan?.aiAgent ? "Agente IA Nutricional Full" : "Nutricionista IA Básico" },
+                  {
+                    icon: Bot,
+                    text: purchasedPlan?.aiAgent
+                      ? "Agente IA Nutricional Full"
+                      : "Nutricionista IA Básico",
+                  },
                   { icon: Sparkles, text: "Identificação ultra detalhada" },
                   { icon: Target, text: "Definição de metas avançadas" },
                   { icon: Gift, text: "Acesso a bónus exclusivos" },
@@ -509,10 +593,10 @@ function PremiumPage() {
                   Começar a usar agora
                   <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
                 </Button>
-                
+
                 <p className="text-[10px] text-white/20 font-medium">
-                  {purchasedPlan?.trialDays 
-                    ? "Cancele a qualquer momento no seu perfil se mudar de ideia." 
+                  {purchasedPlan?.trialDays
+                    ? "Cancele a qualquer momento no seu perfil se mudar de ideia."
                     : "Suas vantagens já estão disponíveis em tempo real."}
                 </p>
               </div>
@@ -528,7 +612,7 @@ function PremiumPage() {
           </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/5 to-transparent" />
-            
+
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
@@ -541,7 +625,8 @@ function PremiumPage() {
               Pagamento não finalizado
             </h2>
             <p className="text-white/60 text-sm font-medium mb-8">
-              Parece que o processo foi interrompido. Sem problemas, seus dados estão seguros e nada foi cobrado.
+              Parece que o processo foi interrompido. Sem problemas, seus dados estão seguros e nada
+              foi cobrado.
             </p>
 
             <div className="w-full space-y-3 mb-8">
@@ -587,6 +672,75 @@ function PremiumPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Overlay de Redirecionamento Automático para o App com.sar.scan */}
+      <AnimatePresence>
+        {showExternalRedirectOverlay && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-zinc-950/98 backdrop-blur-md z-[99999] flex flex-col items-center justify-center p-6 text-center select-none"
+          >
+            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
+            <div className="absolute top-10 size-40 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="max-w-md w-full flex flex-col items-center gap-6 relative z-10">
+              <motion.div
+                initial={{ scale: 0.8, rotate: -15 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                className="relative size-24 rounded-[32px] bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.15)]"
+              >
+                <Crown className="size-12 animate-pulse" strokeWidth={2.5} />
+                <div className="absolute -top-1.5 -right-1.5 size-7 rounded-xl bg-black text-white flex items-center justify-center border-2 border-white text-[10px] font-black font-sans">
+                  PRO
+                </div>
+              </motion.div>
+
+              <div className="space-y-3">
+                <h1 className="text-3xl font-display font-black tracking-tighter text-white uppercase">
+                  Pagamento Concluído! 🎉
+                </h1>
+                <p className="text-sm font-semibold text-zinc-300 max-w-xs mx-auto leading-relaxed">
+                  Obrigado pela sua assinatura! Estamos a redirecionar de volta para o aplicativo
+                  sar.scan...
+                </p>
+              </div>
+
+              {/* Loader visual minimalista */}
+              <div className="flex flex-col items-center gap-2 mt-4">
+                <Loader2 className="size-8 text-white animate-spin" />
+                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] animate-pulse">
+                  Conectando ao App Seguro
+                </span>
+              </div>
+
+              {/* Botões de fallback se o auto deep link não disparou */}
+              <div className="w-full flex flex-col gap-3 mt-8">
+                <Button
+                  onClick={triggerAppReturnDeepLinks}
+                  className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm transition-all flex items-center justify-center gap-2 shadow-[0_20px_40px_rgba(255,255,255,0.1)]"
+                >
+                  <RefreshCw className="size-4 animate-spin" />
+                  Abrir o Aplicativo Agora
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExternalRedirectOverlay(false);
+                    setShowSuccessModal(true);
+                  }}
+                  className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors py-2 underline underline-offset-4"
+                >
+                  Continuar no navegador Web
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

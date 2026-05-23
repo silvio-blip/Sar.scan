@@ -38,19 +38,21 @@ export async function handleStripeWebhook(payload: string, signature: string | n
         const currentCredits = (currentSub as any)?.scans_credits ?? 0;
         const newTotal = currentCredits + addedCredits;
 
-        console.log(`[Webhook] Adding ${addedCredits} credits to user ${userId}. Total: ${newTotal}`);
+        console.log(
+          `[Webhook] Adding ${addedCredits} credits to user ${userId}. Total: ${newTotal}`,
+        );
 
         // Determinar status inicial (se houver subscription info na sessão do Stripe)
-        let initialStatus = "active";
+        const initialStatus = "active";
         if (s.subscription && s.mode === "subscription") {
-          // No checkout completed, se for trial, o subscription.created logo virá ajustar. 
+          // No checkout completed, se for trial, o subscription.created logo virá ajustar.
           // Mas podemos tentar inferir aqui.
         }
 
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {
             user_id: userId,
-            status: initialStatus, 
+            status: initialStatus,
             plan: planId,
             scans_credits: newTotal,
             stripe_customer_id: s.customer,
@@ -59,7 +61,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
             current_period_end: new Date(Date.now() + 32 * 86400000).toISOString(),
             updated_at: new Date().toISOString(),
           },
-          { onConflict: "user_id" }
+          { onConflict: "user_id" },
         );
       }
       break;
@@ -70,7 +72,9 @@ export async function handleStripeWebhook(payload: string, signature: string | n
       const userId = sub.metadata?.user_id;
       const planId = sub.metadata?.plan;
 
-      console.log(`[Webhook] Subscription Update: ${sub.id}, status: ${sub.status}, user: ${userId}`);
+      console.log(
+        `[Webhook] Subscription Update: ${sub.id}, status: ${sub.status}, user: ${userId}`,
+      );
 
       if (userId && planId) {
         let dbStatus = "active";
@@ -79,7 +83,9 @@ export async function handleStripeWebhook(payload: string, signature: string | n
         else if (sub.status === "canceled") dbStatus = "expired";
         else if (sub.status === "active") dbStatus = "active";
 
-        const canUseAi = (planId === "monthly" || planId === "yearly") && (dbStatus === "active" || dbStatus === "trialing");
+        const canUseAi =
+          (planId === "monthly" || planId === "yearly") &&
+          (dbStatus === "active" || dbStatus === "trialing");
 
         console.log(`[Webhook] Updating DB Status: ${dbStatus}, AI: ${canUseAi}`);
 
@@ -102,12 +108,13 @@ export async function handleStripeWebhook(payload: string, signature: string | n
       const sub = event.data.object;
       const userId = sub.metadata?.user_id;
       if (userId) {
-        await (supabaseAdmin as any).from("subscriptions").update(
-          {
+        await (supabaseAdmin as any)
+          .from("subscriptions")
+          .update({
             status: "expired",
             ai_agent_enabled: false,
-          }
-        ).eq("user_id", userId);
+          })
+          .eq("user_id", userId);
       }
       break;
     }
@@ -116,7 +123,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
       // billing_reason indicate recurring payment?
       const userId = inv.subscription_details?.metadata?.user_id;
       const planId = inv.subscription_details?.metadata?.plan;
-      
+
       // Se for pagamento recorrente (não o primeiro que já foi tratado no checkout), adicionamos créditos
       if (userId && planId && inv.billing_reason === "subscription_cycle") {
         const { data: currentSub } = await (supabaseAdmin as any)
@@ -124,7 +131,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
           .select("scans_credits")
           .eq("user_id", userId)
           .maybeSingle();
-        
+
         const currentCredits = (currentSub as any)?.scans_credits ?? 0;
         const addedScans = planScans(planId);
 

@@ -2,6 +2,9 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
+import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";
+import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
+import { handleStripeWebhook } from "./src/lib/stripe.webhook";
 
 // Logic from edge-proxy and stripe functions
 // Since we want to keep it simple, we'll import the logic directly if possible or copy it.
@@ -23,7 +26,10 @@ async function startServer() {
       res.setHeader("Access-Control-Allow-Origin", "*");
     }
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, stripe-signature");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-Requested-With, stripe-signature",
+    );
     res.setHeader("Access-Control-Allow-Credentials", "true");
 
     if (req.method === "OPTIONS") {
@@ -40,11 +46,12 @@ async function startServer() {
   // Proxy for invokeEdge
   app.post("/api/edge", async (req, res) => {
     try {
-      // Lazy import to avoid issues during build/dev
-      const { invokeEdgeInternal } = await import("./src/lib/edge-proxy.server.ts");
+      console.log("[Server] /api/edge received request:", req.body.name);
+      
       const result = await invokeEdgeInternal(req.body);
       res.json(result);
     } catch (error: unknown) {
+      console.error("[Server] /api/edge error:", error);
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
       res.status(500).json({ error: msg });
     }
@@ -53,7 +60,6 @@ async function startServer() {
   // Proxy for stripe checkout
   app.post("/api/stripe/checkout", async (req, res) => {
     try {
-      const { createStripeCheckoutInternal } = await import("./src/lib/stripe.server.ts");
       const result = await createStripeCheckoutInternal(req.body);
       res.json(result);
     } catch (error: unknown) {
@@ -64,7 +70,6 @@ async function startServer() {
 
   app.post("/api/stripe/sync", async (req, res) => {
     try {
-      const { syncStripePlansInternal } = await import("./src/lib/stripe.server.ts");
       const result = await syncStripePlansInternal(req.body);
       res.json(result);
     } catch (error: unknown) {
@@ -80,7 +85,6 @@ async function startServer() {
     async (req, res) => {
       try {
         const sig = req.headers["stripe-signature"] as string;
-        const { handleStripeWebhook } = await import("./src/lib/stripe.webhook.ts");
         const result = await handleStripeWebhook(req.body.toString(), sig);
         res.send(result);
       } catch (error: unknown) {

@@ -63,21 +63,21 @@ function AppLayout() {
     document.body.appendChild(testDiv);
     const bottomVal = window.getComputedStyle(testDiv).bottom;
     document.body.removeChild(testDiv);
-    
+
     const parsed = parseFloat(bottomVal) || 0;
-    
+
     const aspectRatio = window.screen.height / window.screen.width;
     const isTall = aspectRatio >= 2.05;
-    
+
     let mode: "buttons" | "infinite" = "infinite";
     if (parsed > 0) {
       mode = "infinite";
     } else if (/Android/i.test(navigator.userAgent)) {
       mode = isTall ? "infinite" : "buttons";
     }
-    
+
     setLayoutMode(mode);
-    
+
     const root = document.documentElement;
     if (mode === "buttons") {
       root.style.setProperty("--android-bottom-offset", "16px");
@@ -118,7 +118,7 @@ function AppLayout() {
         </div>
       </main>
 
-      <nav 
+      <nav
         style={{ bottom: "var(--android-nav-bottom, 32px)" }}
         className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(94vw,440px)] px-4 transition-all duration-300"
       >

@@ -98,7 +98,9 @@ export function WaterTracker({ currentMl, targetMl, onAdd }: WaterTrackerProps) 
         <span className="text-[10px] font-black text-muted-foreground">
           {(currentMl / 1000).toFixed(1)}L Consumidos
         </span>
-        <span className="text-[9px] font-black uppercase tracking-[0.35em] text-primary/40 mt-0.5">Água</span>
+        <span className="text-[9px] font-black uppercase tracking-[0.35em] text-primary/40 mt-0.5">
+          Água
+        </span>
       </div>
     </div>
   );

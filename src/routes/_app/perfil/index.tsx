@@ -73,7 +73,9 @@ function PerfilPage() {
           </AvatarFallback>
         </Avatar>
         <div className="space-y-1">
-          <div className="font-extrabold text-xl tracking-tight text-foreground">{profile?.nome ?? "—"}</div>
+          <div className="font-extrabold text-xl tracking-tight text-foreground">
+            {profile?.nome ?? "—"}
+          </div>
           <div className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
             {profile?.email}
           </div>
@@ -238,9 +240,7 @@ function Row({
             {label}
             {premium && <Crown className="size-4 text-accent animate-pulse" />}
           </div>
-          <div className="text-[11px] font-semibold text-muted-foreground line-clamp-1">
-            {sub}
-          </div>
+          <div className="text-[11px] font-semibold text-muted-foreground line-clamp-1">{sub}</div>
         </div>
         <ChevronRight className="size-4 text-muted-foreground/50" />
       </Card>

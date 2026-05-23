@@ -6,17 +6,39 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
 function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const SUPABASE_SERVICE_ROLE_KEY =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     const missing = [
       ...(!SUPABASE_URL ? ["SUPABASE_URL"] : []),
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ["SUPABASE_SERVICE_ROLE_KEY"] : []),
     ];
-    const message = `Erro na Vercel: Variáveis de conexão SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não encontradas. Certifique-se de as ter adicionado ao painel Environment Variables da Vercel para que o site consiga buscar as chaves no banco de dados.`;
+    const message = `Erro na Vercel / Ambiente: Variáveis de conexão SUPABASE_URL ou chaves públicas/privadas não encontradas.`;
     console.error(`[Supabase] ${message}`);
-    throw new Error(message);
+    // No preview do AI Studio, vamos tentar usar um cliente padrão mockado ou vazio em vez de estourar erro fatal na inicialização do módulo, se possível, para evitar falha no carregamento.
+    return createClient<Database>("https://placeholder-url.supabase.co", "placeholder-key", {
+      auth: { persistSession: false },
+    });
+  }
+
+  // Detect if using a public publishable key as fallback for the admin role
+  const isPublicFallback =
+    !process.env.SUPABASE_SERVICE_ROLE_KEY &&
+    (SUPABASE_SERVICE_ROLE_KEY === process.env.SUPABASE_PUBLISHABLE_KEY ||
+      SUPABASE_SERVICE_ROLE_KEY === process.env.VITE_SUPABASE_PUBLISHABLE_KEY);
+
+  if (isPublicFallback) {
+    console.warn(
+      "[Supabase Admin] AVISO CRÍTICO: SUPABASE_SERVICE_ROLE_KEY não detectada. " +
+        "Usando VITE_SUPABASE_PUBLISHABLE_KEY (chave pública anon) como fallback para operações de administrador. " +
+        "Isso fará com que as buscas na tabela 'app_settings' e gerenciamento de assinaturas falhem se o RLS (Row Level Security) estiver ativo, " +
+        "pois chaves públicas não possuem permissão para ver ou editar esses dados restritos. " +
+        "Por favor, configure a variável de ambiente SUPABASE_SERVICE_ROLE_KEY no Vercel/Ambiente com a chave secreta 'service_role' para corrigir isso.",
+    );
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

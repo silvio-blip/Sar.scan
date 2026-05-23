@@ -74,17 +74,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Daily credits reset for free users (to 3 if < 3, once per day)
     const typedSub = sub as Subscription | null;
-    if (uid && typedSub && (!typedSub.plan || typedSub.status === "free") && typedSub.scans_credits < 3) {
+    if (
+      uid &&
+      typedSub &&
+      (!typedSub.plan || typedSub.status === "free") &&
+      typedSub.scans_credits < 3
+    ) {
       const lastResetKey = `sar_last_reset_${uid}`;
       const today = new Date().toDateString();
       const lastReset = localStorage.getItem(lastResetKey);
-      
+
       if (lastReset !== today) {
         console.log("[Auth] Daily credit reset triggered for user:", uid);
-        await supabase
-          .from("subscriptions")
-          .update({ scans_credits: 3 })
-          .eq("user_id", uid);
+        await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
         localStorage.setItem(lastResetKey, today);
         // We'll let the realtime subscription channel handle the state update
       }

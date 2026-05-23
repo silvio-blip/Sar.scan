@@ -46,7 +46,9 @@ function ObjetivoPage() {
         >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Objetivo</h1>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+          Objetivo
+        </h1>
       </div>
 
       <Card className="bg-card rounded-[32px] p-6 space-y-4 border border-border shadow-sm text-foreground">
@@ -57,15 +59,15 @@ function ObjetivoPage() {
               key={id}
               onClick={() => setObjetivo(id)}
               className={`w-full text-left rounded-2xl border p-4 flex items-center gap-4 transition-all duration-300 ${
-                active 
-                  ? "border-primary bg-primary/10 ring-1 ring-primary/25 shadow-sm" 
+                active
+                  ? "border-primary bg-primary/10 ring-1 ring-primary/25 shadow-sm"
                   : "border-border/60 bg-secondary/20 hover:bg-secondary/40"
               }`}
             >
               <div
                 className={`size-12 rounded-2xl flex items-center justify-center transition-colors ${
-                  active 
-                    ? "bg-primary text-primary-foreground" 
+                  active
+                    ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-muted-foreground"
                 }`}
               >

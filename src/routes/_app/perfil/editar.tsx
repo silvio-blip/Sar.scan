@@ -67,7 +67,9 @@ function EditarPerfil() {
         >
           <ArrowLeft className="size-5" />
         </Link>
-        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Editar Perfil</h1>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+          Editar Perfil
+        </h1>
       </div>
 
       <div className="flex flex-col items-center gap-4 py-4">
@@ -104,7 +106,10 @@ function EditarPerfil() {
 
       <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
         <div className="space-y-2">
-          <Label htmlFor="nome" className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
+          <Label
+            htmlFor="nome"
+            className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80"
+          >
             Nome de Exibição
           </Label>
           <Input

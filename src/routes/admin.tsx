@@ -18,16 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  ArrowLeft,
-  Shield,
-  Users,
-  Zap,
-  Gift,
-  Loader2,
-  Crown,
-  Activity,
-} from "lucide-react";
+import { ArrowLeft, Shield, Users, Zap, Gift, Loader2, Crown, Activity } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
@@ -159,7 +150,6 @@ function AdminPage() {
       u.nome?.toLowerCase().includes(q.toLowerCase()),
   );
 
-
   return (
     <div className="min-h-screen bg-black">
       <div className="bg-white text-black p-5 flex items-center gap-4 sticky top-0 z-50 shadow-2xl">
@@ -207,7 +197,6 @@ function AdminPage() {
             className="h-12 rounded-2xl bg-white/5 border-white/10 focus:ring-2 ring-white/10"
           />
         </Card>
-
 
         {filtered.map((u) => (
           <Card

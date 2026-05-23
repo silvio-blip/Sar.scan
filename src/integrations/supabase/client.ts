@@ -3,13 +3,13 @@ import type { Database } from "./types";
 import { invokeEdge } from "@/lib/edge-proxy.functions";
 
 function createSupabaseClient() {
-  const SUPABASE_URL = 
-    import.meta.env.VITE_SUPABASE_URL || 
+  const SUPABASE_URL =
+    import.meta.env.VITE_SUPABASE_URL ||
     import.meta.env.SUPABASE_URL ||
     (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined);
 
-  const SUPABASE_PUBLISHABLE_KEY = 
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 
+  const SUPABASE_PUBLISHABLE_KEY =
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
     (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined);
 
@@ -20,11 +20,14 @@ function createSupabaseClient() {
     ];
     const message = `Missing Supabase environment variable(s): ${missing.join(", ")}. Por favor, verifique as configurações no Vercel. Certifique-se de usar o prefixo VITE_ se estiver definindo variáveis para o frontend.`;
     console.error(`[Supabase] ${message}`);
-    
+
+    // LOG EXTRA
+    console.log("[Supabase DEBUG] VITE_SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
+
     // In production, we might want to still return a placeholder or handle this gracefully in UI
     if (import.meta.env.PROD) {
-       // Return a dummy client that throws on actual use, to avoid crashing the whole app on load if we can show a better error state
-       // But the proxy pattern below handles this
+      // Return a dummy client that throws on actual use, to avoid crashing the whole app on load if we can show a better error state
+      // But the proxy pattern below handles this
     }
     throw new Error(message);
   }
@@ -51,12 +54,37 @@ function createSupabaseClient() {
       };
     }
   }) as typeof client.functions.invoke;
+
   try {
-    client.functions.invoke = patchedInvoke;
-    const proto = Object.getPrototypeOf(client.functions);
-    if (proto) proto.invoke = patchedInvoke;
+    const originalProto = Object.getPrototypeOf(client);
+    const originalFunctionsGetter = Object.getOwnPropertyDescriptor(
+      originalProto,
+      "functions",
+    )?.get;
+
+    Object.defineProperty(client, "functions", {
+      get() {
+        const realFunctions = originalFunctionsGetter ? originalFunctionsGetter.call(client) : {};
+        return new Proxy(realFunctions, {
+          get(target, prop, rx) {
+            if (prop === "invoke") {
+              return patchedInvoke;
+            }
+            return Reflect.get(target, prop, rx);
+          },
+        });
+      },
+      configurable: true,
+      enumerable: true,
+    });
   } catch (e) {
-    console.warn("[supabase] invoke patch failed", e);
+    console.warn("[supabase] functions patch failed", e);
+    // fallback basic assign
+    try {
+      client.functions.invoke = patchedInvoke;
+    } catch (err) {
+      console.warn("[supabase] basic functions.invoke patch fallback failed", err);
+    }
   }
   return client;
 }

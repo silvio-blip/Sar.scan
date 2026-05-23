@@ -72,7 +72,10 @@ function RecompensasPage() {
       {rewards?.map((r) => {
         const claimed = !!(r as { bonus_aplicado?: boolean }).bonus_aplicado;
         return (
-          <Card key={r.id} className={`p-5 rounded-[24px] border bg-card transition-all ${claimed ? "opacity-60 border-border/40" : "border-border shadow-sm text-foreground"}`}>
+          <Card
+            key={r.id}
+            className={`p-5 rounded-[24px] border bg-card transition-all ${claimed ? "opacity-60 border-border/40" : "border-border shadow-sm text-foreground"}`}
+          >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-base text-foreground flex items-center gap-2">
@@ -84,7 +87,9 @@ function RecompensasPage() {
                   )}
                 </div>
                 {r.descricao && (
-                  <div className="text-xs text-muted-foreground/95 mt-1 leading-relaxed">{r.descricao}</div>
+                  <div className="text-xs text-muted-foreground/95 mt-1 leading-relaxed">
+                    {r.descricao}
+                  </div>
                 )}
                 {r.bonus_scans > 0 && (
                   <div className="text-xs text-primary font-bold mt-1">

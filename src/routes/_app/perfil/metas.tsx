@@ -140,7 +140,9 @@ function MetasPage() {
           <ArrowLeft className="size-5" />
         </Link>
         <div className="flex-1">
-          <h1 className="text-2xl font-display font-black tracking-tight text-foreground">Editar Metas</h1>
+          <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+            Editar Metas
+          </h1>
           <div className="text-[10px] text-primary/80 flex items-center gap-1 font-black uppercase tracking-widest">
             <Crown className="size-3" /> Recurso Premium
           </div>
@@ -282,7 +284,9 @@ function MetasPage() {
                 >
                   <div
                     className={`size-12 rounded-2xl flex items-center justify-center transition-colors ${
-                      active ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+                      active
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground"
                     }`}
                   >
                     <Icon className="size-5" />

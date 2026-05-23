@@ -171,7 +171,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const peerIdRef = useRef<string | null>(null);
 
   const sendCallSignal = useCallback(
-    async (targetId: string, type: "REJECTED" | "ENDED" | "CALL_REQUEST" | "CALL_RESPONSE", additionalPayload: any = {}) => {
+    async (
+      targetId: string,
+      type: "REJECTED" | "ENDED" | "CALL_REQUEST" | "CALL_RESPONSE",
+      additionalPayload: any = {},
+    ) => {
       if (!user?.id) return;
       console.log(`Sending signal ${type} to ${targetId}`, additionalPayload);
       const channel = supabase.channel(`call_signals_${targetId}`);
@@ -229,7 +233,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     (otherId: string, skipSignal = false, signalType?: "REJECTED" | "ENDED") => {
       // Normalize otherId in case it's a PeerJS ID with random suffix
       const normalizedId = otherId.includes("_") ? otherId.split("_")[0] : otherId;
-      
+
       const currentStatus = statusRef.current;
       if (currentStatus.type === "idle" || currentStatus.type === "ended") return;
 
@@ -310,12 +314,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
       try {
-      // Tentar obter acesso ao microfone - em apps nativas, isto aciona o pedido de permissão nativo
+        // Tentar obter acesso ao microfone - em apps nativas, isto aciona o pedido de permissão nativo
         // se a WebView estiver bem configurada.
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: true
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
         });
-        
+
         setLocalStream(stream);
         setStatus({ type: "calling" });
         fetchOtherUserProfile(targetId);
@@ -361,8 +365,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Tentar obter acesso ao microfone no atendimento
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-          audio: true 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
       });
       setLocalStream(stream);
       setStatus({ type: "connected" });
@@ -420,7 +424,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         icon,
         requireInteraction: true,
         tag: "incoming-voice-call",
-        vibrate: [200, 100, 200, 100, 200]
+        vibrate: [200, 100, 200, 100, 200],
       });
       n.onclick = () => {
         window.focus();
@@ -449,7 +453,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     startCallRef.current = startCall;
     showNotificationRef.current = showNotification;
     answerCallRef.current = answerCall;
-  }, [fetchOtherUserProfile, startVibration, handleCallEnd, startCall, showNotification, answerCall]);
+  }, [
+    fetchOtherUserProfile,
+    startVibration,
+    handleCallEnd,
+    startCall,
+    showNotification,
+    answerCall,
+  ]);
 
   // Restore active calls on mount or when user changes
   useEffect(() => {
@@ -470,10 +481,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (data.status === "ringing") {
           if (isCaller) {
             setStatus({ type: "calling" });
-            dialingAudioRef.current?.play().catch(console.error);
+            dialingAudioRef.current
+              ?.play()
+              .catch((err) => console.warn("Autoplay audio blocked:", err));
           } else {
             setStatus({ type: "ringing" });
-            ringingAudioRef.current?.play().catch(console.error);
+            ringingAudioRef.current
+              ?.play()
+              .catch((err) => console.warn("Autoplay audio blocked:", err));
             startVibrationRef.current();
           }
         } else if (data.status === "connected") {
@@ -491,7 +506,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user?.id) return;
 
-    const activeCallsChannel = supabase.channel(`active_calls_sync_${user.id}`)
+    const activeCallsChannel = supabase
+      .channel(`active_calls_sync_${user.id}`)
       .on(
         "postgres_changes",
         {
@@ -501,19 +517,25 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
         async (payload) => {
           const currentStatus = statusRef.current;
-          
+
           if (payload.eventType === "INSERT") {
             const newRow = payload.new;
             if (newRow.receiver_id === user.id && currentStatus.type === "idle") {
               fetchOtherUserProfileRef.current(newRow.caller_id);
               setStatus({ type: "ringing" });
-              ringingAudioRef.current?.play().catch(console.error);
+              ringingAudioRef.current
+                ?.play()
+                .catch((err) => console.warn("Autoplay audio blocked:", err));
               startVibrationRef.current();
               showNotificationRef.current(newRow.caller_id);
             }
           } else if (payload.eventType === "UPDATE") {
             const nextRow = payload.new;
-            if (nextRow.receiver_id === user.id && nextRow.status === "connected" && currentStatus.type === "ringing") {
+            if (
+              nextRow.receiver_id === user.id &&
+              nextRow.status === "connected" &&
+              currentStatus.type === "ringing"
+            ) {
               ringingAudioRef.current?.pause();
               stopVibration();
               if (activeNotificationRef.current) {
@@ -526,14 +548,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else if (payload.eventType === "DELETE") {
             const oldRow = payload.old;
             const targetId = otherUserRef.current?.id;
-            if (targetId && (
-              (oldRow.caller_id === user.id && oldRow.receiver_id === targetId) ||
-              (oldRow.caller_id === targetId && oldRow.receiver_id === user.id)
-            )) {
+            if (
+              targetId &&
+              ((oldRow.caller_id === user.id && oldRow.receiver_id === targetId) ||
+                (oldRow.caller_id === targetId && oldRow.receiver_id === user.id))
+            ) {
               handleCallEndRef.current(targetId, true);
             }
           }
-        }
+        },
       )
       .subscribe();
 
@@ -561,7 +584,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (peerIdRef.current) {
             sendCallSignal(from, "CALL_RESPONSE", { peerId: peerIdRef.current });
           }
-          
+
           if (statusRef.current.type === "idle") {
             fetchOtherUserProfileRef.current(from);
           } else if (statusRef.current.type === "calling" && from === otherUserRef.current?.id) {
@@ -571,11 +594,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } else if (type === "CALL_RESPONSE") {
           // Caller receives target's Peer ID and initiates the call
-          if (statusRef.current.type === "calling" && from === otherUserRef.current?.id && senderPeerId) {
+          if (
+            statusRef.current.type === "calling" &&
+            from === otherUserRef.current?.id &&
+            senderPeerId
+          ) {
             console.log("Received CALL_RESPONSE with peerId:", senderPeerId);
             const currentPeer = peerRef.current;
             const stream = localStreamRef.current;
-            
+
             if (currentPeer && stream) {
               const call = currentPeer.call(senderPeerId, stream);
               setActiveCall(call);
@@ -593,7 +620,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
               });
 
               call.on("error", (err) => {
-                console.error("Call error in active call (caller side):", err);
+                console.warn("Call error in active call (caller side):", err);
                 handleCallEndRef.current(from, true);
               });
             }
@@ -621,8 +648,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Always randomize the PeerJS ID to avoid collisions on refresh
       // The handshake via CALL_REQUEST/CALL_RESPONSE will handle finding this ID
       const finalId = `${id}_${Math.random().toString(36).substring(2, 6)}`;
-      
-      console.log(`[PeerJS] Initializing for user ${id} with random PeerId: ${finalId} (attempt ${attempt + 1})`);
+
+      console.log(
+        `[PeerJS] Initializing for user ${id} with random PeerId: ${finalId} (attempt ${attempt + 1})`,
+      );
 
       const newPeer = new Peer(finalId, {
         debug: 1, // Only errors
@@ -647,7 +676,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       newPeer.on("call", (incoming) => {
         console.log("Incoming PeerJS call from:", incoming.peer);
 
-        if (statusRef.current.type !== "idle" && statusRef.current.type !== "ringing" && statusRef.current.type !== "calling") {
+        if (
+          statusRef.current.type !== "idle" &&
+          statusRef.current.type !== "ringing" &&
+          statusRef.current.type !== "calling"
+        ) {
           console.log("Busy, rejecting call. Current status:", statusRef.current.type);
           incoming.close();
           return;
@@ -655,9 +688,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setIncomingCall(incoming);
         setStatus({ type: "ringing" });
-        // The sender's ID in PeerJS might be randomized, so we rely on the Supabase signal 
+        // The sender's ID in PeerJS might be randomized, so we rely on the Supabase signal
         // to have already fetched the profile. Or we can try to parse the peer ID if it follows our pattern.
-        const otherSupabaseId = incoming.peer.includes("_") ? incoming.peer.split("_")[0] : incoming.peer;
+        const otherSupabaseId = incoming.peer.includes("_")
+          ? incoming.peer.split("_")[0]
+          : incoming.peer;
         fetchOtherUserProfileRef.current(otherSupabaseId);
         showNotificationRef.current(otherSupabaseId);
 
@@ -672,18 +707,20 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         incoming.on("error", (err) => {
-          console.error("Incoming call error:", err);
+          console.warn("Incoming call error:", err);
           handleCallEndRef.current(otherSupabaseId, true);
         });
 
         // Receiver hears the ringing sound
-        ringingAudioRef.current?.play().catch(console.error);
+        ringingAudioRef.current
+          ?.play()
+          .catch((err) => console.warn("Autoplay audio blocked:", err));
         startVibrationRef.current();
       });
 
       newPeer.on("error", (err) => {
         const errorType = (err as { type: string }).type;
-        console.error("Peer root error:", errorType, err);
+        console.warn("Peer root error:", errorType, err?.message || err);
 
         if (errorType === "unavailable-id") {
           console.warn("Peer ID already taken, trying with randomized suffix...");
@@ -715,7 +752,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }, 100);
               }
             } catch (reconnectErr) {
-              console.error("Reconnection failed:", reconnectErr);
+              console.warn("Reconnection failed:", reconnectErr);
             }
           }
         }
@@ -856,36 +893,54 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             {isInstalledApp() ? (
               <>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  O aplicativo não conseguiu acessar o microfone.
-                  Ative a permissão nas Definições do seu dispositivo móvel:
+                  O aplicativo não conseguiu acessar o microfone. Ative a permissão nas Definições
+                  do seu dispositivo móvel:
                 </p>
                 <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
-                  <p>🟢 <b>1.</b> Vá às <b>Definições / Ajustes</b> do seu dispositivo móvel.</p>
-                  <p>🟢 <b>2.</b> Aceda a <b>Aplicações / Gestor de Apps</b>.</p>
-                  <p>🟢 <b>3.</b> Selecione este aplicativo na lista.</p>
-                  <p>🟢 <b>4.</b> Clique em <b>Permissões</b> e ative o acesso ao <b>Microfone</b>.</p>
+                  <p>
+                    🟢 <b>1.</b> Vá às <b>Definições / Ajustes</b> do seu dispositivo móvel.
+                  </p>
+                  <p>
+                    🟢 <b>2.</b> Aceda a <b>Aplicações / Gestor de Apps</b>.
+                  </p>
+                  <p>
+                    🟢 <b>3.</b> Selecione este aplicativo na lista.
+                  </p>
+                  <p>
+                    🟢 <b>4.</b> Clique em <b>Permissões</b> e ative o acesso ao <b>Microfone</b>.
+                  </p>
                 </div>
               </>
             ) : (
               <>
                 <p className="text-xs text-zinc-400 leading-relaxed">
-                  O seu navegador bloqueou o microfone.
-                  Para fazer ou receber chamadas, siga estes passos no Android/iOS:
+                  O seu navegador bloqueou o microfone. Para fazer ou receber chamadas, siga estes
+                  passos no Android/iOS:
                 </p>
                 <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
-                  <p>🟢 <b>1.</b> No topo esquerdo (junto ao link do site), clique no símbolo de <b>Definições de Site / Cadeado / Info</b>.</p>
-                  <p>🟢 <b>2.</b> Localize a opção <b>Microfone</b>.</p>
-                  <p>🟢 <b>3.</b> Altere a definição para <b>Permitir</b>.</p>
-                  <p>🟢 <b>4.</b> Se estiver na app, autorize o microfone quando solicitado pelo telemóvel.</p>
+                  <p>
+                    🟢 <b>1.</b> No topo esquerdo (junto ao link do site), clique no símbolo de{" "}
+                    <b>Definições de Site / Cadeado / Info</b>.
+                  </p>
+                  <p>
+                    🟢 <b>2.</b> Localize a opção <b>Microfone</b>.
+                  </p>
+                  <p>
+                    🟢 <b>3.</b> Altere a definição para <b>Permitir</b>.
+                  </p>
+                  <p>
+                    🟢 <b>4.</b> Se estiver na app, autorize o microfone quando solicitado pelo
+                    telemóvel.
+                  </p>
                 </div>
               </>
             )}
           </div>
-          <Button 
+          <Button
             onClick={() => {
               setShowVoicePermissionDialog(false);
               navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
-            }} 
+            }}
             className="w-full h-11 rounded-2xl bg-white text-black font-black hover:bg-zinc-200"
           >
             Entendido

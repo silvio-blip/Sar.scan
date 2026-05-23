@@ -177,9 +177,21 @@ function DiarioPage() {
 
         <div className="grid grid-cols-3 w-full gap-4 relative z-10">
           {[
-            { l: "Prot", v: entries?.reduce((s, e) => s + Number(e.prot), 0) ?? 0, color: "text-accent" },
-            { l: "Carb", v: entries?.reduce((s, e) => s + Number(e.carbs), 0) ?? 0, color: "text-foreground" },
-            { l: "Gord", v: entries?.reduce((s, e) => s + Number(e.gord), 0) ?? 0, color: "text-muted-foreground" },
+            {
+              l: "Prot",
+              v: entries?.reduce((s, e) => s + Number(e.prot), 0) ?? 0,
+              color: "text-accent",
+            },
+            {
+              l: "Carb",
+              v: entries?.reduce((s, e) => s + Number(e.carbs), 0) ?? 0,
+              color: "text-foreground",
+            },
+            {
+              l: "Gord",
+              v: entries?.reduce((s, e) => s + Number(e.gord), 0) ?? 0,
+              color: "text-muted-foreground",
+            },
           ].map((m) => (
             <div key={m.l} className="flex flex-col items-center">
               <div className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">
@@ -408,7 +420,9 @@ function DiarioPage() {
                   >
                     <div className="font-display font-black text-2.5xl text-foreground tracking-tighter">
                       {v}
-                      <span className="text-[10px] ml-0.5 text-muted-foreground tracking-widest">{u}</span>
+                      <span className="text-[10px] ml-0.5 text-muted-foreground tracking-widest">
+                        {u}
+                      </span>
                     </div>
                     <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mt-1">
                       {k}

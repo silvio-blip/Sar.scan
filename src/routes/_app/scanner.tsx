@@ -19,6 +19,12 @@ import {
   Beef,
   Droplet,
   Loader2,
+  RefreshCw,
+  Settings,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ScannedFood } from "@/components/multi-food-modal";
@@ -40,10 +46,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
   const qc = useQueryClient();
-  const { stream, streamOn, startCamera, stopCamera } = useCamera();
+  const { stream, streamOn, startCamera, stopCamera, facingMode, toggleCamera } = useCamera();
   useSubscriptionRealtime(user?.id);
   useRewardsRealtime(user?.id);
-  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const [scanning, setScanning] = useState(false);
@@ -59,10 +65,41 @@ function ScannerPage() {
   }, [startCamera, stopCamera]);
 
   useEffect(() => {
-    if (videoElement && stream) {
-      videoElement.srcObject = stream;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (!stream) {
+      video.srcObject = null;
+      return;
     }
-  }, [videoElement, stream]);
+
+    // Apenas atribui se for um stream diferente para evitar cintilação, reinicializações e congelamentos
+    if (video.srcObject !== stream) {
+      console.log("[ScannerPage] Associando stream ao elemento de vídeo de forma otimizada...");
+      video.srcObject = stream;
+    }
+
+    video.setAttribute("playsinline", "true");
+    video.setAttribute("autoplay", "true");
+    video.muted = true;
+
+    const playVideo = () => {
+      video.play().catch((err) => {
+        console.warn("[ScannerPage] Falha ao iniciar vídeo via evento 'loadedmetadata':", err);
+      });
+    };
+
+    video.addEventListener("loadedmetadata", playVideo);
+
+    // Forçar início também imediatamente por segurança
+    video.play().catch((err) => {
+      console.warn("[ScannerPage] Falha ao iniciar reprodução imediata de vídeo:", err);
+    });
+
+    return () => {
+      video.removeEventListener("loadedmetadata", playVideo);
+    };
+  }, [stream]);
 
   const { data: usage } = useQuery({
     queryKey: ["scan_usage", user?.id],
@@ -163,7 +200,46 @@ function ScannerPage() {
     qc.invalidateQueries({ queryKey: ["water"] });
   };
 
-  const runScan = async (dataUrl: string) => {
+  const resizeAndCompressImage = (url: string, maxDim = 800, quality = 0.6): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.src = url;
+      img.onload = () => {
+        let w = img.width;
+        let h = img.height;
+        if (w <= maxDim && h <= maxDim) {
+          resolve(url);
+          return;
+        }
+        if (w > h) {
+          if (w > maxDim) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          }
+        } else {
+          if (h > maxDim) {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(url);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => {
+        resolve(url);
+      };
+    });
+  };
+
+  const runScan = async (rawUrl: string) => {
     if (!user) return;
     if (remaining <= 0) {
       toast.error(
@@ -174,8 +250,9 @@ function ScannerPage() {
       return;
     }
     setScanning(true);
-    setScanPhoto(dataUrl);
     try {
+      const dataUrl = await resizeAndCompressImage(rawUrl);
+      setScanPhoto(dataUrl);
       const { data, error } = await supabase.functions.invoke("scan-food", {
         body: { image: dataUrl, user_id: user.id }, // Passando user_id para o server gerenciar créditos
       });
@@ -207,14 +284,16 @@ function ScannerPage() {
   };
 
   const captureAndScan = async () => {
-    if (!videoElement || !streamOn) {
+    const v = videoRef.current;
+    if (!v || !streamOn || !stream) {
       toast.error("Câmera indisponível — use Galeria");
       return;
     }
-    const v = videoElement;
+    const width = v.videoWidth || 1280;
+    const height = v.videoHeight || 720;
     const canvas = document.createElement("canvas");
-    canvas.width = v.videoWidth;
-    canvas.height = v.videoHeight;
+    canvas.width = width;
+    canvas.height = height;
     canvas.getContext("2d")!.drawImage(v, 0, 0);
     runScan(canvas.toDataURL("image/jpeg", 0.7));
   };
@@ -325,16 +404,28 @@ function ScannerPage() {
           >
             {/* Camera View */}
             <video
-              ref={setVideoElement}
+              ref={videoRef}
               autoPlay
               playsInline
               muted
               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
                 (scanning && scanPhoto) || (detected && scanPhoto)
                   ? "opacity-0 pointer-events-none"
-                  : "opacity-90"
+                  : "opacity-100"
               }`}
             />
+
+            {/* Alternar Câmera Button Overlay */}
+            {streamOn && !scanning && !detected && (
+              <button
+                type="button"
+                onClick={toggleCamera}
+                className="absolute top-4 right-4 z-30 p-3 bg-zinc-950/75 hover:bg-zinc-950 backdrop-blur-md rounded-full border border-white/20 text-white transition-all active:scale-90 duration-200 cursor-pointer shadow-lg flex items-center justify-center group/btn"
+                title="Alternar câmera frontal/traseira"
+              >
+                <RefreshCw className="size-5 transition-transform duration-500 group-hover/btn:rotate-180" />
+              </button>
+            )}
 
             {/* Static Result Image */}
             {(scanning || detected) && scanPhoto && (
