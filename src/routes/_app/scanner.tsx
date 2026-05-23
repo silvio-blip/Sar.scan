@@ -40,7 +40,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
   const qc = useQueryClient();
-  const { stream, streamOn, startCamera } = useCamera();
+  const { stream, streamOn, startCamera, stopCamera } = useCamera();
   useSubscriptionRealtime(user?.id);
   useRewardsRealtime(user?.id);
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
@@ -50,6 +50,13 @@ function ScannerPage() {
   const [detected, setDetected] = useState<ScannedFood[] | null>(null);
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
   const [picked, setPicked] = useState<NutritionFood | null>(null);
+
+  useEffect(() => {
+    startCamera();
+    return () => {
+      stopCamera();
+    };
+  }, [startCamera, stopCamera]);
 
   useEffect(() => {
     if (videoElement && stream) {
@@ -139,7 +146,6 @@ function ScannerPage() {
     }
   }, [profile?.meta_prazo]);
 
-
   const addWater = async (ml: number) => {
     if (!user) return;
     if (ml < 0) {
@@ -181,7 +187,7 @@ function ScannerPage() {
         setScanPhoto(null);
         return;
       }
-      
+
       // Atualiza counts após scan bem sucedido (server já deduziu)
       await refresh();
       qc.invalidateQueries({ queryKey: ["scan_usage"] });
@@ -291,7 +297,6 @@ function ScannerPage() {
 
       {/* Main Container - Warm sand aesthetic */}
       <section className="p-2 pb-6 flex flex-col items-center gap-6 relative overflow-hidden">
-
         {/* Metas Gauge - Smaller and warm */}
         <div className="w-full flex flex-col items-center transform scale-[0.85] mt-1 relative z-10">
           <Gauge
@@ -325,7 +330,9 @@ function ScannerPage() {
               playsInline
               muted
               className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 ${
-                (scanning && scanPhoto) || (detected && scanPhoto) ? "opacity-0 pointer-events-none" : "opacity-90"
+                (scanning && scanPhoto) || (detected && scanPhoto)
+                  ? "opacity-0 pointer-events-none"
+                  : "opacity-90"
               }`}
             />
 
@@ -367,17 +374,22 @@ function ScannerPage() {
               </div>
             )}
 
-             {!streamOn && (
-              <div 
+            {!streamOn && (
+              <div
                 onClick={startCamera}
                 className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/85 backdrop-blur-sm z-10 cursor-pointer active:bg-zinc-950 transition-all duration-300 group"
                 title="Clique para tentar ativar a câmera"
               >
                 <Camera className="size-10 text-accent mb-3 animate-pulse group-hover:scale-110 transition-transform" />
                 <span className="text-[10px] font-black uppercase tracking-widest text-[#FAF7F2]/60 text-center px-8 leading-loose">
-                  {isInstalledApp() ? "Câmera indisponível. Verifique as permissões de câmara nas Definições do telemóvel." : "Câmera Desabilitada"}
+                  {isInstalledApp()
+                    ? "Câmera indisponível. Verifique as permissões de câmara nas Definições do telemóvel."
+                    : "Câmera Desabilitada"}
                   <br />
-                  <span className="text-accent font-black text-xs">{isInstalledApp() ? "Toque aqui" : "Clique aqui"}</span> para {isInstalledApp() ? "tentar reativar" : "tentar reativar o acesso"}
+                  <span className="text-accent font-black text-xs">
+                    {isInstalledApp() ? "Toque aqui" : "Clique aqui"}
+                  </span>{" "}
+                  para {isInstalledApp() ? "tentar reativar" : "tentar reativar o acesso"}
                 </span>
               </div>
             )}
@@ -451,7 +463,9 @@ function ScannerPage() {
       {/* Suggested Section - Humanized Journal lists */}
       <section className="w-full space-y-5 pt-8 border-t border-border">
         <div className="flex items-center justify-between px-2">
-          <h2 className="font-display font-black text-2xl text-foreground tracking-tight">Sugestões</h2>
+          <h2 className="font-display font-black text-2xl text-foreground tracking-tight">
+            Sugestões
+          </h2>
           <Link
             to="/buscar"
             className="text-[10px] text-primary font-black uppercase tracking-[0.2em] hover:opacity-80 transition-all"
