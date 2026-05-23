@@ -33,6 +33,8 @@ function PerfilPage() {
 
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hasSchemaError, setHasSchemaError] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   const { data: rewards } = useQuery({
     queryKey: ["rewards", user?.id],
@@ -290,15 +292,96 @@ function PerfilPage() {
                           .eq("id", user!.id);
                         if (error) throw error;
                         toast.success("Token Mock ativado para teste local!");
+                        setHasSchemaError(false);
                         window.location.reload();
                       } catch (err: any) {
-                        toast.error("Erro ao simular fcm_token " + err.message);
+                        const isSchemaError =
+                          err.message?.includes("fcm_token") ||
+                          err.message?.includes("column") ||
+                          err.message?.includes("schema cache");
+                        if (isSchemaError) {
+                          setHasSchemaError(true);
+                          toast.error(
+                            "O seu Supabase precisa que seja criada a coluna 'fcm_token' primeiro!",
+                          );
+                        } else {
+                          toast.error("Erro ao simular fcm_token: " + err.message);
+                        }
                       }
                     }}
                   >
                     Simular Token Local para Teste
                   </Button>
                 </div>
+
+                {hasSchemaError && (
+                  <div className="mt-4 p-4 border border-red-500/20 bg-red-500/5 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-start gap-2">
+                      <span className="text-base">🚨</span>
+                      <div>
+                        <h4 className="text-[11px] font-extrabold text-red-400 uppercase tracking-wider">
+                          Coluna em falta no Supabase
+                        </h4>
+                        <p className="text-[10px] text-zinc-300 leading-normal mt-0.5">
+                          Para receber notificações Push em todos os telemóveis, o seu banco de
+                          dados Supabase precisa de ter a coluna{" "}
+                          <code className="bg-zinc-900 px-1 py-0.5 rounded text-primary font-mono select-all">
+                            fcm_token
+                          </code>{" "}
+                          na tabela{" "}
+                          <code className="bg-zinc-900 px-1 py-0.5 rounded text-white font-mono">
+                            profiles
+                          </code>
+                          .
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950 p-2.5 rounded-xl border border-white/5 space-y-1.5">
+                      <p className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">
+                        Execute no SQL Editor do Supabase:
+                      </p>
+                      <div className="bg-black/40 p-2 rounded-lg text-[10px] font-mono break-all text-emerald-400 select-all border border-emerald-500/10">
+                        ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS fcm_token text;
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="w-full text-[9px] h-7 uppercase font-black tracking-wider rounded-lg"
+                        onClick={() => {
+                          navigator.clipboard.writeText(
+                            "ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS fcm_token text;",
+                          );
+                          setCopiedSql(true);
+                          toast.success("Comando SQL copiado!");
+                          setTimeout(() => setCopiedSql(false), 2000);
+                        }}
+                      >
+                        {copiedSql ? "Copiado! ✅" : "Copiar Comando SQL 📋"}
+                      </Button>
+                    </div>
+
+                    <div className="text-[10px] text-zinc-400 space-y-1 pl-1">
+                      <p className="font-semibold flex items-center gap-1">
+                        <span>💡</span> <b>Passos rápidos para resolver:</b>
+                      </p>
+                      <ol className="list-decimal pl-4 space-y-0.5 text-zinc-400 leading-relaxed text-[9px]">
+                        <li>
+                          Abra o painel do seu <b>Supabase</b>.
+                        </li>
+                        <li>
+                          Clique na barra lateral em <b>SQL Editor</b> &gt; <b>New Query</b>.
+                        </li>
+                        <li>
+                          Cole o comando acima e clique em <b>Run</b>.
+                        </li>
+                        <li>
+                          Depois de executar, as notificações funcionarão em qualquer telemóvel!
+                        </li>
+                      </ol>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
