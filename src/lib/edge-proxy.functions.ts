@@ -17,7 +17,7 @@ export const invokeEdge = async (data: { name: string; body?: Body }) => {
         throw new Error(`Erro na chamada de API: ${res.status}`);
     }
     const jsonResponse = await res.json();
-    if (jsonResponse.error) {
+    if (jsonResponse.error && jsonResponse.ok !== false) {
         throw new Error(jsonResponse.error);
     }
     return jsonResponse;

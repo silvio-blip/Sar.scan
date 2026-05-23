@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
           {
             role: "system",
             content:
-              "Você é um nutricionista. Identifique TODOS os alimentos visíveis na foto e estime os macros de cada um.",
+              "Você é um especialista em visão computacional nutricional. Analise a imagem cuidadosamente. Identifique todos os alimentos ou itens comestíveis visíveis, mesmo que em pequenas quantidades ou obscurecidos. Estime os macronutrientes para cada item encontrado. Seja preciso na identificação e estimativa.",
           },
           {
             role: "user",
