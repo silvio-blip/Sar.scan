@@ -23,6 +23,7 @@ type Profile = {
   meta_calorias: number | null;
   meta_agua: number | null;
   meta_prazo: string | null;
+  fcm_token: string | null;
 };
 
 type Subscription = {

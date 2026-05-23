@@ -91,32 +91,34 @@ export function BuscarPage() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
-      <div className="flex items-center gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-            Buscar Alimento
-          </h1>
-          <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
-            {popular?.length ?? 0} alimentos na base local
-          </p>
+    <div className="animate-in fade-in duration-700 pb-24 space-y-6">
+      <div className="sticky top-[-48px] z-30 bg-card -mx-6 px-6 pt-4 pb-4 border-b border-border/40 space-y-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+        <div className="flex items-center gap-4">
+          <div className="flex-1">
+            <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+              Buscar Alimento
+            </h1>
+            <p className="text-[11px] text-muted-foreground font-bold uppercase tracking-wider">
+              {popular?.length ?? 0} alimentos na base local
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="bg-secondary rounded-[24px] flex items-center gap-4 px-5 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
-        <Search
-          className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors"
-          strokeWidth={2.5}
-        />
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setVariants(null);
-          }}
-          placeholder="O que você comeu?"
-          className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground/60"
-        />
+        <div className="bg-secondary rounded-[24px] flex items-center gap-4 px-5 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
+          <Search
+            className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors"
+            strokeWidth={2.5}
+          />
+          <input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setVariants(null);
+            }}
+            placeholder="O que você comeu?"
+            className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground/60"
+          />
+        </div>
       </div>
 
       {isPremium ? (

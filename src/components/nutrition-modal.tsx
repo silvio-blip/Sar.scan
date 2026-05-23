@@ -48,6 +48,30 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !user) return;
+
+    const name = file.name ? file.name.toLowerCase() : "";
+    const mimeType = file.type ? file.type.toLowerCase() : "";
+    const extMatch = name.match(/\.([a-z0-9]+)$/);
+    const ext = extMatch ? extMatch[1] : "";
+
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+
+    const hasValidExtension = allowedExtensions.includes(ext);
+    const hasValidMime =
+      allowedMimeTypes.includes(mimeType) ||
+      (mimeType.startsWith("image/") &&
+        !mimeType.includes("svg") &&
+        !mimeType.includes("html") &&
+        !mimeType.includes("xml"));
+
+    if (!hasValidExtension || !hasValidMime) {
+      toast.error(
+        "Por favor, envie um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
+      );
+      return;
+    }
+
     setUploading(true);
     try {
       const url = await uploadFoodPhoto(file, user.id, "manual");
@@ -88,7 +112,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
+                accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
                 className="hidden"
                 onChange={handleFile}
               />

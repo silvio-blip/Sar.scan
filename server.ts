@@ -5,6 +5,8 @@ import { createServer as createViteServer } from "vite";
 import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";
 import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
+import { supabaseAdmin } from "./src/integrations/supabase/client.server";
+import { getAppSettings } from "./src/lib/settings.server";
 
 // Logic from edge-proxy and stripe functions
 // Since we want to keep it simple, we'll import the logic directly if possible or copy it.
@@ -47,11 +49,94 @@ async function startServer() {
   app.post("/api/edge", async (req, res) => {
     try {
       console.log("[Server] /api/edge received request:", req.body.name);
-      
+
       const result = await invokeEdgeInternal(req.body);
       res.json(result);
     } catch (error: unknown) {
       console.error("[Server] /api/edge error:", error);
+      const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Proxy for FCM notification delivery
+  app.post("/api/notifications/send", async (req, res) => {
+    try {
+      const { targetUserId, title, body, data: customData } = req.body;
+      if (!targetUserId) {
+        return res.status(400).json({ error: "O campo targetUserId é obrigatório." });
+      }
+
+      console.log(
+        `[Push] Tentando enviar notificação para usuário ${targetUserId}: ${title} - ${body}`,
+      );
+
+      const admin = supabaseAdmin;
+      if (!admin) {
+        return res.status(500).json({ error: "Supabase Admin não disponível." });
+      }
+
+      // Query the user's FCM token from profiles
+      const { data: recipientProfile, error: profileError } = await (admin as any)
+        .from("profiles")
+        .select("fcm_token, nome")
+        .eq("id", targetUserId)
+        .maybeSingle();
+
+      if (profileError || !recipientProfile) {
+        console.error("[Push] Erro ao buscar perfil do destinatário:", profileError);
+        return res.status(404).json({ error: "Perfil do destinatário não encontrado." });
+      }
+
+      const fcmToken = recipientProfile.fcm_token;
+      if (!fcmToken) {
+        console.warn(`[Push] Usuário ${targetUserId} não tem FCM token cadastrado.`);
+        return res.json({
+          success: false,
+          message: "Destinatário não tem fcm_token registrado no perfil.",
+        });
+      }
+
+      const settings = await getAppSettings();
+      const serverKey = settings.fcm_server_key;
+      let fcmResultLog = null;
+
+      if (!serverKey) {
+        console.warn("[Push] FCM_SERVER_KEY não configurada no servidor.");
+      } else {
+        // Dispatch push notification via FCM legacy endpoint
+        const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
+          method: "POST",
+          headers: {
+            Authorization: `key=${serverKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            to: fcmToken,
+            notification: {
+              title,
+              body,
+              sound: "default",
+              badge: 1,
+            },
+            data: customData || {},
+          }),
+        });
+
+        if (!fcmResponse.ok) {
+          const errorText = await fcmResponse.text();
+          console.error("[Push] Erro ao disparar FCM:", errorText);
+          throw new Error(`FCM API responded with status ${fcmResponse.status}: ${errorText}`);
+        }
+
+        const fcmResult = await fcmResponse.json();
+        console.log("[Push] Notificação disparada com sucesso via FCM:", fcmResult);
+        fcmResultLog = fcmResult;
+      }
+
+      res.json({ success: true, fcmResult: fcmResultLog });
+    } catch (error: unknown) {
+      console.error("[Push] Erro crítico no envio da notificação:", error);
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
       res.status(500).json({ error: msg });
     }

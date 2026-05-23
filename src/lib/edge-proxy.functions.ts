@@ -12,13 +12,13 @@ export const invokeEdge = async (data: { name: string; body?: Body }) => {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-        const text = await res.text();
-        console.error(`[EdgeProxy] Error response: ${res.status} ${text}`);
-        throw new Error(`Erro na chamada de API: ${res.status}`);
+      const text = await res.text();
+      console.error(`[EdgeProxy] Error response: ${res.status} ${text}`);
+      throw new Error(`Erro na chamada de API: ${res.status}`);
     }
     const jsonResponse = await res.json();
     if (jsonResponse.error && jsonResponse.ok !== false) {
-        throw new Error(jsonResponse.error);
+      throw new Error(jsonResponse.error);
     }
     return jsonResponse;
   } catch (e) {

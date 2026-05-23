@@ -301,6 +301,31 @@ function ScannerPage() {
   const onPickGallery = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const name = file.name ? file.name.toLowerCase() : "";
+    const mimeType = file.type ? file.type.toLowerCase() : "";
+    const extMatch = name.match(/\.([a-z0-9]+)$/);
+    const ext = extMatch ? extMatch[1] : "";
+
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+
+    const hasValidExtension = allowedExtensions.includes(ext);
+    const hasValidMime =
+      allowedMimeTypes.includes(mimeType) ||
+      (mimeType.startsWith("image/") &&
+        !mimeType.includes("svg") &&
+        !mimeType.includes("html") &&
+        !mimeType.includes("xml"));
+
+    if (!hasValidExtension || !hasValidMime) {
+      toast.error(
+        "Por favor, selecione um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos por segurança.",
+      );
+      e.target.value = "";
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => runScan(String(reader.result));
     reader.readAsDataURL(file);
@@ -537,7 +562,7 @@ function ScannerPage() {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
         className="hidden"
         onChange={onPickGallery}
       />
@@ -545,7 +570,7 @@ function ScannerPage() {
       <input
         ref={cameraRef}
         type="file"
-        accept="image/*"
+        accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
         capture="environment"
         className="hidden"
         onChange={onPickGallery}

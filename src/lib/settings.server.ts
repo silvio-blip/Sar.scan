@@ -21,12 +21,15 @@ export async function getAppSettings(): Promise<AppSettings> {
   try {
     const admin = supabaseAdmin;
     console.log("[Settings] Iniciando busca na tabela app_settings...");
-    
+
     // Explicitly use the admin client to select from app_settings
     const { data, error } = await (admin as any).from("app_settings").select("key, value");
 
     if (error) {
-      console.error("[Settings] ERRO AO BUSCAR NO BANCO (from app_settings):", JSON.stringify(error, null, 2));
+      console.error(
+        "[Settings] ERRO AO BUSCAR NO BANCO (from app_settings):",
+        JSON.stringify(error, null, 2),
+      );
       return (_settingsCache || {}) as AppSettings;
     }
 
@@ -40,7 +43,10 @@ export async function getAppSettings(): Promise<AppSettings> {
         }
       }
     } else {
-      console.warn("[Settings] Nenhum dado retornado ou formato inválido da tabela app_settings.", data);
+      console.warn(
+        "[Settings] Nenhum dado retornado ou formato inválido da tabela app_settings.",
+        data,
+      );
     }
 
     _settingsCache = settings;

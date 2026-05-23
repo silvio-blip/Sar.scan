@@ -95,9 +95,48 @@ function AppLayout() {
   };
 
   useEffect(() => {
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches;
     console.log(`[AppLayout] Running as standalone: ${isStandalone}`);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+    if (isCapacitor) {
+      const cap = (window as any).Capacitor;
+      const { PushNotifications } = cap.Plugins || {};
+      if (PushNotifications) {
+        console.log("[Push] Inicializando registro de notificações no dispositivo...");
+        PushNotifications.requestPermissions().then((result: any) => {
+          if (result.receive === "granted") {
+            PushNotifications.register();
+          } else {
+            console.warn("[Push] Permissões de notificação negadas.");
+          }
+        });
+
+        PushNotifications.addListener("registration", async (token: any) => {
+          console.log("[Push] Registro efetuado com sucesso. Token:", token.value);
+          const { error } = await supabase
+            .from("profiles")
+            .update({ fcm_token: token.value })
+            .eq("id", user.id);
+          if (error) {
+            console.error("[Push] Erro ao sincronizar token com o banco:", error);
+          }
+        });
+
+        PushNotifications.addListener("registrationError", (error: any) => {
+          console.error("[Push] Erro no registro de notificações:", error);
+        });
+
+        PushNotifications.addListener("pushNotificationReceived", (notification: any) => {
+          console.log("[Push] Notificação em primeiro plano (In-App):", notification);
+        });
+      }
+    }
+  }, [user]);
 
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);
 
@@ -116,7 +155,8 @@ function AppLayout() {
 
       <main
         style={{
-          paddingBottom: "max(var(--main-padding-bottom, 160px), calc(var(--main-padding-bottom, 160px) + env(safe-area-inset-bottom, 0px)))",
+          paddingBottom:
+            "max(var(--main-padding-bottom, 160px), calc(var(--main-padding-bottom, 160px) + env(safe-area-inset-bottom, 0px)))",
         }}
         className="flex-1 w-full max-w-[480px] bg-card px-6 pt-12 overflow-hidden relative shadow-xl border-x border-border"
       >
@@ -130,7 +170,8 @@ function AppLayout() {
 
       <nav
         style={{
-          bottom: "max(var(--android-nav-bottom, 32px), calc(var(--android-nav-bottom, 32px) + env(safe-area-inset-bottom, 0px)))",
+          bottom:
+            "max(var(--android-nav-bottom, 32px), calc(var(--android-nav-bottom, 32px) + env(safe-area-inset-bottom, 0px)))",
         }}
         className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(94vw,440px)] px-4 transition-all duration-300"
       >

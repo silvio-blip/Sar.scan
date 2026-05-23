@@ -37,7 +37,7 @@ export function getApiUrl(path: string): string {
   );
 
   // Fallback to absolute service endpoint for native wrappers
-  let baseUrl = import.meta.env.DEV
+  const baseUrl = import.meta.env.DEV
     ? "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
     : "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
 

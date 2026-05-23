@@ -20,15 +20,18 @@ async function getGeminiKey() {
   const settings = await getAppSettings();
   console.log("[Edge] Settings object keys:", Object.keys(settings));
   console.log("[Edge] Settings object content:", JSON.stringify(settings));
-  
+
   const key = settings.gemini_api_key || process.env.GEMINI_API_KEY;
 
   if (key) {
     _cachedKey = key;
-    console.log("[Edge] Gemini key successfully retrieved (first 5 chars):", key.substring(0, 5) + "***");
+    console.log(
+      "[Edge] Gemini key successfully retrieved (first 5 chars):",
+      key.substring(0, 5) + "***",
+    );
     return key;
   }
-  
+
   console.error("[Edge] Gemini key NOT found!");
   throw new Error("Chave Gemini não configurada (não encontrada em app_settings nem environment)");
 }

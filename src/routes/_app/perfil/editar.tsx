@@ -25,10 +25,33 @@ function EditarPerfil() {
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+
+    const name = file.name ? file.name.toLowerCase() : "";
+    const mimeType = file.type ? file.type.toLowerCase() : "";
+    const extMatch = name.match(/\.([a-z0-9]+)$/);
+    const fileExt = extMatch ? extMatch[1] : "";
+
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+
+    const hasValidExtension = allowedExtensions.includes(fileExt);
+    const hasValidMime =
+      allowedMimeTypes.includes(mimeType) ||
+      (mimeType.startsWith("image/") &&
+        !mimeType.includes("svg") &&
+        !mimeType.includes("html") &&
+        !mimeType.includes("xml"));
+
+    if (!hasValidExtension || !hasValidMime) {
+      toast.error(
+        "Por favor, envie um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
+      );
+      return;
+    }
+
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() ?? "jpg";
-      const path = `${user.id}/avatar-${Date.now()}.${ext}`;
+      const path = `${user.id}/avatar-${Date.now()}.${fileExt}`;
       const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
@@ -94,7 +117,7 @@ function EditarPerfil() {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
             className="hidden"
             onChange={onPickFile}
           />

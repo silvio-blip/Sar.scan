@@ -1383,12 +1383,24 @@ function ChatPage() {
       if (error) throw error;
       toast.success("Pedido de amizade enviado!");
       qc.invalidateQueries({ queryKey: ["friends_status"] });
+
+      // Dispatch push notification to receiver
+      fetch("/api/notifications/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: friendId,
+          title: "Novo vínculo pendente! 🤝",
+          body: `${profile?.nome || "Alguém"} te enviou uma solicitação de vínculo no Sar Scan.`,
+          data: { friendId: user!.id, type: "friend_request" },
+        }),
+      }).catch((err) => console.error("[Push] Erro ao disparar push:", err));
     } catch (e) {
       toast.error("Erro ao enviar pedido");
     }
   };
 
-  const acceptFriendRequest = async (requestId: string) => {
+  const acceptFriendRequest = async (requestId: string, senderId?: string) => {
     try {
       const { error } = await supabase
         .from("friends")
@@ -1398,6 +1410,20 @@ function ChatPage() {
       toast.success("Amigo adicionado!");
       qc.invalidateQueries({ queryKey: ["friend_requests"] });
       qc.invalidateQueries({ queryKey: ["friends_status"] });
+
+      // Dispatch push notification back to original request sender
+      if (senderId) {
+        fetch("/api/notifications/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUserId: senderId,
+            title: "Solicitação aceita! ⚡",
+            body: `${profile?.nome || "Seu amigo"} aceitou seu convite de vínculo no Sar Scan.`,
+            data: { friendId: user!.id, type: "friend_request_accepted" },
+          }),
+        }).catch((err) => console.error("[Push] Erro ao disparar push:", err));
+      }
     } catch (e) {
       toast.error("Erro ao aceitar pedido");
     }

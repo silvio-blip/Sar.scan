@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   Pencil,
   Shield,
@@ -17,6 +19,9 @@ import {
   ChevronRight,
   Search,
   History,
+  Copy,
+  Check,
+  Smartphone,
 } from "lucide-react";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 
@@ -189,6 +194,113 @@ function PerfilPage() {
           <ChevronRight className="size-4 text-muted-foreground" />
         </Card>
       </Link>
+
+      <div className="border-t border-border" />
+
+      {/* FCM Device Notification Token Block */}
+      <Card className="bg-card rounded-[32px] p-5 border border-border shadow-sm space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Smartphone className="size-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-foreground">Dispositivo & Firebase (FCM)</div>
+            <p className="text-[11px] text-muted-foreground font-semibold">
+              {profile?.fcm_token
+                ? "Token FCM registrado com sucesso!"
+                : "Aguardando registro no APK..."}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-[10px] uppercase font-black tracking-wider text-primary hover:bg-primary/5 rounded-xl h-8"
+            onClick={() => setShowToken(!showToken)}
+          >
+            {showToken ? "Ocultar" : "Exibir"}
+          </Button>
+        </div>
+
+        {showToken && (
+          <div className="pt-2 border-t border-border space-y-3">
+            {profile?.fcm_token ? (
+              <div className="space-y-2">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                  Firebase Cloud Messaging Token:
+                </p>
+                <div className="bg-secondary p-3 rounded-2xl text-[10px] font-mono break-all relative border border-border flex items-start gap-2 pr-10">
+                  <span className="flex-1 text-foreground/80 leading-relaxed select-all">
+                    {profile.fcm_token}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-8 absolute right-1.5 top-1.5 rounded-xl text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      navigator.clipboard.writeText(profile.fcm_token || "");
+                      setCopied(true);
+                      toast.success("Token copiado para a área de transferência!");
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                  >
+                    {copied ? (
+                      <Check className="size-3.5 text-primary" />
+                    ) : (
+                      <Copy className="size-3.5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[9px] text-muted-foreground leading-normal mt-1">
+                  Este token identifica seu celular único e é atualizado automaticamente pelo
+                  aplicativo ao entrar no APK.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[11px] text-amber-500 font-bold leading-relaxed">
+                  ⚠️ Nenhum token registrado ainda no seu perfil.
+                </p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  Para registrar o token push dinâmico e receber as notificações push em standby:
+                </p>
+                <ol className="text-[10px] text-muted-foreground list-decimal pl-4 space-y-1">
+                  <li>Instale e abra o aplicativo compile em formato APK no Android Studio.</li>
+                  <li>
+                    O APK pedirá permissão de notificações nativas. Escolha{" "}
+                    <strong>"Permitir"</strong>.
+                  </li>
+                  <li>
+                    O token será obtido via plugin Capacitor e enviado ao banco automaticamente.
+                  </li>
+                </ol>
+                <div className="pt-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-[10px] uppercase font-bold tracking-wider rounded-xl h-8 border-dashed"
+                    onClick={async () => {
+                      const mockToken = `fcm_mock_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
+                      try {
+                        const { error } = await supabase
+                          .from("profiles")
+                          .update({ fcm_token: mockToken })
+                          .eq("id", user!.id);
+                        if (error) throw error;
+                        toast.success("Token Mock ativado para teste local!");
+                        window.location.reload();
+                      } catch (err: any) {
+                        toast.error("Erro ao simular fcm_token " + err.message);
+                      }
+                    }}
+                  >
+                    Simular Token Local para Teste
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Button
         variant="outline"

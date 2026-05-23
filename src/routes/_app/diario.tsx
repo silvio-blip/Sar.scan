@@ -125,6 +125,30 @@ function DiarioPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !open || !user) return;
+
+    const name = file.name ? file.name.toLowerCase() : "";
+    const mimeType = file.type ? file.type.toLowerCase() : "";
+    const extMatch = name.match(/\.([a-z0-9]+)$/);
+    const ext = extMatch ? extMatch[1] : "";
+
+    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
+    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+
+    const hasValidExtension = allowedExtensions.includes(ext);
+    const hasValidMime =
+      allowedMimeTypes.includes(mimeType) ||
+      (mimeType.startsWith("image/") &&
+        !mimeType.includes("svg") &&
+        !mimeType.includes("html") &&
+        !mimeType.includes("xml"));
+
+    if (!hasValidExtension || !hasValidMime) {
+      toast.error(
+        "Por favor, selecione um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
+      );
+      return;
+    }
+
     setUploadingPhoto(true);
     try {
       const url = await uploadFoodPhoto(file, user.id, "edit");
@@ -379,7 +403,7 @@ function DiarioPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/*"
+                  accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
                   className="hidden"
                   onChange={trocarFoto}
                 />
