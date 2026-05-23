@@ -1,4 +1,4 @@
-import { createFileRoute, Link, Outlet, useLocation, Navigate } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useLocation, Navigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -17,6 +17,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { SarLogo } from "@/components/sar-logo";
 import { IntroAnimation } from "@/components/intro-animation";
+import { App } from "@capacitor/app";
 
 export const Route = createFileRoute("/_app")({ component: AppLayout });
 
@@ -54,8 +55,17 @@ const tabs = [
 function AppLayout() {
   const { user, profile, loading } = useAuth();
   const loc = useLocation();
+  const router = useRouter();
   const [showIntro, setShowIntro] = useState(true);
   const [layoutMode, setLayoutMode] = useState<"buttons" | "infinite">("infinite");
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window as any).Capacitor) {
+      App.addListener("backButton", () => {
+        router.history.back();
+      });
+    }
+  }, [router]);
 
   useEffect(() => {
     const testDiv = document.createElement("div");

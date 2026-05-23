@@ -60,9 +60,9 @@ function ScannerPage() {
   useEffect(() => {
     startCamera();
     return () => {
-      stopCamera();
+      // stopCamera(); // Persistindo câmera ao mudar de aba
     };
-  }, [startCamera, stopCamera]);
+  }, [startCamera]);
 
   useEffect(() => {
     const video = videoRef.current;
