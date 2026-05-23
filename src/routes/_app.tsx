@@ -94,6 +94,11 @@ function AppLayout() {
     setShowIntro(false);
   };
 
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    console.log(`[AppLayout] Running as standalone: ${isStandalone}`);
+  }, []);
+
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);
 
   if (loading)
@@ -109,7 +114,12 @@ function AppLayout() {
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center font-sans tracking-tight antialiased selection:bg-primary/20">
       {showIntro && <IntroAnimation onDone={handleIntroDone} />}
 
-      <main className="flex-1 w-full max-w-[480px] bg-card px-6 pt-12 overflow-hidden relative shadow-xl border-x border-border pb-[var(--main-padding-bottom,160px)]">
+      <main
+        style={{
+          paddingBottom: "max(var(--main-padding-bottom, 160px), calc(var(--main-padding-bottom, 160px) + env(safe-area-inset-bottom, 0px)))",
+        }}
+        className="flex-1 w-full max-w-[480px] bg-card px-6 pt-12 overflow-hidden relative shadow-xl border-x border-border"
+      >
         {/* Delicate organic glow at the top */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 bg-primary/5 blur-[80px] pointer-events-none" />
 
@@ -119,7 +129,9 @@ function AppLayout() {
       </main>
 
       <nav
-        style={{ bottom: "var(--android-nav-bottom, 32px)" }}
+        style={{
+          bottom: "max(var(--android-nav-bottom, 32px), calc(var(--android-nav-bottom, 32px) + env(safe-area-inset-bottom, 0px)))",
+        }}
         className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(94vw,440px)] px-4 transition-all duration-300"
       >
         <div className="glass-strong rounded-[44px] px-2 py-2 flex items-center justify-around shadow-[0_16px_40px_rgba(46,74,59,0.08)] border border-border">
