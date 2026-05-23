@@ -333,8 +333,45 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
 
-        // Wakeup signal
+        // Wakeup signal via real WebSocket
         sendCallSignal(targetId, "CALL_REQUEST", { peerId: peerIdRef.current });
+
+        // Enviar 푸시 push notification para acordar o celular caso esteja em background
+        try {
+          const { data: callerProfile } = await supabase
+            .from("profiles")
+            .select("nome")
+            .eq("id", user.id)
+            .maybeSingle();
+          const callerName = callerProfile?.nome || "Alguém";
+
+          console.log("[Push] Tentando disparar notificação de chamada para", targetId);
+          fetch("/api/notifications/send", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              targetUserId: targetId,
+              title: "Chamada de Voz Recebida 📞",
+              body: `${callerName} está a ligar para si no Sar Scan. Toque para atender.`,
+              customData: {
+                type: "incoming_call",
+                callerId: user.id,
+                callerName: callerName,
+              },
+            }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              console.log("[Push] Resposta da notificação de chamada:", data);
+            })
+            .catch((err) => {
+              console.error("[Push] Erro assíncrono na notificação de chamada:", err);
+            });
+        } catch (pushErr) {
+          console.error("[Push] Erro ao disparar push de chamada:", pushErr);
+        }
       } catch (err) {
         console.error("Error starting call:", err);
         // Se falhar, mostramos o diálogo explicativo que criámos anteriormente
@@ -410,6 +447,15 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [handleCallEnd, otherUser?.id]);
 
   const showNotification = useCallback(async (callerId: string) => {
+    // Se o aplicativo estiver aberto e visível (foreground), NÃO mostre a Notificação Web superior
+    // para evitar de exibir dois modais ao mesmo tempo. O modal interativo do React já cuida disso!
+    if (document.visibilityState === "visible") {
+      console.log(
+        "[Notification] App visível em primeiro plano. Omitindo notificação web de som duplicada.",
+      );
+      return;
+    }
+
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
       const { data: profile } = await supabase

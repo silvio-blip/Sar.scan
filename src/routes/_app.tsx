@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import {
   Camera,
   Search,
@@ -102,6 +103,65 @@ function AppLayout() {
   useEffect(() => {
     if (!user) return;
 
+    // Proactively request notifications, microphone, and camera permissions at startup
+    // so the user gets prompted by standard browser/device dialogs automatically.
+    const requestCorePermissions = async () => {
+      // 1. Notification Permission (Standard Browser)
+      if ("Notification" in window && Notification.permission === "default") {
+        try {
+          console.log("[Permissions] Solicitando permissão de notificações (Web)...");
+          await Notification.requestPermission();
+        } catch (err) {
+          console.warn("[Permissions] Erro ao solicitar permissão de notificações:", err);
+        }
+      }
+
+      // 2. Microphone/Audio Permission
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+        try {
+          const micPermission = await navigator.permissions
+            ?.query({ name: "microphone" as PermissionName })
+            .catch(() => null);
+          if (!micPermission || micPermission.state !== "granted") {
+            console.log("[Permissions] Solicitando permissão de Microfone de forma proativa...");
+            const stream = await navigator.mediaDevices
+              .getUserMedia({ audio: true })
+              .catch(() => null);
+            if (stream) {
+              console.log("[Permissions] Permissão de microfone pré-concedida pelo usuário.");
+              stream.getTracks().forEach((track) => track.stop());
+            }
+          }
+        } catch (err) {
+          console.warn("[Permissions] Erro ao solicitar permissão de microfone:", err);
+        }
+      }
+
+      // 3. Camera Permission
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+        try {
+          const cameraPermission = await navigator.permissions
+            ?.query({ name: "camera" as PermissionName })
+            .catch(() => null);
+          if (!cameraPermission || cameraPermission.state !== "granted") {
+            console.log("[Permissions] Solicitando permissão de Câmera de forma proativa...");
+            const stream = await navigator.mediaDevices
+              .getUserMedia({ video: true })
+              .catch(() => null);
+            if (stream) {
+              console.log("[Permissions] Permissão de câmera pré-concedida pelo usuário.");
+              stream.getTracks().forEach((track) => track.stop());
+            }
+          }
+        } catch (err) {
+          console.warn("[Permissions] Erro ao solicitar permissão de câmera:", err);
+        }
+      }
+    };
+
+    // Execute immediately on user mount
+    requestCorePermissions();
+
     const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCapacitor) {
       const cap = (window as any).Capacitor;
@@ -133,6 +193,28 @@ function AppLayout() {
 
         PushNotifications.addListener("pushNotificationReceived", (notification: any) => {
           console.log("[Push] Notificação em primeiro plano (In-App):", notification);
+          // Toque interativo do Sonner para o usuário saber de novas conversas ou ligações no foreground
+          const isCallNotification =
+            notification.data?.type === "incoming_call" || notification.title?.includes("Chamada");
+
+          if (isCallNotification) {
+            // Se o app já está visível na tela, NÃO mostramos o toast da chamada por cima,
+            // pois o modal interativo central de chamadas já vai aparecer de qualquer forma via canal em tempo real do Supabase!
+            if (document.visibilityState === "visible") {
+              console.log(
+                "[Push] App visível em primeiro plano. Omitindo toast de notificação de ligação duplicada.",
+              );
+              return;
+            }
+            toast.info(`📞 ${notification.title || "Chamada de voz"}`, {
+              description: notification.body || "A receber uma chamada... Abra para atender.",
+              duration: 10000,
+            });
+          } else {
+            toast.message(`💬 ${notification.title || "Nova mensagem"}`, {
+              description: notification.body || "Toque para visualizar",
+            });
+          }
         });
       }
     }
