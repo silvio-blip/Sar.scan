@@ -193,8 +193,8 @@ function AppLayout() {
       }
     };
 
-    // Execute sequential request flow on user mount
-    requestCorePermissions();
+    // Execute sequential request flow on user mount IF NOT ALREADY GRANTED (only if needed by user action)
+    // requestCorePermissions(); 
 
     const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCapacitor) {
@@ -225,18 +225,11 @@ function AppLayout() {
             notification.data?.type === "incoming_call" || notification.title?.includes("Chamada");
 
           if (isCallNotification) {
-            // Se o app já está visível na tela, NÃO mostramos o toast da chamada por cima,
-            // pois o modal interativo central de chamadas já vai aparecer de qualquer forma via canal em tempo real do Supabase!
-            if (document.visibilityState === "visible") {
-              console.log(
-                "[Push] App visível em primeiro plano. Omitindo toast de notificação de ligação duplicada.",
-              );
-              return;
-            }
-            toast.info(`📞 ${notification.title || "Chamada de voz"}`, {
-              description: notification.body || "A receber uma chamada... Abra para atender.",
-              duration: 10000,
-            });
+            // Toast suprimido para chamadas, reliance total no listener em tempo real do CallContext!
+            console.log(
+              "[Push] Notificação de chamada recebida. Omitindo toast, CallContext lidará com isso.",
+            );
+            return;
           } else {
             toast.message(`💬 ${notification.title || "Nova mensagem"}`, {
               description: notification.body || "Toque para visualizar",
