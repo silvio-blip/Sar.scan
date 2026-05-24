@@ -126,87 +126,116 @@ function AppLayout() {
       const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
       const cap = isCap ? (window as any).Capacitor : null;
 
-      // 1. Camera Permission First
-      console.log("[Permissions] Passo 1: Solicitando permissão da Câmera...");
-      if (isCap) {
-        const { Camera } = cap.Plugins || {};
-        if (Camera && typeof Camera.requestPermissions === "function") {
-          try {
-            const check = await Camera.checkPermissions();
-            if (check?.camera !== "granted") {
-              await Camera.requestPermissions({ permissions: ["camera"] });
-            } else {
-              console.log("[Permissions] Permissão nativa de câmera já concedida.");
+      // 1. Solicitamos Notificações (Super Crítico!) primeiro de forma isolada
+      const requestNotifications = async () => {
+        console.log("[Permissions] Solicitando permissão de notificações...");
+        if (isCap) {
+          const { PushNotifications } = cap.Plugins || {};
+          if (PushNotifications) {
+            try {
+              const check = await PushNotifications.checkPermissions();
+              if (check?.receive !== "granted") {
+                const result = await PushNotifications.requestPermissions();
+                if (result?.receive === "granted") {
+                  console.log("[Push] Permissões nativas de notificação concedidas pelo clique.");
+                  PushNotifications.register();
+                } else {
+                  console.warn("[Push] Permissões nativas recusadas ou ignoradas.");
+                }
+              } else {
+                console.log("[Push] Permissão nativa já concedida, registrando dispositivo...");
+                PushNotifications.register();
+              }
+            } catch (err) {
+              console.error("[Push] Erro na requisição de Push nativo:", err);
             }
-          } catch (err) {
-            console.warn("[Permissions] Erro ao solicitar câmera via Capacitor:", err);
+          }
+        } else {
+          if ("Notification" in window && Notification.permission === "default") {
+            try {
+              await Notification.requestPermission();
+            } catch (err) {
+              console.warn("[Permissions] Erro na notificação Web:", err);
+            }
           }
         }
-      } else {
+      };
+
+      // 2. Solicitamos Câmera de forma independente
+      const requestCamera = async () => {
+        console.log("[Permissions] Solicitando permissão da Câmera...");
+        if (isCap) {
+          const { Camera } = cap.Plugins || {};
+          if (Camera && typeof Camera.requestPermissions === "function") {
+            try {
+              const check = await Camera.checkPermissions();
+              if (check?.camera !== "granted") {
+                await Camera.requestPermissions({ permissions: ["camera"] });
+              } else {
+                console.log("[Permissions] Permissão nativa de câmera já concedida.");
+              }
+            } catch (err) {
+              console.warn("[Permissions] Erro ao solicitar câmera via Capacitor:", err);
+            }
+          }
+        } else {
+          if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+            try {
+              const stream = await navigator.mediaDevices
+                .getUserMedia({ video: { facingMode: "environment" } })
+                .catch(() => null);
+              if (stream) {
+                console.log("[Permissions] Permissão de câmera concedida.");
+                stream.getTracks().forEach((track) => track.stop());
+              }
+            } catch (err) {
+              console.warn("[Permissions] Câmera Web indisponível:", err);
+            }
+          }
+        }
+      };
+
+      // 3. Solicitamos Microfone de forma independente
+      const requestMicrophone = async () => {
+        console.log("[Permissions] Solicitando permissão do Microfone...");
         if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
           try {
             const stream = await navigator.mediaDevices
-              .getUserMedia({ video: { facingMode: "environment" } })
+              .getUserMedia({ audio: true })
               .catch(() => null);
             if (stream) {
-              console.log("[Permissions] Permissão de câmera concedida.");
+              console.log("[Permissions] Permissão de microfone concedida.");
               stream.getTracks().forEach((track) => track.stop());
-            }
-          } catch (err) {
-            console.warn("[Permissions] Erro de câmera:", err);
-          }
-        }
-      }
-
-      // 800ms gap to let the OS clear the previous prompt
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      // 2. Notification Permission Second
-      console.log("[Permissions] Passo 2: Solicitando permissão de notificações...");
-      if (isCap) {
-        const { PushNotifications } = cap.Plugins || {};
-        if (PushNotifications) {
-          try {
-            const result = await PushNotifications.requestPermissions();
-            if (result?.receive === "granted") {
-              console.log("[Push] Permissões de notificação nativas concedidas, registrando...");
-              PushNotifications.register();
             } else {
-              console.warn("[Push] Permissões nativas de notificação negadas.");
+              console.warn("[Permissions] Uso de microfone recusado ou indisponível.");
             }
           } catch (err) {
-            console.error("[Push] Erro ao solicitar permissões nativas:", err);
+            console.warn("[Permissions] Erro ao obter permissão de microfone:", err);
           }
         }
-      } else {
-        if ("Notification" in window && Notification.permission === "default") {
-          try {
-            await Notification.requestPermission();
-          } catch (err) {
-            console.warn("[Permissions] Erro ao solicitar permissão de notificações Web:", err);
-          }
-        }
+      };
+
+      // Executa de forma sequencial com pequenos intervalos para não atropelar diálogos do SO, de forma segura
+      try {
+        await requestNotifications();
+      } catch (e) {
+        console.error("Erro na etapa de Notificações:", e);
       }
 
-      // 800ms gap
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 600));
 
-      // 3. Microphone/Audio Permission Third
-      console.log("[Permissions] Passo 3: Solicitando permissão do Microfone...");
-      if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-        try {
-          const stream = await navigator.mediaDevices
-            .getUserMedia({ audio: true })
-            .catch(() => null);
-          if (stream) {
-            console.log("[Permissions] Permissão de microfone concedida.");
-            stream.getTracks().forEach((track) => track.stop());
-          } else {
-            console.warn("[Permissions] Uso de microfone recusado ou indisponível.");
-          }
-        } catch (err) {
-          console.warn("[Permissions] Erro ao obter permissão de microfone:", err);
-        }
+      try {
+        await requestCamera();
+      } catch (e) {
+        console.error("Erro na etapa de Câmera:", e);
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      try {
+        await requestMicrophone();
+      } catch (e) {
+        console.error("Erro na etapa de Microfone:", e);
       }
     };
 

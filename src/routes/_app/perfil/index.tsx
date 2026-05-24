@@ -308,7 +308,35 @@ function PerfilPage() {
                     O token será obtido via plugin Capacitor e enviado ao banco automaticamente.
                   </li>
                 </ol>
-                {!isInstalledApp() && (
+                {isInstalledApp() ? (
+                  <div className="pt-2">
+                    <Button
+                      size="sm"
+                      className="w-full text-[10px] uppercase font-bold tracking-wider rounded-xl h-8 bg-primary text-primary-foreground hover:bg-primary/90"
+                      onClick={async () => {
+                        const cap = (window as any).Capacitor;
+                        const { PushNotifications } = cap?.Plugins || {};
+                        if (PushNotifications) {
+                          try {
+                            const result = await PushNotifications.requestPermissions();
+                            if (result?.receive === "granted") {
+                              PushNotifications.register();
+                              toast.success("Permissão ativa concedida! Registrando token...");
+                            } else {
+                              toast.warn("Permissão de Notificação negada no Android.");
+                            }
+                          } catch (err: any) {
+                            toast.error("Erro ao solicitar permissões nativas: " + err.message);
+                          }
+                        } else {
+                          toast.error("Plugin de Notificações nativo não está disponível.");
+                        }
+                      }}
+                    >
+                      Solicitar Permissão de Notificações Agora
+                    </Button>
+                  </div>
+                ) : (
                   <div className="pt-2">
                     <Button
                       size="sm"
