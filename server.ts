@@ -62,7 +62,8 @@ async function startServer() {
   // Proxy for FCM notification delivery
   app.post("/api/notifications/send", async (req, res) => {
     try {
-      const { targetUserId, title, body, data: customData } = req.body;
+      const { targetUserId, title, body, data, customData } = req.body;
+      const fcmPayloadData = data || customData || {};
       if (!targetUserId) {
         return res.status(400).json({ error: "O campo targetUserId é obrigatório." });
       }
@@ -119,7 +120,7 @@ async function startServer() {
               sound: "default",
               badge: 1,
             },
-            data: customData || {},
+            data: fcmPayloadData,
           }),
         });
 

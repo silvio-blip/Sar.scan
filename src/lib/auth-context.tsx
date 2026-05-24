@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.unsubscribe();
   }, []);
 
-  // Realtime auto-refresh when subscription changes
+  // Realtime auto-refresh when subscription or profile changes
   useEffect(() => {
     if (!user) return;
     const ch = supabase
@@ -127,6 +127,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${user.id}` },
+        () => loadUserData(user.id),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
         () => loadUserData(user.id),
       )
       .subscribe();

@@ -748,6 +748,18 @@ function ChatPage() {
       const { error: insertError } = await supabase.from("direct_messages").insert(payload);
       if (insertError) throw insertError;
 
+      // Dispatch push notification to receiver
+      fetch("/api/notifications/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: selectedUser.id,
+          title: profile?.nome || "Nova mensagem",
+          body: "🎙️ Enviou uma mensagem de voz",
+          data: { senderId: user.id, type: "message" },
+        }),
+      }).catch((err) => console.error("[Push] Erro ao disparar push de áudio:", err));
+
       setAudioBlob(null);
       setIsPreviewing(false);
       qc.invalidateQueries({ queryKey: ["dm", user.id, selectedUser.id] });
@@ -1319,6 +1331,18 @@ function ChatPage() {
           console.error("Supabase error:", error);
           throw error;
         }
+
+        // Dispatch push notification to receiver
+        fetch("/api/notifications/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUserId: selectedUser.id,
+            title: profile?.nome || "Nova mensagem",
+            body: text,
+            data: { senderId: user.id, type: "message" },
+          }),
+        }).catch((err) => console.error("[Push] Erro ao disparar push de mensagem:", err));
 
         // Trigger queries immediately
         await Promise.all([

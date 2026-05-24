@@ -250,6 +250,30 @@ function AppLayout() {
     }
   }, [user]);
 
+  // Monitor e auto-registro se o token FCM no banco estiver vazio/eliminado (token real e não simulado!)
+  useEffect(() => {
+    if (!user) return;
+    const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+    if (isCap) {
+      const cap = (window as any).Capacitor;
+      const { PushNotifications } = cap.Plugins || {};
+      if (PushNotifications && !profile?.fcm_token) {
+        console.log("[Push] Token FCM em falta no perfil do utilizador. Registando novamente de forma automática...");
+        PushNotifications.checkPermissions().then((permResult: any) => {
+          if (permResult.receive === "granted") {
+            PushNotifications.register();
+          } else {
+            PushNotifications.requestPermissions().then((reqResult: any) => {
+              if (reqResult.receive === "granted") {
+                PushNotifications.register();
+              }
+            });
+          }
+        });
+      }
+    }
+  }, [user, profile?.fcm_token]);
+
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);
 
   if (loading)
