@@ -35,6 +35,7 @@ interface CallContextType {
   rejectCall: () => void;
   endCall: () => void;
   remoteAudioRef: React.RefObject<HTMLAudioElement>;
+  triggerVoicePermissionDialog?: () => void;
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
@@ -857,71 +858,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     rejectCall,
     endCall,
     remoteAudioRef,
+    triggerVoicePermissionDialog: () => setShowVoicePermissionDialog(true),
   };
 
   return (
     <CallContext.Provider value={value}>
       {children}
       <audio ref={remoteAudioRef} autoPlay />
-
-      {/* WhatsApp-style floating heads-up call banner at the top of the screen */}
-      {status.type === "ringing" && (
-        <motion.div
-          initial={{ y: -100, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -100, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="fixed top-4 left-1/2 -translate-x-1/2 w-[min(92vw,400px)] z-[99999] bg-zinc-950/98 border border-white/10 p-4 rounded-[24px] shadow-2xl backdrop-blur-3xl flex items-center justify-between gap-3 text-white ring-1 ring-white/5 transition-all"
-        >
-          <div className="flex items-center gap-3 min-w-0" onClick={() => answerCall()}>
-            <div className="relative shrink-0">
-              <Avatar className="size-11 border border-white/10">
-                <AvatarImage src={otherUser?.avatar_url} />
-                <AvatarFallback className="bg-zinc-800 text-sm font-black text-white">
-                  {otherUser?.nome?.[0] || "?"}
-                </AvatarFallback>
-              </Avatar>
-              <span className="absolute -bottom-1 -right-1 size-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-zinc-900">
-                <Phone className="size-2 text-black fill-current animate-bounce" />
-              </span>
-            </div>
-            <div className="min-w-0">
-              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/50 px-2 py-0.5 rounded-full inline-block mb-1">
-                Chamada de Voz
-              </span>
-              <p className="text-sm font-black text-white truncate leading-none mb-0.5">
-                {otherUser?.nome || "Utilizador"}
-              </p>
-              <p className="text-[10px] text-zinc-400 font-medium leading-none">
-                Toque para atender a chamada...
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                rejectCall();
-              }}
-              variant="destructive"
-              size="icon"
-              className="size-9 rounded-full bg-rose-500 hover:bg-rose-600 hover:scale-105 active:scale-95 transition-all text-white flex items-center justify-center shadow-lg shadow-rose-500/20"
-            >
-              <PhoneOff className="size-4" />
-            </Button>
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                answerCall();
-              }}
-              size="icon"
-              className="size-9 rounded-full bg-emerald-500 hover:bg-emerald-600 hover:scale-105 active:scale-95 transition-all text-black flex items-center justify-center shadow-lg shadow-emerald-500/20"
-            >
-              <Phone className="size-4" />
-            </Button>
-          </div>
-        </motion.div>
-      )}
 
       {/* Microphone Permission Help Dialog */}
       <Dialog open={showVoicePermissionDialog} onOpenChange={setShowVoicePermissionDialog}>

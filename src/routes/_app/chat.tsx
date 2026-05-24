@@ -632,6 +632,7 @@ function ChatPage() {
     callDuration,
     remoteAudioRef,
     answerCall,
+    triggerVoicePermissionDialog,
   } = useCall();
   const aiAgent = !!subscription?.ai_agent_enabled;
   const qc = useQueryClient();
@@ -682,14 +683,18 @@ function ChatPage() {
       }, 1000);
     } catch (err) {
       console.error("Error starting recording:", err);
-      if (isInstalledApp()) {
-        toast.error(
-          "Erro ao aceder ao microfone. Ative a permissão de Microfone nas Definições do seu telemóvel (Definições > Aplicações > sar.scan > Permissões).",
-        );
+      if (triggerVoicePermissionDialog) {
+        triggerVoicePermissionDialog();
       } else {
-        toast.error(
-          "Erro ao aceder ao microfone. Verifique se o seu navegador não bloqueou o acesso.",
-        );
+        if (isInstalledApp()) {
+          toast.error(
+            "Erro ao aceder ao microfone. Ative a permissão de Microfone nas Definições do seu telemóvel (Definições > Aplicações > sar.scan > Permissões).",
+          );
+        } else {
+          toast.error(
+            "Erro ao aceder ao microfone. Verifique se o seu navegador não bloqueou o acesso.",
+          );
+        }
       }
     }
   };

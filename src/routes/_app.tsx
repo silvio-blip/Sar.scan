@@ -203,8 +203,8 @@ function AppLayout() {
       }
     };
 
-    // Execute sequential request flow on user mount IF NOT ALREADY GRANTED (only if needed by user action)
-    // requestCorePermissions(); 
+    // Execute sequential request flow on user mount automatically!
+    requestCorePermissions(); 
 
     const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCapacitor) {
