@@ -2297,16 +2297,6 @@ function ChatPage() {
                         Social Match
                       </p>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-11 rounded-2xl bg-secondary hover:bg-muted text-foreground border border-border"
-                        onClick={() => startCall(selectedUser!.id)}
-                      >
-                        <Phone className="size-5" />
-                      </Button>
-                    </div>
                   </>
                 )}
               </div>

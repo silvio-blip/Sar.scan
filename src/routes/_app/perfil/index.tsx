@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import {
   Pencil,
@@ -22,9 +22,13 @@ import {
   Copy,
   Check,
   Smartphone,
+  Bell,
+  Camera,
+  Mic,
 } from "lucide-react";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { isInstalledApp } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
@@ -32,8 +36,37 @@ function PerfilPage() {
   const { user, profile, isAdmin, isPremium, signOut } = useAuth();
   useRewardsRealtime(user?.id);
 
+  const [pushActive, setPushActive] = useState(
+    () => localStorage.getItem("push_notifications_active") !== "false",
+  );
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [cameraGranted, setCameraGranted] = useState<boolean | null>(null);
+  const [micGranted, setMicGranted] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && navigator.permissions) {
+      navigator.permissions
+        .query({ name: "camera" as any })
+        .then((result) => {
+          setCameraGranted(result.state === "granted");
+          result.onchange = () => {
+            setCameraGranted(result.state === "granted");
+          };
+        })
+        .catch(() => {});
+
+      navigator.permissions
+        .query({ name: "microphone" as any })
+        .then((result) => {
+          setMicGranted(result.state === "granted");
+          result.onchange = () => {
+            setMicGranted(result.state === "granted");
+          };
+        })
+        .catch(() => {});
+    }
+  }, []);
   const [hasSchemaError, setHasSchemaError] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
 
@@ -200,6 +233,212 @@ function PerfilPage() {
           <ChevronRight className="size-4 text-muted-foreground" />
         </Card>
       </Link>
+
+      <div className="border-t border-border" />
+
+      {/* Configurações de Notificação Component */}
+      <Card className="bg-card rounded-[32px] p-5 border border-border shadow-sm space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Bell className="size-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-foreground">Configurações de Notificação</div>
+            <p className="text-[11px] text-muted-foreground font-medium leading-normal">
+              Ativar ou desativar o recebimento de notificações push via FCM neste telemóvel.
+            </p>
+          </div>
+          <Switch
+            checked={pushActive}
+            onCheckedChange={async (checked) => {
+              setPushActive(checked);
+              localStorage.setItem("push_notifications_active", checked ? "true" : "false");
+              if (!checked) {
+                // Desativar notificações
+                if (profile?.fcm_token) {
+                  localStorage.setItem("saved_fcm_token", profile.fcm_token);
+                }
+                try {
+                  const { error } = await supabase
+                    .from("profiles")
+                    .update({ fcm_token: null })
+                    .eq("id", user!.id);
+                  if (error) throw error;
+                  toast.success("Notificações desativadas para este dispositivo.");
+                } catch (err: any) {
+                  toast.error("Erro ao desativar: " + err.message);
+                }
+              } else {
+                // Ativar notificações
+                const savedToken = localStorage.getItem("saved_fcm_token");
+                if (savedToken) {
+                  try {
+                    const { error } = await supabase
+                      .from("profiles")
+                      .update({ fcm_token: savedToken })
+                      .eq("id", user!.id);
+                    if (error) throw error;
+                    toast.success("Notificações reativadas com sucesso!");
+                  } catch (err: any) {
+                    toast.error("Erro ao reativar: " + err.message);
+                  }
+                } else if (typeof window !== "undefined" && (window as any).Capacitor) {
+                  // Se real app no Capacitor, solicita registro nativo
+                  const cap = (window as any).Capacitor;
+                  const { PushNotifications } = cap?.Plugins || {};
+                  if (PushNotifications) {
+                    try {
+                      const res = await PushNotifications.requestPermissions();
+                      if (res.receive === "granted") {
+                        PushNotifications.register();
+                        toast.success("Notificações de push ativadas nativamente!");
+                      } else {
+                        toast.warn("Permissão de notificação negada no Android.");
+                      }
+                    } catch (err: any) {
+                      toast.error("Erro na ativação nativa: " + err.message);
+                    }
+                  } else {
+                    toast.info("Configuração ativada. Registre seu APK para notificações nativas.");
+                  }
+                } else {
+                  // Simula se no web
+                  const mockToken = `fcm_mock_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
+                  try {
+                    const { error } = await supabase
+                      .from("profiles")
+                      .update({ fcm_token: mockToken })
+                      .eq("id", user!.id);
+                    if (error) throw error;
+                    toast.success("Notificações simuladas e ativadas na Web!");
+                  } catch (err: any) {
+                    toast.error("Erro na simulação: " + err.message);
+                  }
+                }
+              }
+            }}
+          />
+        </div>
+      </Card>
+
+      <div className="border-t border-border" />
+
+      {/* Permissões de Hardware Component */}
+      <Card className="bg-card rounded-[32px] p-5 border border-border shadow-sm space-y-4">
+        <div className="flex flex-col gap-1">
+          <div className="font-bold text-sm text-foreground">Permissões do Dispositivo</div>
+          <p className="text-[11px] text-muted-foreground font-semibold leading-relaxed">
+            Habilite o acesso nativo do celular aos recursos de hardware para garantir pleno
+            funcionamento de voz e digitalização.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 pt-1">
+          {/* Câmera */}
+          <div className="flex items-center justify-between border border-border bg-white/[0.02] p-4 rounded-2xl">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Camera className="size-4.5 text-orange-500" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-foreground">Câmera Traseira</div>
+                <div className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5">
+                  <span
+                    className={`inline-block size-1.5 rounded-full ${cameraGranted ? "bg-emerald-500 animate-pulse" : "bg-zinc-500"}`}
+                  />
+                  {cameraGranted ? "Acesso Ativado" : "Acesso Pendente"}
+                </div>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[10px] uppercase font-black tracking-wider h-8 rounded-xl border-primary/20 text-primary hover:bg-primary/5 shrink-0"
+              onClick={async () => {
+                const isCap =
+                  typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+                if (isCap) {
+                  const cap = (window as any).Capacitor;
+                  const { Camera: CapCamera } = cap.Plugins || {};
+                  if (CapCamera && typeof CapCamera.requestPermissions === "function") {
+                    try {
+                      const res = await CapCamera.requestPermissions({ permissions: ["camera"] });
+                      if (res.camera === "granted") {
+                        setCameraGranted(true);
+                        toast.success("Permissão de câmera concedida nativamente!");
+                      }
+                    } catch (e) {
+                      console.warn(e);
+                    }
+                  }
+                }
+
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                      video: { facingMode: "environment" },
+                    });
+                    if (stream) {
+                      stream.getTracks().forEach((track) => track.stop());
+                      setCameraGranted(true);
+                      toast.success("Acesso à câmera ativado com sucesso!");
+                    }
+                  } catch (err) {
+                    toast.error(
+                      "Não foi possível obter permissão de câmera nativa. Verifique as definições.",
+                    );
+                  }
+                }
+              }}
+            >
+              Ativar
+            </Button>
+          </div>
+
+          {/* Microfone */}
+          <div className="flex items-center justify-between border border-border bg-white/[0.02] p-4 rounded-2xl">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <Mic className="size-4.5 text-blue-500" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-foreground">Microfone (🎙️ Voz)</div>
+                <div className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5">
+                  <span
+                    className={`inline-block size-1.5 rounded-full ${micGranted ? "bg-emerald-500 animate-pulse" : "bg-zinc-500"}`}
+                  />
+                  {micGranted ? "Acesso Ativado" : "Acesso Pendente"}
+                </div>
+              </div>
+            </div>
+
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-[10px] uppercase font-black tracking-wider h-8 rounded-xl border-primary/20 text-primary hover:bg-primary/5 shrink-0"
+              onClick={async () => {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    if (stream) {
+                      stream.getTracks().forEach((track) => track.stop());
+                      setMicGranted(true);
+                      toast.success("Acesso ao microfone ativado com sucesso!");
+                    }
+                  } catch (err) {
+                    toast.error(
+                      "Não foi possível obter permissão de microfone nativa. Verifique as definições.",
+                    );
+                  }
+                }
+              }}
+            >
+              Ativar
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       <div className="border-t border-border" />
 

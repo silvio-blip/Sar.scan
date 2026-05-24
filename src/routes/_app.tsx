@@ -20,6 +20,9 @@ import {
   BarChart3,
   Loader2,
   ArrowLeft,
+  Smartphone,
+  Mic,
+  Bell,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SarLogo } from "@/components/sar-logo";
@@ -128,6 +131,12 @@ function AppLayout() {
 
       // 1. Solicitamos Notificações (Super Crítico!) primeiro de forma isolada
       const requestNotifications = async () => {
+        if (localStorage.getItem("push_notifications_active") === "false") {
+          console.log(
+            "[Push] Ignorando permissão de notificações push automática conforme preferências do perfil do utilizador.",
+          );
+          return;
+        }
         console.log("[Permissions] Solicitando permissão de notificações...");
         if (isCap) {
           const { PushNotifications } = cap.Plugins || {};
@@ -240,8 +249,12 @@ function AppLayout() {
     };
 
     // Execute sequential request flow on user mount automatically!
-    requestCorePermissions();
+    if (!showIntro) {
+      requestCorePermissions();
+    }
+  }, [user, showIntro]);
 
+  useEffect(() => {
     const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCapacitor) {
       const cap = (window as any).Capacitor;
@@ -289,6 +302,12 @@ function AppLayout() {
   // Monitor e auto-registro para garantir que o utilizador NUNCA fique sem o token FCM real
   useEffect(() => {
     if (!user) return;
+    if (localStorage.getItem("push_notifications_active") === "false") {
+      console.log(
+        "[Push] Ignorando monitoramento e auto-registro FCM: usuário desativou em suas definições de perfil.",
+      );
+      return;
+    }
     const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCap) {
       const cap = (window as any).Capacitor;
