@@ -621,7 +621,7 @@ function MessageCard({
 }
 
 function ChatPage() {
-  const { user, isPremium, canAccessAI, subscription, isAdmin } = useAuth();
+  const { user, profile, isPremium, canAccessAI, subscription, isAdmin } = useAuth();
   const navigate = useNavigate();
   const {
     startCall,

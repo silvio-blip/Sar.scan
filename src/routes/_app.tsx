@@ -1,4 +1,11 @@
-import { createFileRoute, Link, Outlet, useLocation, Navigate, useRouter } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useLocation,
+  Navigate,
+  useRouter,
+} from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -119,8 +126,43 @@ function AppLayout() {
       const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
       const cap = isCap ? (window as any).Capacitor : null;
 
-      // 1. Notification Permission First
-      console.log("[Permissions] Passo 1: Solicitando permissão de notificações...");
+      // 1. Camera Permission First
+      console.log("[Permissions] Passo 1: Solicitando permissão da Câmera...");
+      if (isCap) {
+        const { Camera } = cap.Plugins || {};
+        if (Camera && typeof Camera.requestPermissions === "function") {
+          try {
+            const check = await Camera.checkPermissions();
+            if (check?.camera !== "granted") {
+              await Camera.requestPermissions({ permissions: ["camera"] });
+            } else {
+              console.log("[Permissions] Permissão nativa de câmera já concedida.");
+            }
+          } catch (err) {
+            console.warn("[Permissions] Erro ao solicitar câmera via Capacitor:", err);
+          }
+        }
+      } else {
+        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
+          try {
+            const stream = await navigator.mediaDevices
+              .getUserMedia({ video: { facingMode: "environment" } })
+              .catch(() => null);
+            if (stream) {
+              console.log("[Permissions] Permissão de câmera concedida.");
+              stream.getTracks().forEach((track) => track.stop());
+            }
+          } catch (err) {
+            console.warn("[Permissions] Erro de câmera:", err);
+          }
+        }
+      }
+
+      // 800ms gap to let the OS clear the previous prompt
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      // 2. Notification Permission Second
+      console.log("[Permissions] Passo 2: Solicitando permissão de notificações...");
       if (isCap) {
         const { PushNotifications } = cap.Plugins || {};
         if (PushNotifications) {
@@ -146,11 +188,11 @@ function AppLayout() {
         }
       }
 
-      // 800ms gap to let the OS clear the previous prompt
+      // 800ms gap
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // 2. Microphone/Audio Permission
-      console.log("[Permissions] Passo 2: Solicitando permissão do Microfone...");
+      // 3. Microphone/Audio Permission Third
+      console.log("[Permissions] Passo 3: Solicitando permissão do Microfone...");
       if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
         try {
           const stream = await navigator.mediaDevices
@@ -166,45 +208,10 @@ function AppLayout() {
           console.warn("[Permissions] Erro ao obter permissão de microfone:", err);
         }
       }
-
-      // 800ms gap
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      // 3. Camera Permission
-      console.log("[Permissions] Passo 3: Solicitando permissão da Câmera...");
-      if (isCap) {
-        const { Camera } = cap.Plugins || {};
-        if (Camera && typeof Camera.requestPermissions === "function") {
-          try {
-            const check = await Camera.checkPermissions();
-            if (check?.camera !== "granted") {
-              await Camera.requestPermissions({ permissions: ["camera"] });
-            } else {
-              console.log("[Permissions] Permissão nativa de câmera já concedida.");
-            }
-          } catch (err) {
-            console.warn("[Permissions] Erro ao solicitar câmera via Capacitor:", err);
-          }
-        }
-      } else {
-        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-          try {
-            const stream = await navigator.mediaDevices
-              .getUserMedia({ video: true })
-              .catch(() => null);
-            if (stream) {
-              console.log("[Permissions] Permissão de câmera concedida.");
-              stream.getTracks().forEach((track) => track.stop());
-            }
-          } catch (err) {
-            console.warn("[Permissions] Erro de câmera:", err);
-          }
-        }
-      }
     };
 
     // Execute sequential request flow on user mount automatically!
-    requestCorePermissions(); 
+    requestCorePermissions();
 
     const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCapacitor) {
@@ -250,19 +257,31 @@ function AppLayout() {
     }
   }, [user]);
 
-  // Monitor e auto-registro se o token FCM no banco estiver vazio/eliminado (token real e não simulado!)
+  // Monitor e auto-registro para garantir que o utilizador NUNCA fique sem o token FCM real
   useEffect(() => {
     if (!user) return;
     const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
     if (isCap) {
       const cap = (window as any).Capacitor;
       const { PushNotifications } = cap.Plugins || {};
-      if (PushNotifications && !profile?.fcm_token) {
-        console.log("[Push] Token FCM em falta no perfil do utilizador. Registando novamente de forma automática...");
+      if (PushNotifications) {
+        const isMockToken = profile?.fcm_token?.startsWith("fcm_mock_");
+        const hasNoToken = !profile?.fcm_token;
+
+        console.log(`[Push] Sincronização de Token FCM. Atual no banco: ${profile?.fcm_token}`);
+
         PushNotifications.checkPermissions().then((permResult: any) => {
           if (permResult.receive === "granted") {
+            // Sempre registramos nativamente se já tivermos permissão, para atualizar o de forma fidedigna o token real no banco (sobrescrevendo mocks!)
+            console.log(
+              "[Push] Permissão já concedida, registrando dispositivo para obter token real...",
+            );
             PushNotifications.register();
-          } else {
+          } else if (hasNoToken || isMockToken) {
+            // Se as permissões não estiverem concedidas e não tivermos token válido (ou for mock simulado!), solicitamos de forma ativa
+            console.log(
+              "[Push] Token de notificações em falta ou simulado na conta, solicitando permissões nativas para registro real...",
+            );
             PushNotifications.requestPermissions().then((reqResult: any) => {
               if (reqResult.receive === "granted") {
                 PushNotifications.register();
@@ -273,6 +292,74 @@ function AppLayout() {
       }
     }
   }, [user, profile?.fcm_token]);
+
+  // Sincronização global e notificações Web para mensagens de chat recebidas no browser
+  useEffect(() => {
+    if (!user) return;
+    const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+
+    const dmChannel = supabase
+      .channel("global_dm_receiver")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "direct_messages",
+          filter: `receiver_id=eq.${user.id}`,
+        },
+        async (payload) => {
+          const newMsg = payload.new as any;
+          if (!newMsg) return;
+
+          // Obter dados do emissor
+          const { data: senderProfile } = await supabase
+            .from("profiles")
+            .select("nome")
+            .eq("id", newMsg.sender_id)
+            .maybeSingle();
+
+          const senderName = senderProfile?.nome || "Utilizador";
+          const notificationBody = newMsg.audio_url
+            ? "🎙️ Enviou uma mensagem de voz"
+            : newMsg.content;
+
+          // Se a janela estiver em segundo plano ou minimizada, disparar notificação nativa HTML5
+          if (document.hidden) {
+            if ("Notification" in window) {
+              if (Notification.permission === "granted") {
+                new Notification(`💬 ${senderName}`, {
+                  body: notificationBody,
+                  icon: "/favicon.ico",
+                });
+              } else if (Notification.permission === "default") {
+                Notification.requestPermission().then((permission) => {
+                  if (permission === "granted") {
+                    new Notification(`💬 ${senderName}`, {
+                      body: notificationBody,
+                      icon: "/favicon.ico",
+                    });
+                  }
+                });
+              }
+            }
+          } else {
+            // Se estiver em primeiro plano, mas não no ecrã de chat, apresentar toast
+            const isAtChat = window.location.pathname.includes("/chat");
+            if (!isAtChat) {
+              toast.message(`💬 ${senderName}`, {
+                description: notificationBody,
+              });
+            }
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(dmChannel);
+    };
+  }, [user]);
 
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);
 

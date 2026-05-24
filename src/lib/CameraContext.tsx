@@ -136,11 +136,42 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         addLog(`Chamada startCamera iniciada. Modo atual: ${activeMode}`);
 
-        // Se já temos stream ativo, não iniciamos novamente para evitar travar a câmera
+        // Se já temos stream ativo do mesmo tipo, não fazemos nada para evitar cintilação,
+        // mas se for um tipo diferente, procedemos com a reconstrução para comutação rápida!
         if (streamRef.current && streamRef.current.active) {
-          addLog("Câmera já está ativa e funcionando.");
-          return;
+          const activeTrack = streamRef.current.getVideoTracks()[0];
+          const activeSettings = activeTrack ? activeTrack.getSettings() : null;
+          const activeFacing = activeSettings ? activeSettings.facingMode : null;
+          const exactLabel = (activeTrack?.label || "").toLowerCase();
+
+          const looksLikeRear = [
+            "back",
+            "rear",
+            "traseira",
+            "trás",
+            "main",
+            "principal",
+            "environment",
+          ].some((kw) => exactLabel.includes(kw));
+          const looksLikeFront = ["front", "frontal", "user", "selfie", "cara", "anterior"].some(
+            (kw) => exactLabel.includes(kw),
+          );
+          const actualFacingModeByLabel = looksLikeRear
+            ? "environment"
+            : looksLikeFront
+              ? "user"
+              : null;
+
+          const currentFacingCalculated =
+            activeFacing || actualFacingModeByLabel || facingModeRef.current;
+
+          if (currentFacingCalculated === activeMode) {
+            addLog("Câmera com o mesmo facingMode pretendido já está ativa e funcionando.");
+            return;
+          }
         }
+
+        const oldStream = streamRef.current;
 
         try {
           addLog(`Iniciando câmera padrão (modo: ${activeMode})...`);
@@ -179,17 +210,8 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           }
 
-          // Se já houver um stream inativo ou antigo, limpamos antes de abrir o novo
-          if (streamRef.current) {
-            addLog("Limpando track antiga antes de iniciar a nova...");
-            streamRef.current.getTracks().forEach((track) => {
-              try {
-                track.stop();
-              } catch (e) {
-                /* ignore */
-              }
-            });
-          }
+          // Não paramos o stream antigo aqui para evitar ecrã preto durante o warmup da nova câmera.
+          // Ele será parado abaixo assim que o stream finalStream estiver perfeitamente atribuído.
 
           if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error(
@@ -521,10 +543,34 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           setStreamAndRef(finalStream);
           setStreamOn(true);
+
+          if (oldStream && oldStream !== finalStream) {
+            addLog(
+              "startCamera: Parando tracks antigas após o novo stream estar atribuído e operacional...",
+            );
+            oldStream.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch (e) {
+                /* ignore */
+              }
+            });
+          }
+
           // Atualiza a lista geral de dispositivos do Context
           await refreshDevices();
         } catch (error) {
           addLog("Erro fatal de acesso à câmera no startCamera:", error);
+          if (oldStream) {
+            addLog("startCamera (erro): Parando tracks do stream antigo...");
+            oldStream.getTracks().forEach((track) => {
+              try {
+                track.stop();
+              } catch (e) {
+                /* ignore */
+              }
+            });
+          }
           const err = error as Record<string, unknown> | null;
           let userFriendlyMessage = "Não foi possível acessar a câmera do dispositivo.";
 
@@ -562,15 +608,66 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     facingModeRef.current = nextMode;
     setFacingMode(nextMode);
 
-    if (streamRef.current) {
-      stopCamera(true); // Mantém streamOn como true durante a transição
-      // Pequeno tempo para liberar a track anterior de forma segura
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await startCamera(nextMode);
-    } else {
-      await startCamera(nextMode);
+    await startCamera(nextMode);
+  }, [startCamera, addLog]);
+
+  // Escuta mudanças de estado/visibilidade da aplicação para auto-restaurar o feed da câmara caso tenha sido congelado pelo SO ao minimizar
+  useEffect(() => {
+    const handleVisibilityOrResume = async () => {
+      const isVisible = typeof document !== "undefined" && document.visibilityState === "visible";
+      if (isVisible && streamOn) {
+        addLog(
+          "[CameraContext] App voltou a primeiro plano (resume). Reiniciando stream da câmara para evitar congelamento...",
+        );
+        await startCamera(facingModeRef.current);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityOrResume);
+
+    // Se Capacitor estiver disponível, escutar também evento nativo de resume
+    const cap = typeof window !== "undefined" && (window as any).Capacitor;
+    let appListener: any = null;
+    if (cap && cap.Plugins && cap.Plugins.App) {
+      try {
+        appListener = cap.Plugins.App.addListener("appStateChange", async (state: any) => {
+          if (state.isActive && streamOn) {
+            addLog("[CameraContext] App nativa focada (active). Reiniciando stream da câmara...");
+            await startCamera(facingModeRef.current);
+          }
+        });
+      } catch (err) {
+        addLog("Erro ao registrar ouvinte de appStateChange no Capacitor:", err);
+      }
     }
-  }, [stopCamera, startCamera, addLog]);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityOrResume);
+      try {
+        if (appListener) {
+          if (typeof appListener.then === "function") {
+            appListener
+              .then((handle: any) => {
+                if (handle && typeof handle.remove === "function") {
+                  try {
+                    handle.remove();
+                  } catch (e) {
+                    console.warn("[CameraContext] Failed calling remove on listener handle:", e);
+                  }
+                }
+              })
+              .catch((e: any) => {
+                console.warn("[CameraContext] Failed resolving listener handle promise:", e);
+              });
+          } else if (typeof appListener.remove === "function") {
+            appListener.remove();
+          }
+        }
+      } catch (e) {
+        console.warn("[CameraContext] Error on cleanup of appStateChange listener:", e);
+      }
+    };
+  }, [streamOn, startCamera, addLog]);
 
   return (
     <CameraContext.Provider

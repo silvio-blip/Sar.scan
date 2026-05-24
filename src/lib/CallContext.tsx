@@ -36,6 +36,7 @@ interface CallContextType {
   endCall: () => void;
   remoteAudioRef: React.RefObject<HTMLAudioElement>;
   triggerVoicePermissionDialog?: () => void;
+  triggerBrowserCallBlockDialog?: () => void;
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
@@ -69,6 +70,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const localStreamRef = useRef<MediaStream | null>(null);
   const otherUserRef = useRef<UserProfile | null>(null);
   const [showVoicePermissionDialog, setShowVoicePermissionDialog] = useState(false);
+  const [showBrowserCallBlockDialog, setShowBrowserCallBlockDialog] = useState(false);
   const activeNotificationRef = useRef<Notification | null>(null);
 
   useEffect(() => {
@@ -309,6 +311,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const startCall = useCallback(
     async (targetId: string) => {
+      if (!isInstalledApp()) {
+        setShowBrowserCallBlockDialog(true);
+        return;
+      }
       const currentPeer = peerRef.current || peer;
       if (!currentPeer) {
         toast.error("Conexão de áudio ainda não está pronta. Aguarde um momento.");
@@ -627,6 +633,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (type === "REJECTED" || type === "ENDED") {
           handleCallEndRef.current(from, true, type); // true = skip sending signal back
         } else if (type === "CALL_REQUEST") {
+          if (!isInstalledApp()) {
+            console.log("Blocking incoming CALL_REQUEST because user is on standard browser");
+            sendCallSignal(from, "REJECTED");
+            return;
+          }
           // Send back our peer ID so the caller can call us
           if (peerIdRef.current) {
             sendCallSignal(from, "CALL_RESPONSE", { peerId: peerIdRef.current });
@@ -685,6 +696,14 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!user?.id) return;
 
+    // Do not initialize PeerJS on a standard web browser because call features are blocked/disabled there
+    if (!isInstalledApp()) {
+      console.log(
+        "[PeerJS] Skipping PeerJS initialization since we are not running inside the installed native app.",
+      );
+      return;
+    }
+
     let isDestroyed = false;
     let peerInstance: Peer | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
@@ -701,7 +720,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
 
       const newPeer = new Peer(finalId, {
-        debug: 1, // Only errors
+        debug: 0, // Disable internal logging to prevent PeerJS console.error from triggering UI overlays
       });
 
       peerInstance = newPeer;
@@ -813,7 +832,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (retryTimeout) clearTimeout(retryTimeout);
       console.log("Cleaning up Peer instance");
       if (peerInstance) {
-        peerInstance.destroy();
+        try {
+          peerInstance.destroy();
+        } catch (e) {
+          console.warn("Error destroying PeerJS instance:", e);
+        }
       }
       peerRef.current = null;
     };
@@ -859,6 +882,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     endCall,
     remoteAudioRef,
     triggerVoicePermissionDialog: () => setShowVoicePermissionDialog(true),
+    triggerBrowserCallBlockDialog: () => setShowBrowserCallBlockDialog(true),
   };
 
   return (
@@ -931,6 +955,37 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
               navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
             }}
             className="w-full h-11 rounded-2xl bg-white text-black font-black hover:bg-zinc-200"
+          >
+            Entendido
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Browser Call Block Dialog */}
+      <Dialog open={showBrowserCallBlockDialog} onOpenChange={setShowBrowserCallBlockDialog}>
+        <DialogContent className="bg-zinc-950/98 border-white/10 text-white max-w-[340px] rounded-[32px] p-6 flex flex-col items-center gap-4 text-center shadow-2xl backdrop-blur-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Funcionalidade de Chamada Bloqueada</DialogTitle>
+          </DialogHeader>
+          <div className="size-16 rounded-3xl bg-amber-500/10 border border-amber-500/10 flex items-center justify-center text-amber-500">
+            <PhoneOff className="size-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-black tracking-tight text-white">
+              Ligar só na App Instalada
+            </h3>
+            <p className="text-sm font-semibold text-rose-400">
+              A única forma de utilizador conseguir utilizar o aplicativo é só instalando.
+            </p>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              O seu navegador não suporta a receção e transmissão de chamadas fiáveis em standby de
+              forma nativa. Por favor, instale a aplicação oficial em formato APK para usufruir de
+              todas as funcionalidades de voz e chat nativos em segundo plano.
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowBrowserCallBlockDialog(false)}
+            className="w-full h-11 rounded-2xl bg-white text-black font-black hover:bg-zinc-200 transition-colors uppercase tracking-wider text-xs"
           >
             Entendido
           </Button>

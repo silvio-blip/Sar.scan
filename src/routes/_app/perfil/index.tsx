@@ -24,6 +24,7 @@ import {
   Smartphone,
 } from "lucide-react";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
+import { isInstalledApp } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
@@ -212,7 +213,9 @@ function PerfilPage() {
             <div className="font-bold text-sm text-foreground">Dispositivo & Firebase (FCM)</div>
             <p className="text-[11px] text-muted-foreground font-semibold">
               {profile?.fcm_token
-                ? "Token FCM registrado com sucesso!"
+                ? profile?.fcm_token?.startsWith("fcm_mock_")
+                  ? "Token Simulado (Teste no Navegador)"
+                  : "Token Real registrado com sucesso!"
                 : "Aguardando registro no APK..."}
             </p>
           </div>
@@ -231,7 +234,9 @@ function PerfilPage() {
             {profile?.fcm_token ? (
               <div className="space-y-2">
                 <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
-                  Firebase Cloud Messaging Token:
+                  {profile.fcm_token.startsWith("fcm_mock_")
+                    ? "Firebase Cloud Messaging Token (Simulado):"
+                    : "Firebase Cloud Messaging Token (Nativo Real):"}
                 </p>
                 <div className="bg-secondary p-3 rounded-2xl text-[10px] font-mono break-all relative border border-border flex items-start gap-2 pr-10">
                   <span className="flex-1 text-foreground/80 leading-relaxed select-all">
@@ -256,9 +261,34 @@ function PerfilPage() {
                   </Button>
                 </div>
                 <p className="text-[9px] text-muted-foreground leading-normal mt-1">
-                  Este token identifica seu celular único e é atualizado automaticamente pelo
-                  aplicativo ao entrar no APK.
+                  {profile.fcm_token.startsWith("fcm_mock_")
+                    ? "Este é um token simulado para emulação web. Ao entrar no APK nativo no Android, ele será atualizado para o token Firebase real automaticamente."
+                    : "Este token fidedigno identifica seu celular único e é atualizado automaticamente pelo aplicativo ao entrar no APK."}
                 </p>
+
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="w-full text-[10px] uppercase font-bold tracking-wider rounded-xl h-8 mt-2"
+                  onClick={async () => {
+                    try {
+                      const { error } = await supabase
+                        .from("profiles")
+                        .update({ fcm_token: null })
+                        .eq("id", user!.id);
+                      if (error) throw error;
+                      toast.success(
+                        "Token removido com sucesso! Pronto para novo registro real no APK.",
+                      );
+                      setHasSchemaError(false);
+                      window.location.reload();
+                    } catch (err: any) {
+                      toast.error("Erro ao limpar token: " + err.message);
+                    }
+                  }}
+                >
+                  Remover / Limpar Token do Perfil
+                </Button>
               </div>
             ) : (
               <div className="space-y-2">
@@ -278,41 +308,43 @@ function PerfilPage() {
                     O token será obtido via plugin Capacitor e enviado ao banco automaticamente.
                   </li>
                 </ol>
-                <div className="pt-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-[10px] uppercase font-bold tracking-wider rounded-xl h-8 border-dashed"
-                    onClick={async () => {
-                      const mockToken = `fcm_mock_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
-                      try {
-                        const { error } = await supabase
-                          .from("profiles")
-                          .update({ fcm_token: mockToken })
-                          .eq("id", user!.id);
-                        if (error) throw error;
-                        toast.success("Token Mock ativado para teste local!");
-                        setHasSchemaError(false);
-                        window.location.reload();
-                      } catch (err: any) {
-                        const isSchemaError =
-                          err.message?.includes("fcm_token") ||
-                          err.message?.includes("column") ||
-                          err.message?.includes("schema cache");
-                        if (isSchemaError) {
-                          setHasSchemaError(true);
-                          toast.error(
-                            "O seu Supabase precisa que seja criada a coluna 'fcm_token' primeiro!",
-                          );
-                        } else {
-                          toast.error("Erro ao simular fcm_token: " + err.message);
+                {!isInstalledApp() && (
+                  <div className="pt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full text-[10px] uppercase font-bold tracking-wider rounded-xl h-8 border-dashed"
+                      onClick={async () => {
+                        const mockToken = `fcm_mock_${Math.random().toString(36).substr(2, 9)}_${Date.now()}`;
+                        try {
+                          const { error } = await supabase
+                            .from("profiles")
+                            .update({ fcm_token: mockToken })
+                            .eq("id", user!.id);
+                          if (error) throw error;
+                          toast.success("Token Mock ativado para teste local!");
+                          setHasSchemaError(false);
+                          window.location.reload();
+                        } catch (err: any) {
+                          const isSchemaError =
+                            err.message?.includes("fcm_token") ||
+                            err.message?.includes("column") ||
+                            err.message?.includes("schema cache");
+                          if (isSchemaError) {
+                            setHasSchemaError(true);
+                            toast.error(
+                              "O seu Supabase precisa que seja criada a coluna 'fcm_token' primeiro!",
+                            );
+                          } else {
+                            toast.error("Erro ao simular fcm_token: " + err.message);
+                          }
                         }
-                      }
-                    }}
-                  >
-                    Simular Token Local para Teste
-                  </Button>
-                </div>
+                      }}
+                    >
+                      Simular Token Local para Teste
+                    </Button>
+                  </div>
+                )}
 
                 {hasSchemaError && (
                   <div className="mt-4 p-4 border border-red-500/20 bg-red-500/5 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">

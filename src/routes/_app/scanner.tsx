@@ -58,7 +58,7 @@ function ScannerPage() {
   const [picked, setPicked] = useState<NutritionFood | null>(null);
 
   useEffect(() => {
-    startCamera();
+    startCamera("environment");
     return () => {
       // stopCamera(); // Persistindo câmera ao mudar de aba
     };
