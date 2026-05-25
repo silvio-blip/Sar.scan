@@ -41,7 +41,7 @@ serve(async (req) => {
         ),
       ).join("");
 
-      const { error: upsertError } = await supabaseClient.from("password_reset_codes").upsert(
+      let { error: upsertError } = await supabaseClient.from("password_reset_codes").upsert(
         {
           email: cleanEmail,
           code: newCode,
@@ -50,6 +50,22 @@ serve(async (req) => {
         },
         { onConflict: "email" },
       );
+
+      if (
+        upsertError &&
+        (upsertError.message.includes("user_id") || upsertError.message.includes("column"))
+      ) {
+        console.warn("[Password Reset] Retrying upsert without user_id column...");
+        const retryResult = await supabaseClient.from("password_reset_codes").upsert(
+          {
+            email: cleanEmail,
+            code: newCode,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: "email" },
+        );
+        upsertError = retryResult.error;
+      }
 
       if (upsertError) {
         throw new Error(`Erro ao guardar código de segurança: ${upsertError.message}`);

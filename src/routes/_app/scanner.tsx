@@ -259,7 +259,9 @@ function ScannerPage() {
       if (error) throw error;
       if (data?.ok === false || !data?.itens?.length) {
         toast.message("Alimento não identificado", {
-          description: data?.error ?? "Não conseguimos identificar um alimento nessa imagem.",
+          description:
+            data?.error ??
+            "Não conseguimos identificar um alimento nessa imagem. Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
         });
         setScanPhoto(null);
         return;

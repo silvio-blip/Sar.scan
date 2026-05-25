@@ -41,48 +41,116 @@ function createSupabaseClient() {
 
   // Intercept Supabase Edge Function invokes to route through our own server's full-stack API proxy.
   // This ensures reliability when direct Edge Functions on the active Supabase project are not deployed or fail.
-  const originalInvoke = client.functions.invoke.bind(client.functions);
-  client.functions.invoke = async function (functionName, options) {
-    try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const url = `${origin}/api/edge`;
-      console.log(
-        `[Supabase Proxy] Intercepting function invoke: ${functionName} -> Proxying to local API ${url}`,
-      );
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: functionName,
-          body: options?.body,
-        }),
-      });
-
-      if (response.ok) {
-        const resBody = await response.json();
-        // If our backend internal returned an actual error string as `error` key:
-        if (resBody && typeof resBody === "object" && "error" in resBody && resBody.error) {
-          console.warn(`[Supabase Proxy] Proxy returned inner error: ${resBody.error}`);
-          return { data: null, error: new Error(resBody.error) };
-        }
-        return { data: resBody, error: null };
-      } else {
-        const errorText = await response.text();
-        console.warn(
-          `[Supabase Proxy] Proxy request returned status ${response.status}: ${errorText}. Falling back to direct Supabase invoke.`,
-        );
-      }
-    } catch (e) {
-      console.warn(
-        `[Supabase Proxy] Failed to route via proxy, falling back to direct Supabase invoke. Error:`,
-        e,
-      );
+  let realFunctionsInstance: any = null;
+  try {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(client), "functions");
+    if (descriptor?.get) {
+      realFunctionsInstance = descriptor.get.call(client);
     }
-    return originalInvoke(functionName, options);
-  };
+  } catch (e) {
+    console.warn("[Supabase Proxy] Failed to get prototype functions descriptor:", e);
+  }
+
+  if (!realFunctionsInstance) {
+    realFunctionsInstance = (client as any)._functions || (client as any).functions;
+  }
+
+  if (realFunctionsInstance) {
+    const originalInvoke = realFunctionsInstance.invoke;
+
+    const proxiedInvoke = async function (functionName: string, options?: any) {
+      const isLocalOnly = true;
+
+      try {
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const url = `${origin}/api/edge`;
+        console.log(
+          `[Supabase Proxy] Intercepting function invoke: ${functionName} -> Proxying to local API ${url}`,
+        );
+
+        let authHeader = "";
+        try {
+          const {
+            data: { session },
+          } = await client.auth.getSession();
+          if (session?.access_token) {
+            authHeader = `Bearer ${session.access_token}`;
+          }
+        } catch (e) {
+          console.warn("[Supabase Proxy] Failed to get session:", e);
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        if (authHeader) {
+          headers["Authorization"] = authHeader;
+        }
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            name: functionName,
+            body: options?.body,
+          }),
+        });
+
+        if (response.ok) {
+          const resBody = await response.json();
+          // If our backend internal returned an actual error string as `error` key:
+          if (resBody && typeof resBody === "object" && "error" in resBody && resBody.error) {
+            console.warn(`[Supabase Proxy] Proxy returned inner error: ${resBody.error}`);
+            return { data: null, error: new Error(resBody.error) };
+          }
+          return { data: resBody, error: null };
+        } else {
+          const errorText = await response.text();
+          let parsedError = "";
+          try {
+            const parsed = JSON.parse(errorText);
+            parsedError = parsed?.error || parsed?.message || "";
+          } catch {
+            // not json
+          }
+          const errMsg =
+            parsedError || errorText || `Erro no servidor local (status ${response.status})`;
+          console.warn(
+            `[Supabase Proxy] Proxy request returned status ${response.status}: ${errMsg}.`,
+          );
+
+          if (isLocalOnly) {
+            return { data: null, error: new Error(errMsg) };
+          }
+        }
+      } catch (e: any) {
+        const errMsg = e?.message || String(e);
+        console.warn(
+          `[Supabase Proxy] Failed to route via proxy. ${isLocalOnly ? "Failing" : "Falling back"}. Error:`,
+          e,
+        );
+        if (isLocalOnly) {
+          return { data: null, error: new Error(errMsg) };
+        }
+      }
+
+      if (typeof originalInvoke === "function") {
+        return originalInvoke.call(realFunctionsInstance, functionName, options);
+      }
+      return { data: null, error: new Error("Proxy failed and original invoke unavailable") };
+    };
+
+    // Override invoke on realFunctionsInstance directly
+    realFunctionsInstance.invoke = proxiedInvoke;
+
+    // Define property functions to return realFunctionsInstance with the overridden invoke!
+    Object.defineProperty(client, "functions", {
+      get() {
+        return realFunctionsInstance;
+      },
+      configurable: true,
+    });
+  }
 
   return client;
 }

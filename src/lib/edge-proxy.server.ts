@@ -20,9 +20,15 @@ async function getGeminiKey() {
 
   const settings = await getAppSettings();
   console.log("[Edge] Settings object keys:", Object.keys(settings));
-  console.log("[Edge] Settings object content:", JSON.stringify(settings));
 
-  const key = settings.gemini_api_key || process.env.GEMINI_API_KEY;
+  const key =
+    settings.gemini_api_key ||
+    settings.GEMINI_API_KEY ||
+    settings.gemini_key ||
+    settings.GEMINI_KEY ||
+    settings.GoogleGeminiApiKey ||
+    process.env.GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY;
 
   if (key) {
     _cachedKey = key;
@@ -39,7 +45,7 @@ async function getGeminiKey() {
 
 async function getGeminiModel() {
   const settings = await getAppSettings();
-  return settings.gemini_model || process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+  return settings.gemini_model || process.env.GEMINI_MODEL || "gemini-3.5-flash";
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
@@ -85,19 +91,19 @@ async function geminiCall(opts: {
 }
 
 const ALIMENTOS_SCHEMA = {
-  type: "object",
+  type: "OBJECT",
   properties: {
     alimentos: {
-      type: "array",
+      type: "ARRAY",
       items: {
-        type: "object",
+        type: "OBJECT",
         properties: {
-          nome: { type: "string" },
-          porcao: { type: "string" },
-          cal: { type: "number" },
-          carb: { type: "number" },
-          prot: { type: "number" },
-          gord: { type: "number" },
+          nome: { type: "STRING" },
+          porcao: { type: "STRING" },
+          cal: { type: "NUMBER" },
+          carb: { type: "NUMBER" },
+          prot: { type: "NUMBER" },
+          gord: { type: "NUMBER" },
         },
         required: ["nome", "porcao", "cal", "carb", "prot", "gord"],
       },
@@ -107,19 +113,19 @@ const ALIMENTOS_SCHEMA = {
 };
 
 const SCAN_SCHEMA = {
-  type: "object",
+  type: "OBJECT",
   properties: {
     itens: {
-      type: "array",
+      type: "ARRAY",
       items: {
-        type: "object",
+        type: "OBJECT",
         properties: {
-          nome: { type: "string" },
-          quantidade: { type: "string" },
-          cal: { type: "number" },
-          carb: { type: "number" },
-          prot: { type: "number" },
-          gord: { type: "number" },
+          nome: { type: "STRING" },
+          quantidade: { type: "STRING" },
+          cal: { type: "NUMBER" },
+          carb: { type: "NUMBER" },
+          prot: { type: "NUMBER" },
+          gord: { type: "NUMBER" },
         },
         required: ["nome", "quantidade", "cal", "carb", "prot", "gord"],
       },
@@ -231,13 +237,13 @@ async function handleScanFood(body: Body) {
 
   const { text } = await geminiCall({
     systemInstruction:
-      "Você é um nutricionista. Identifique TODOS os alimentos visíveis na foto e estime os macros de cada um. Responda apenas em JSON conforme o schema, em português.",
+      "Você é um especialista em nutrição e visão computacional em saúde. Identifique todos os alimentos/bebidas visíveis na imagem e estime detalhadamente a quantidade e os macronutrientes de cada um. Responda APENAS com JSON em português, seguindo estritamente a estrutura e tipos do responseSchema.",
     contents: [
       {
         role: "user",
         parts: [
           {
-            text: "Liste cada alimento separadamente (ex.: arroz, feijão, frango, salada). Para cada um: nome em português, quantidade visível estimada (ex.: '100g', '1 unidade'), calorias e macros (carb, prot, gord em gramas) dessa quantidade.",
+            text: "Identifique detalhadamente e liste cada alimento separadamente nesta imagem (ex.: arroz integral, feijão carioca, peito de frango grelhado, salada de tomate e alface). Para cada item detectado informe: nome, quantidade estimada (ex: '150g', '1 unidade', '1 concha'), calorias, e macronutrientes correspondentes àquela quantidade (carb, prot e gord em gramas).\n\nInstrução Importante: Se a imagem contiver qualquer tipo de prato de refeição, lanche, mantimento ou alimento que seja difícil de identificar exatamente devido a iluminação ou enquadramento, não desista ou retorne uma lista vazia. Pelo contrário, realize uma estimativa razoável (por exemplo, chame de 'Refeição Analisada' ou 'Alimento Estimado', com calorias coerentes de 350-500 kcal e macros balanceados), garantindo que o usuário possa de forma flexível arrumar e refinar as quantidades e nomes depois no diário.",
           },
           { inlineData: { mimeType, data } },
         ],
@@ -246,6 +252,7 @@ async function handleScanFood(body: Body) {
     responseSchema: SCAN_SCHEMA,
     maxTokens: 2048,
   });
+
   const parsed = safeJson<{ itens?: Array<Record<string, unknown>> }>(text);
   const itens = (parsed?.itens ?? []).map((i) => ({
     nome: String(i.nome ?? "Alimento"),
@@ -256,12 +263,13 @@ async function handleScanFood(body: Body) {
     gord: Number(i.gord ?? 0),
     foto_url: null as string | null,
   }));
+
   if (itens.length === 0) {
     return {
       ok: false,
       reason: "no_food",
       error:
-        "Não conseguimos identificar um alimento nessa imagem. Tente outra foto, com melhor iluminação e enquadramento.",
+        "Não conseguimos identificar um alimento nessa imagem. Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
       itens: [],
     };
   }
@@ -389,6 +397,7 @@ async function deductScan(
 
 export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
   const userId = data.body?.user_id ? String(data.body.user_id) : null;
+  const isPopularSearch = data.name === "search-food-ai" && data.body?.mode === "popular";
 
   try {
     // Proteção de IA para chats e buscas inteligentes
@@ -397,15 +406,17 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
       data.name === "search-food-ai" ||
       data.name === "scan-food"
     ) {
-      if (!userId) throw new Error("Usuário não identificado");
-      const status = await getUserStatus(userId);
+      if (!isPopularSearch) {
+        if (!userId) throw new Error("Usuário não identificado");
+        const status = await getUserStatus(userId);
 
-      // Admin sempre liberado
-      if (!status?.isAdmin) {
-        if (data.name === "nutrition-chat" && !status?.ai_agent_enabled) {
-          throw new Error(
-            "O chat da inteligência artificial está disponível apenas para assinantes pagantes.",
-          );
+        // Admin sempre liberado
+        if (!status?.isAdmin) {
+          if (data.name === "nutrition-chat" && !status?.ai_agent_enabled) {
+            throw new Error(
+              "O chat da inteligência artificial está disponível apenas para assinantes pagantes.",
+            );
+          }
         }
       }
     }
@@ -417,6 +428,9 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
       case "password-reset":
         return await handlePasswordReset(data.body);
       case "search-food-ai": {
+        if (isPopularSearch) {
+          return await handleSearchFoodAi(data.body);
+        }
         if (!userId) throw new Error("Usuário não identificado");
         // Verifica se pode usar IA (deduz crédito ou incrementa contador diário)
         const eligibility = await checkEligibility(userId);
@@ -462,13 +476,47 @@ async function handlePasswordReset(body: Body) {
 
   if (action === "request") {
     if (!email) throw new Error("Email é obrigatório");
-    // Verify user existence
-    const { data: userData, error: listError } = await (admin as any).auth.admin.listUsers();
-    if (listError) throw new Error(`Erro ao verificar e-mail: ${listError.message}`);
 
-    const targetUser = userData.users.find((u: any) => u.email?.toLowerCase().trim() === email);
+    // 1. Try to find the user in profiles table first (this is fast, and works with public fallback keys)
+    let targetUserId: string | null = null;
+    try {
+      const { data: profileRecord, error: profileError } = await (admin as any)
+        .from("profiles")
+        .select("id")
+        .eq("email", email)
+        .maybeSingle();
 
-    if (!targetUser) throw new Error("O e-mail inserido não corresponde a uma conta ativa");
+      if (!profileError && profileRecord) {
+        targetUserId = profileRecord.id;
+        console.log(`[Password Reset] User found in profiles table: ${targetUserId}`);
+      }
+    } catch (profileErr) {
+      console.warn("[Password Reset] Querying profiles table failed:", profileErr);
+    }
+
+    // 2. Fall back to listing auth users only if the profiles table didn't yield a result
+    if (!targetUserId) {
+      try {
+        const { data: userData, error: listError } = await (admin as any).auth.admin.listUsers();
+        if (listError) {
+          console.warn("[Password Reset] listUsers returned error:", listError.message);
+        } else if (userData?.users) {
+          const targetUser = userData.users.find(
+            (u: any) => u.email?.toLowerCase().trim() === email,
+          );
+          if (targetUser) {
+            targetUserId = targetUser.id;
+            console.log(`[Password Reset] User found via listUsers: ${targetUserId}`);
+          }
+        }
+      } catch (authErr) {
+        console.warn("[Password Reset] Calling listUsers threw an error:", authErr);
+      }
+    }
+
+    if (!targetUserId) {
+      throw new Error("O e-mail inserido não corresponde a uma conta cadastrada no sistema");
+    }
 
     // Generate 15 digit/char code
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
@@ -476,15 +524,31 @@ async function handlePasswordReset(body: Body) {
     for (let i = 0; i < 15; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
 
     // Save/Upsert in table 'password_reset_codes'
-    const { error: upsertError } = await (admin as any).from("password_reset_codes").upsert(
+    let { error: upsertError } = await (admin as any).from("password_reset_codes").upsert(
       {
         email,
         code,
         created_at: new Date().toISOString(),
-        user_id: targetUser.id,
+        user_id: targetUserId,
       },
       { onConflict: "email" },
     );
+
+    if (
+      upsertError &&
+      (upsertError.message.includes("user_id") || upsertError.message.includes("column"))
+    ) {
+      console.warn("[Password Reset] Retrying upsert without user_id column...");
+      const retryResult = await (admin as any).from("password_reset_codes").upsert(
+        {
+          email,
+          code,
+          created_at: new Date().toISOString(),
+        },
+        { onConflict: "email" },
+      );
+      upsertError = retryResult.error;
+    }
 
     if (upsertError) {
       throw new Error(`Erro ao guardar código de segurança: ${upsertError.message}`);
@@ -573,15 +637,44 @@ async function handlePasswordReset(body: Body) {
       throw new Error("Código de segurança inválido ou expirado");
     }
 
-    // Update password
-    const { data: userData } = await (admin as any).auth.admin.listUsers();
-    const targetUser = userData.users.find((u: any) => u.email?.toLowerCase().trim() === email);
+    let targetUserId = record.user_id;
+    if (!targetUserId) {
+      console.log("[Password Reset] user_id not stored in record, finding via listUsers...");
+      try {
+        const { data: userData } = await (admin as any).auth.admin.listUsers();
+        if (userData?.users) {
+          const targetUser = userData.users.find(
+            (u: any) => u.email?.toLowerCase().trim() === email.toLowerCase().trim(),
+          );
+          if (targetUser) {
+            targetUserId = targetUser.id;
+          }
+        }
+      } catch (authErr) {
+        console.warn("[Password Reset] Failed to retrieve targetUserId from email:", authErr);
+      }
+    }
 
-    if (!targetUser) throw new Error("Usuário não encontrado");
+    if (!targetUserId) {
+      throw new Error("Usuário não associado ao código de redefinição");
+    }
 
-    await (admin as any).auth.admin.updateUserById(targetUser.id, {
-      password: password,
-    });
+    // Update password using admin auth
+    try {
+      const { error: updateError } = await (admin as any).auth.admin.updateUserById(targetUserId, {
+        password: password,
+      });
+
+      if (updateError) {
+        throw new Error(`Erro na atualização de senha no Supabase: ${updateError.message}`);
+      }
+    } catch (authErr: any) {
+      console.error("[Password Reset] Error modifying user password:", authErr);
+      throw new Error(
+        authErr?.message ||
+          "Não foi possível atualizar a senha. Verifique se o backend possui a chave SUPABASE_SERVICE_ROLE_KEY configurada.",
+      );
+    }
 
     // Delete code
     await (admin as any).from("password_reset_codes").delete().eq("email", email);
