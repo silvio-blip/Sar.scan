@@ -12,6 +12,7 @@ export const Route = createFileRoute("/reset-password")({ component: ResetPage }
 function ResetPage() {
   const nav = useNavigate();
   const [email, setEmail] = useState("");
+  const [isEmailLocked, setIsEmailLocked] = useState(false);
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -23,12 +24,14 @@ function ResetPage() {
     const savedEmail = sessionStorage.getItem("reset_email");
     if (savedEmail) {
       setEmail(savedEmail);
-    } else {
-      // If no email, send them back to start
-      toast.error("Por favor, inicie a solicitação informando seu e-mail.");
-      nav({ to: "/forgot-password" });
+      setIsEmailLocked(true);
     }
-  }, [nav]);
+    const savedCode = sessionStorage.getItem("reset_code");
+    if (savedCode) {
+      setCode(savedCode);
+      toast.info("O código gerado no ambiente de testes foi preenchido automaticamente.");
+    }
+  }, []);
 
   const onVerifyCode = async (e: FormEvent) => {
     e.preventDefault();
@@ -92,6 +95,7 @@ function ResetPage() {
 
       toast.success("Senha atualizada com sucesso!");
       sessionStorage.removeItem("reset_email");
+      sessionStorage.removeItem("reset_code");
 
       setTimeout(() => {
         nav({ to: "/login" });
@@ -137,15 +141,11 @@ function ResetPage() {
           </div>
         </div>
 
-        {/* Email read-only badge indicating locked target account */}
-        <div className="bg-secondary/30 ring-1 ring-border/40 rounded-[20px] p-4 text-center space-y-1 animate-in fade-in duration-300">
+        {/* Visual separation badge */}
+        <div className="bg-secondary/20 ring-1 ring-border/30 rounded-[20px] p-3 text-center animate-in fade-in duration-300">
           <span className="text-[10px] uppercase font-black tracking-widest text-primary/60 block">
-            Conta em recuperação
+            Verificação de Identidade
           </span>
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-secondary border border-border/80 rounded-full font-bold text-xs text-foreground shrink-0 select-none cursor-not-allowed">
-            <Mail className="size-3.5 text-primary/60 shrink-0" />
-            <span>{email || "carregando..."}</span>
-          </div>
         </div>
 
         {/* Credentials Form Box */}
@@ -161,6 +161,33 @@ function ResetPage() {
                 onSubmit={onVerifyCode}
                 className="space-y-5"
               >
+                {/* Email Field */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-2">
+                    E-mail do Utilizador
+                  </label>
+                  <div
+                    className={`${
+                      isEmailLocked
+                        ? "bg-secondary/20 border-border/30 cursor-not-allowed opacity-80"
+                        : "bg-secondary/40 border-border/50 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10"
+                    } border rounded-[18px] flex items-center gap-3.5 px-4.5 py-4 transition-all`}
+                  >
+                    <Mail className="size-4.5 text-primary/45 shrink-0" />
+                    <input
+                      type="email"
+                      required
+                      readOnly={isEmailLocked}
+                      value={email}
+                      onChange={(e) => !isEmailLocked && setEmail(e.target.value)}
+                      placeholder="Ex: joao@gmail.com"
+                      className={`flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/45 text-foreground font-medium ${
+                        isEmailLocked ? "cursor-not-allowed text-muted-foreground" : ""
+                      }`}
+                    />
+                  </div>
+                </div>
+
                 {/* 15-character Secure Code */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-2">

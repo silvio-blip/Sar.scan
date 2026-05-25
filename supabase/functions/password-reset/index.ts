@@ -41,34 +41,74 @@ serve(async (req) => {
         ),
       ).join("");
 
-      let { error: upsertError } = await supabaseClient.from("password_reset_codes").upsert(
-        {
+      // Delete existing codes first to avoid constraint and duplicate issues
+      try {
+        const { error: deleteError } = await supabaseClient
+          .from("password_reset_codes")
+          .delete()
+          .eq("email", cleanEmail);
+        if (deleteError) {
+          console.warn("[Password Reset] Explicit delete returned error:", deleteError.message);
+        } else {
+          console.log(
+            `[Password Reset] Successfully deleted any existing recovery codes for: ${cleanEmail}`,
+          );
+        }
+      } catch (delErr: any) {
+        console.warn("[Password Reset] Delete before insert threw exception:", delErr.message);
+      }
+
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hora de expiração
+
+      // Use upsert to safely replace or insert the code for the primary key (email)
+      let insertResult = await supabaseClient.from("password_reset_codes").upsert({
+        email: cleanEmail,
+        code: newCode,
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt,
+        user_id: targetUser.id,
+      });
+
+      if (
+        insertResult.error &&
+        (insertResult.error.message.includes("user_id") ||
+          insertResult.error.message.includes("column") ||
+          insertResult.error.message.includes("schema cache"))
+      ) {
+        console.warn("[Password Reset] Retrying upsert without user_id...");
+        insertResult = await supabaseClient.from("password_reset_codes").upsert({
+          email: cleanEmail,
+          code: newCode,
+          created_at: new Date().toISOString(),
+          expires_at: expiresAt,
+        });
+      }
+
+      if (
+        insertResult.error &&
+        (insertResult.error.message.includes("expires_at") ||
+          insertResult.error.message.includes("column") ||
+          insertResult.error.message.includes("schema cache"))
+      ) {
+        console.warn("[Password Reset] Retrying upsert without expires_at...");
+        insertResult = await supabaseClient.from("password_reset_codes").upsert({
           email: cleanEmail,
           code: newCode,
           created_at: new Date().toISOString(),
           user_id: targetUser.id,
-        },
-        { onConflict: "email" },
-      );
-
-      if (
-        upsertError &&
-        (upsertError.message.includes("user_id") || upsertError.message.includes("column"))
-      ) {
-        console.warn("[Password Reset] Retrying upsert without user_id column...");
-        const retryResult = await supabaseClient.from("password_reset_codes").upsert(
-          {
-            email: cleanEmail,
-            code: newCode,
-            created_at: new Date().toISOString(),
-          },
-          { onConflict: "email" },
-        );
-        upsertError = retryResult.error;
+        });
       }
 
-      if (upsertError) {
-        throw new Error(`Erro ao guardar código de segurança: ${upsertError.message}`);
+      if (insertResult.error) {
+        console.warn("[Password Reset] Retrying upsert with minimal fields...");
+        insertResult = await supabaseClient.from("password_reset_codes").upsert({
+          email: cleanEmail,
+          code: newCode,
+        });
+      }
+
+      if (insertResult.error) {
+        throw new Error(`Erro ao guardar código de segurança: ${insertResult.error.message}`);
       }
 
       // Email sending via SMTP
@@ -78,43 +118,66 @@ serve(async (req) => {
       console.log(`[SMTP] Tentando enviar e-mail para ${cleanEmail} via ${smtpHost}`);
 
       if (smtpHost && smtpUser) {
-        const transporter = nodemailer.createTransport({
-          host: smtpHost,
-          port: parseInt(Deno.env.get("SMTP_PORT") || "587"),
-          secure: Deno.env.get("SMTP_SECURE") === "true",
-          auth: {
-            user: smtpUser,
-            pass: Deno.env.get("SMTP_PASS"),
-          },
-        });
+        try {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: parseInt(Deno.env.get("SMTP_PORT") || "587"),
+            secure: Deno.env.get("SMTP_SECURE") === "true",
+            auth: {
+              user: smtpUser,
+              pass: Deno.env.get("SMTP_PASS"),
+            },
+          });
 
-        await transporter.sendMail({
-          from: Deno.env.get("SMTP_SENDER"),
-          to: cleanEmail,
-          subject: "Redefinição de Senha",
-          html: `
-            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-              <h2 style="color: #007bff;">Redefinição de Senha</h2>
-              <p>Olá,</p>
-              <p>Recebemos uma solicitação para redefinir a sua senha. Utilize o código de segurança abaixo para prosseguir:</p>
-              <div style="padding: 20px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px;">
-                ${newCode}
+          await transporter.sendMail({
+            from: Deno.env.get("SMTP_SENDER"),
+            to: cleanEmail,
+            subject: "Redefinição de Senha",
+            html: `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+                <h2 style="color: #007bff;">Redefinição de Senha</h2>
+                <p>Olá,</p>
+                <p>Recebemos uma solicitação para redefinir a sua senha. Utilize o código de segurança abaixo para prosseguir:</p>
+                <div style="padding: 20px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px;">
+                  ${newCode}
+                </div>
+                <p>Se você não solicitou esta redefinição, por favor, ignore este e-mail.</p>
+                <p>Atenciosamente,<br>Equipe Sar.Scan</p>
               </div>
-              <p>Se você não solicitou esta redefinição, por favor, ignore este e-mail.</p>
-              <p>Atenciosamente,<br>Equipe Sar.Scan</p>
-            </div>
-          `,
-        });
-        console.log(`[SMTP] E-mail enviado com sucesso para ${cleanEmail}`);
+            `,
+          });
+          console.log(`[SMTP] E-mail enviado com sucesso para ${cleanEmail}`);
+          return new Response(JSON.stringify({ success: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        } catch (err: any) {
+          console.error(`[SMTP] Erro ao enviar e-mail para ${cleanEmail}:`, err);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              warning: "smtp_failed",
+              code: newCode,
+              errorDetails: err.message,
+            }),
+            {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: 200,
+            },
+          );
+        }
       } else {
-        console.warn("[SMTP] SMTP configuration missing.");
-        throw new Error("Erro na configuração de envio de email");
+        console.warn(
+          "[SMTP] Configuração de SMTP incompleta. Retornando código em formato JSON para desenvolvimento.",
+        );
+        return new Response(
+          JSON.stringify({ success: true, warning: "smtp_missing", code: newCode }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          },
+        );
       }
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
     } else if (action === "verify") {
       if (!cleanEmail || !code) throw new Error("Dados incompletos");
 

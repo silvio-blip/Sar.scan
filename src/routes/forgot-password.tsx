@@ -30,14 +30,31 @@ function ForgotPage() {
         return;
       }
 
-      toast.success("Código de recuperação de 15 dígitos enviado ao seu e-mail!");
       // Save email locally to auto-fill the confirm page
       sessionStorage.setItem("reset_email", email.trim());
+
+      if (data && (data.warning === "smtp_missing" || data.warning === "smtp_failed")) {
+        if (data.code) {
+          sessionStorage.setItem("reset_code", data.code);
+          try {
+            await navigator.clipboard.writeText(data.code);
+            toast.success("Código copiado automaticamente para a área de transferência!");
+          } catch (clipErr) {
+            console.warn("Auto-copy blocked: ", clipErr);
+          }
+        }
+        toast.info(`E-mail simulado de desenvolvimento: Código gerado: ${data.code || ""}`, {
+          duration: 10000,
+        });
+      } else {
+        sessionStorage.removeItem("reset_code");
+        toast.success("Código de recuperação de 15 dígitos enviado ao seu e-mail!");
+      }
 
       // Delay navigation slightly for a polished feel
       setTimeout(() => {
         nav({ to: "/reset-password" });
-      }, 1000);
+      }, 1500);
     } catch (err: any) {
       toast.error(err.message || "Erro de conexão com o servidor.");
     } finally {

@@ -59,6 +59,13 @@ function createSupabaseClient() {
     const originalInvoke = realFunctionsInstance.invoke;
 
     const proxiedInvoke = async function (functionName: string, options?: any) {
+      if (functionName === "password-reset") {
+        console.log(`[Supabase Proxy] Direct invoke for "password-reset" bypass to real Supabase.`);
+        if (typeof originalInvoke === "function") {
+          return originalInvoke.call(realFunctionsInstance, functionName, options);
+        }
+      }
+
       const isLocalOnly = true;
 
       try {
