@@ -4,9 +4,10 @@ type Body = Record<string, unknown> | undefined;
 
 export const invokeEdge = async (data: { name: string; body?: Body }) => {
   const url = "/api/edge";
-  console.log(`[EdgeProxy] Calling: ${url}`);
+  const absoluteUrl = getApiUrl(url);
+  console.log(`[EdgeProxy] Calling: ${absoluteUrl}`);
   try {
-    const res = await fetch(url, {
+    const res = await fetch(absoluteUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),

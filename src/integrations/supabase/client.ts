@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { getApiUrl } from "@/lib/utils";
 import type { Database } from "./types";
 
 function createSupabaseClient() {
@@ -69,8 +70,7 @@ function createSupabaseClient() {
       const isLocalOnly = true;
 
       try {
-        const origin = typeof window !== "undefined" ? window.location.origin : "";
-        const url = `${origin}/api/edge`;
+        const url = getApiUrl("/api/edge");
         console.log(
           `[Supabase Proxy] Intercepting function invoke: ${functionName} -> Proxying to local API ${url}`,
         );

@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { getApiUrl } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
@@ -749,7 +750,7 @@ function ChatPage() {
       if (insertError) throw insertError;
 
       // Dispatch push notification to receiver
-      fetch("/api/notifications/send", {
+      fetch(getApiUrl("/api/notifications/send"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1333,7 +1334,7 @@ function ChatPage() {
         }
 
         // Dispatch push notification to receiver
-        fetch("/api/notifications/send", {
+        fetch(getApiUrl("/api/notifications/send"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1414,7 +1415,7 @@ function ChatPage() {
       qc.invalidateQueries({ queryKey: ["friends_status"] });
 
       // Dispatch push notification to receiver
-      fetch("/api/notifications/send", {
+      fetch(getApiUrl("/api/notifications/send"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1442,7 +1443,7 @@ function ChatPage() {
 
       // Dispatch push notification back to original request sender
       if (senderId) {
-        fetch("/api/notifications/send", {
+        fetch(getApiUrl("/api/notifications/send"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
