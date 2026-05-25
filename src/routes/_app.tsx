@@ -172,56 +172,12 @@ function AppLayout() {
 
       // 2. Solicitamos Câmera de forma independente
       const requestCamera = async () => {
-        console.log("[Permissions] Solicitando permissão da Câmera...");
-        if (isCap) {
-          const { Camera } = cap.Plugins || {};
-          if (Camera && typeof Camera.requestPermissions === "function") {
-            try {
-              const check = await Camera.checkPermissions();
-              if (check?.camera !== "granted") {
-                await Camera.requestPermissions({ permissions: ["camera"] });
-              } else {
-                console.log("[Permissions] Permissão nativa de câmera já concedida.");
-              }
-            } catch (err) {
-              console.warn("[Permissions] Erro ao solicitar câmera via Capacitor:", err);
-            }
-          }
-        } else {
-          if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-            try {
-              const stream = await navigator.mediaDevices
-                .getUserMedia({ video: { facingMode: "environment" } })
-                .catch(() => null);
-              if (stream) {
-                console.log("[Permissions] Permissão de câmera concedida.");
-                stream.getTracks().forEach((track) => track.stop());
-              }
-            } catch (err) {
-              console.warn("[Permissions] Câmera Web indisponível:", err);
-            }
-          }
-        }
+        console.log("[Permissions] Câmera não é solicitada automaticamente.");
       };
 
       // 3. Solicitamos Microfone de forma independente
       const requestMicrophone = async () => {
-        console.log("[Permissions] Solicitando permissão do Microfone...");
-        if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function") {
-          try {
-            const stream = await navigator.mediaDevices
-              .getUserMedia({ audio: true })
-              .catch(() => null);
-            if (stream) {
-              console.log("[Permissions] Permissão de microfone concedida.");
-              stream.getTracks().forEach((track) => track.stop());
-            } else {
-              console.warn("[Permissions] Uso de microfone recusado ou indisponível.");
-            }
-          } catch (err) {
-            console.warn("[Permissions] Erro ao obter permissão de microfone:", err);
-          }
-        }
+        console.log("[Permissions] Microfone não é solicitado automaticamente.");
       };
 
       // Executa de forma sequencial com pequenos intervalos para não atropelar diálogos do SO, de forma segura

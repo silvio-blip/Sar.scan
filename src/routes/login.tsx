@@ -3,9 +3,10 @@ import React, { useEffect, useState, type FormEvent } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Loader2, Mail, Lock, LogIn, Eye, EyeOff, Camera } from "lucide-react";
+import { Loader2, Mail, Lock, LogIn, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { SarLogo } from "@/components/sar-logo";
+import { motion } from "motion/react";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
@@ -30,87 +31,134 @@ function LoginPage() {
       toast.error(error.message);
       return;
     }
-    toast.success("Bem-vindo!");
+    toast.success("Bem-vindo de volta!");
     nav({ to: "/" });
   };
 
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm space-y-10 animate-in fade-in zoom-in duration-1000">
-        <div className="flex flex-col items-center gap-6">
-          <div className="size-20 rounded-3xl glass flex items-center justify-center shadow-2xl shadow-white/5 border-white/10 border relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-            <Camera className="size-10 text-white relative z-10" />
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-4 py-8 relative overflow-hidden">
+      {/* Premium organic liquid fluid decorative blobs */}
+      <div className="absolute top-[-10%] left-[-20%] w-[80vw] h-[80vw] sm:w-[50vw] sm:h-[50vw] rounded-full bg-primary/5 blur-[80px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-20%] w-[80vw] h-[80vw] sm:w-[50vw] sm:h-[50vw] rounded-full bg-accent/5 blur-[80px] pointer-events-none" />
+
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        className="w-full max-w-md space-y-8 z-10"
+      >
+        {/* Logo and Greeting Header */}
+        <div className="flex flex-col items-center gap-6 text-center">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.15, duration: 0.5 }}
+            className="p-1"
+          >
+            <SarLogo size="lg" align="center" />
+          </motion.div>
+          <div className="space-y-1">
+            <h2 className="text-xl font-display font-black tracking-tight text-primary">
+              Alimente as suas metas
+            </h2>
+            <p className="text-xs text-muted-foreground/80">
+              Faça login para continuar gerenciando sua nutrição e saúde.
+            </p>
           </div>
-          <SarLogo />
         </div>
 
-        <div className="glass-strong rounded-[28px] p-1.5 flex gap-1 border-white/5 shadow-2xl">
-          <button className="flex-1 py-3 rounded-[22px] bg-white text-black font-black text-[10px] tracking-[0.2em] shadow-xl">
+        {/* Auth Mode Toggle Pill */}
+        <div className="bg-secondary border border-border/40 p-1.5 rounded-[22px] flex gap-1 shadow-sm max-w-xs mx-auto">
+          <button className="flex-1 py-2.5 rounded-[16px] bg-card text-primary font-black text-[11px] tracking-[0.1em] shadow-sm uppercase">
             ENTRAR
           </button>
           <Link
             to="/signup"
-            className="flex-1 py-3 rounded-[22px] text-white/40 text-center font-black text-[10px] tracking-[0.2em] hover:text-white transition-all uppercase"
+            className="flex-1 py-2.5 rounded-[16px] text-muted-foreground/60 text-center font-black text-[11px] tracking-[0.1em] hover:text-primary transition-all uppercase flex items-center justify-center"
           >
             Criar Conta
           </Link>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="glass rounded-[24px] flex items-center gap-4 px-5 py-4 border-white/5 focus-within:ring-2 ring-white/10 transition-all shadow-inner">
-            <Mail className="size-5 text-white/30 shrink-0" />
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="E-mail"
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/20 font-medium"
-            />
-          </div>
-          <div className="glass rounded-[24px] flex items-center gap-4 px-5 py-4 border-white/5 focus-within:ring-2 ring-white/10 transition-all shadow-inner">
-            <Lock className="size-5 text-white/30 shrink-0" />
-            <input
-              type={show ? "text" : "password"}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Senha"
-              className="flex-1 bg-transparent outline-none text-sm placeholder:text-white/20 font-medium"
-            />
-            <button
-              type="button"
-              onClick={() => setShow(!show)}
-              className="text-white/30 hover:text-white transition-colors"
-            >
-              {show ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
-            </button>
-          </div>
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full h-16 rounded-[28px] bg-white text-black hover:bg-zinc-200 font-black tracking-[0.2em] text-[11px] shadow-xl shadow-white/5 transition-all active:scale-95"
-          >
-            {loading ? (
-              <Loader2 className="size-5 animate-spin mr-2" />
-            ) : (
-              <LogIn className="size-5 mr-2" />
-            )}
-            AUTENTICAR
-          </Button>
-        </form>
+        {/* Credentials Form Box */}
+        <div className="bg-card border border-border/40 rounded-[32px] p-6 sm:p-8 shadow-xl glow-soft">
+          <form onSubmit={onSubmit} className="space-y-5">
+            {/* Email Field */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-2">
+                E-mail
+              </label>
+              <div className="bg-secondary/40 border border-border/50 rounded-[18px] flex items-center gap-3.5 px-4.5 py-4 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
+                <Mail className="size-4.5 text-primary/45 shrink-0" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Seu e-mail de acesso"
+                  className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/45 text-foreground font-medium"
+                />
+              </div>
+            </div>
 
-        <div className="text-center pt-2">
-          <Link
-            to="/forgot-password"
-            size="sm"
-            className="text-[10px] font-black uppercase tracking-widest text-white/30 hover:text-white transition-all"
-          >
-            Esqueci minha senha
-          </Link>
+            {/* Password Field */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between px-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-primary/70">
+                  Senha
+                </label>
+                <Link
+                  to="/forgot-password"
+                  className="text-[9px] font-semibold text-accent hover:underline uppercase tracking-wider"
+                >
+                  Esqueceu?
+                </Link>
+              </div>
+              <div className="bg-secondary/40 border border-border/50 rounded-[18px] flex items-center gap-3.5 px-4.5 py-4 focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/10 transition-all">
+                <Lock className="size-4.5 text-primary/45 shrink-0" />
+                <input
+                  type={show ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Insira sua senha"
+                  className="flex-1 bg-transparent outline-none text-sm placeholder:text-muted-foreground/45 text-foreground font-medium"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow(!show)}
+                  className="text-primary/40 hover:text-primary transition-colors focus:outline-none"
+                >
+                  {show ? <EyeOff className="size-4.5" /> : <Eye className="size-4.5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full h-14 mt-2 rounded-[22px] bg-primary text-primary-foreground hover:bg-primary/95 font-black tracking-[0.1em] text-[11px] shadow-md shadow-primary/10 transition-all duration-300 active:scale-98 flex items-center justify-center uppercase cursor-pointer"
+            >
+              {loading ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <>
+                  <LogIn className="size-4.5 mr-2 stroke-[2.5]" />
+                  Entrar no Aplicativo
+                </>
+              )}
+            </Button>
+          </form>
         </div>
-      </div>
+
+        {/* Footer info and Support Info */}
+        <div className="text-center pt-2">
+          <p className="text-[10px] tracking-wide text-muted-foreground/65">
+            Ao autenticar, você concorda com os nossos Termos de Uso.
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }

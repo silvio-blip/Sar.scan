@@ -5,6 +5,7 @@ import { createServer as createViteServer } from "vite";
 import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";
 import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
+import { verifyGooglePlayPurchaseInternal } from "./src/lib/google-play.server";
 import { supabaseAdmin } from "./src/integrations/supabase/client.server";
 import { getAppSettings } from "./src/lib/settings.server";
 
@@ -149,6 +150,26 @@ async function startServer() {
       const result = await createStripeCheckoutInternal(req.body);
       res.json(result);
     } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Google Play Billing verification route
+  app.post("/api/play-billing/verify", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+
+      const { productId, purchaseToken } = req.body;
+      const result = await verifyGooglePlayPurchaseInternal({
+        token,
+        productId,
+        purchaseToken,
+      });
+      res.json(result);
+    } catch (error: unknown) {
+      console.error("[Play Billing Backend Error]", error);
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
       res.status(500).json({ error: msg });
     }

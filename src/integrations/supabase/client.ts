@@ -1,6 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
-import { invokeEdge } from "@/lib/edge-proxy.functions";
 
 function createSupabaseClient() {
   const SUPABASE_URL =
@@ -40,52 +39,6 @@ function createSupabaseClient() {
     },
   });
 
-  const patchedInvoke = (async (name: string, opts?: { body?: unknown }) => {
-    try {
-      const data = await invokeEdge({
-        name,
-        body: (opts?.body ?? {}) as Record<string, unknown>,
-      });
-      return { data, error: null } as { data: unknown; error: null };
-    } catch (e) {
-      return { data: null, error: e instanceof Error ? e : new Error(String(e)) } as {
-        data: null;
-        error: Error;
-      };
-    }
-  }) as typeof client.functions.invoke;
-
-  try {
-    const originalProto = Object.getPrototypeOf(client);
-    const originalFunctionsGetter = Object.getOwnPropertyDescriptor(
-      originalProto,
-      "functions",
-    )?.get;
-
-    Object.defineProperty(client, "functions", {
-      get() {
-        const realFunctions = originalFunctionsGetter ? originalFunctionsGetter.call(client) : {};
-        return new Proxy(realFunctions, {
-          get(target, prop, rx) {
-            if (prop === "invoke") {
-              return patchedInvoke;
-            }
-            return Reflect.get(target, prop, rx);
-          },
-        });
-      },
-      configurable: true,
-      enumerable: true,
-    });
-  } catch (e) {
-    console.warn("[supabase] functions patch failed", e);
-    // fallback basic assign
-    try {
-      client.functions.invoke = patchedInvoke;
-    } catch (err) {
-      console.warn("[supabase] basic functions.invoke patch fallback failed", err);
-    }
-  }
   return client;
 }
 

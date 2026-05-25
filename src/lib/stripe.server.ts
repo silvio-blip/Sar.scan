@@ -191,10 +191,10 @@ export async function createStripeCheckoutInternal(data: {
     );
   }
 
-  let baseUrl = data.origin || "https://sar-scan.vercel.app";
-  if (baseUrl.startsWith("capacitor://") || baseUrl.startsWith("file://")) {
-    baseUrl = "https://sar-scan.vercel.app";
-  }
+  const baseUrl =
+    data.origin ||
+    process.env.PUBLIC_APP_URL ||
+    "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
 
   console.log(
     "[Stripe] Creating checkout session. User:",

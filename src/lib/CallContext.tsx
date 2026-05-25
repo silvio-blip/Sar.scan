@@ -396,7 +396,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq("id", callerId)
         .maybeSingle();
       const name = profile?.nome || "Utilizador";
-      const icon = profile?.avatar_url || "https://sar-scan.vercel.app/apple-touch-icon.png";
+      const icon = profile?.avatar_url || "/apple-touch-icon.png";
       const n = new Notification(`Chamada de ${name}`, {
         body: "Está a receber uma chamada de voz! Toque para atender.",
         icon,

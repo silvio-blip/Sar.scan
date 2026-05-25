@@ -283,7 +283,7 @@ async function getUserStatus(userId: string) {
   const [{ data: sub }, { data: roles }, { data: profile }] = await Promise.all([
     (admin as any)
       .from("subscriptions")
-      .select("status, scans_credits, ai_agent_enabled")
+      .select("status, scans_credits, ai_agent_enabled, current_period_end")
       .eq("user_id", userId)
       .maybeSingle(),
     (admin as any).from("user_roles").select("role").eq("user_id", userId),
@@ -293,8 +293,31 @@ async function getUserStatus(userId: string) {
   const isAdmin =
     roles?.some((r: any) => r.role === "admin") || profile?.email === "silviok5000@gmail.com";
 
+  let finalSub = sub;
+
+  if (finalSub && finalSub.status === "active" && finalSub.current_period_end) {
+    const expired = new Date(finalSub.current_period_end) < new Date();
+    if (expired) {
+      console.log(
+        `[Backend Status] User ${userId} subscription expired dynamically at ${finalSub.current_period_end}. Revoking status to free.`,
+      );
+      await (admin as any)
+        .from("subscriptions")
+        .update({ status: "free", plan: null, ai_agent_enabled: false })
+        .eq("user_id", userId);
+
+      finalSub = {
+        ...finalSub,
+        status: "free",
+        plan: null,
+        ai_agent_enabled: false,
+        scans_credits: finalSub.scans_credits,
+      };
+    }
+  }
+
   // Se não existir subscription, criamos uma 'free' por padrão como solicitado
-  if (!sub) {
+  if (!finalSub) {
     const { data: newSub } = await (admin as any)
       .from("subscriptions")
       .insert({
@@ -308,7 +331,7 @@ async function getUserStatus(userId: string) {
     return { ...newSub, isAdmin };
   }
 
-  return { ...sub, isAdmin };
+  return { ...finalSub, isAdmin };
 }
 
 async function checkEligibility(userId: string) {
@@ -390,6 +413,8 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
     // ...
 
     switch (data.name) {
+      case "password-reset":
+        return await handlePasswordReset(data.body);
       case "search-food-ai": {
         if (!userId) throw new Error("Usuário não identificado");
         // Verifica se pode usar IA (deduz crédito ou incrementa contador diário)
@@ -426,4 +451,65 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
     const msg = e instanceof Error ? e.message : String(e);
     return { error: msg };
   }
+}
+
+async function handlePasswordReset(body: Body) {
+  const action = body?.action as string;
+  const email = (body?.email as string)?.toLowerCase().trim();
+  const admin = getAdminSafe();
+  if (!admin) throw new Error("Erro de conexão com o banco");
+
+  if (action === "request") {
+    if (!email) throw new Error("Email é obrigatório");
+    // Generate 15 digit/char code
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+    let code = "";
+    for (let i = 0; i < 15; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+
+    // Save/Upsert in table 'password_reset_codes'
+    await (admin as any).from("password_reset_codes").upsert({
+      email,
+      code,
+      created_at: new Date().toISOString(),
+    });
+
+    // SMTP Send
+    console.log(`[SMTP] Enviando código para ${email}: ${code}`);
+    // Here you would integrate with your SMTP provider (e.g., nodemailer)
+    // using secrets from env/settings.
+
+    return { success: true };
+  } else if (action === "confirm") {
+    const code = body?.code as string;
+    const password = body?.password as string;
+
+    if (!email || !code || !password) throw new Error("Dados incompletos");
+
+    const { data: record } = await (admin as any)
+      .from("password_reset_codes")
+      .select("*")
+      .eq("email", email)
+      .eq("code", code)
+      .maybeSingle();
+
+    if (!record) {
+      throw new Error("Código inválido ou expirado");
+    }
+
+    // Update password
+    const { data: userData } = await (admin as any).auth.admin.listUsers();
+    const targetUser = userData.users.find((u: any) => u.email === email);
+
+    if (!targetUser) throw new Error("Usuário não encontrado");
+
+    await (admin as any).auth.admin.updateUserById(targetUser.id, {
+      password: password,
+    });
+
+    // Delete code
+    await (admin as any).from("password_reset_codes").delete().eq("email", email);
+
+    return { success: true };
+  }
+  throw new Error("Ação inválida");
 }

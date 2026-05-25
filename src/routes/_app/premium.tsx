@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { createStripeCheckout, syncStripePlans } from "@/lib/stripe.functions";
+import { initializeGooglePlayIAP, requestGooglePlayPurchase } from "@/lib/google-play.functions";
 import { isInstalledApp } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -220,20 +221,60 @@ function PremiumPage() {
   }, [location.search, refresh, navigate, selected]);
 
   const current = PLANS.find((p) => p.id === selected)!;
+  const [buyingCredits, setBuyingCredits] = useState(false);
+
+  useEffect(() => {
+    initializeGooglePlayIAP().catch(console.error);
+  }, []);
 
   const startCheckout = async (planId: PlanId, trial = false) => {
-    if (!user || !session?.access_token) return;
+    if (!user || !session?.access_token) {
+      toast.error("Por favor, faça autenticação antes de prosseguir com a compra.");
+      return;
+    }
     setLoading(planId);
     try {
-      const { url } = await createStripeCheckout({
-        token: session.access_token,
-        plan: planId,
-        trial: trial,
-      });
-      if (url) window.location.href = url;
+      const targetProductId = "sar_scan_assinatura";
+      const res = await requestGooglePlayPurchase(targetProductId, session.access_token);
+
+      if (res.success) {
+        toast.success("Plano Premium ativado com sucesso através da Google Play Store!");
+        if (refresh) await refresh();
+
+        const likelyPlan = PLANS.find((p) => p.id === planId) || PLANS[1];
+        setPurchasedPlan(likelyPlan);
+        setShowSuccessModal(true);
+      } else {
+        toast.error(
+          res.error || "Ocorreu um erro no processamento do ecrã de pagamento Google Play.",
+        );
+      }
     } catch (e: any) {
-      toast.error(e.message || "Erro ao iniciar checkout");
+      toast.error(e.message || "Erro ao iniciar compra Google Play.");
+    } finally {
       setLoading(null);
+    }
+  };
+
+  const startCreditsCheckout = async () => {
+    if (!user || !session?.access_token) {
+      toast.error("Por favor, faça autenticação antes de comprar créditos.");
+      return;
+    }
+    setBuyingCredits(true);
+    try {
+      const res = await requestGooglePlayPurchase("sar_scan_creditos", session.access_token);
+
+      if (res.success) {
+        toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");
+        if (refresh) await refresh();
+      } else {
+        toast.error(res.error || "A transação de créditos falhou ou foi rejeitada pela Google.");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao conectar com Google Play Store.");
+    } finally {
+      setBuyingCredits(false);
     }
   };
 
@@ -396,6 +437,44 @@ function PremiumPage() {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+          Pacotes de Créditos (Consumível)
+        </h2>
+        <div className="bg-card rounded-[32px] border border-border p-6 text-left relative overflow-hidden group">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-xs font-black uppercase text-primary font-bold">
+                Pacote de 50 Scans
+              </div>
+              <div className="mt-1 flex items-baseline gap-1">
+                <span className="text-3xl font-display font-black tracking-tighter text-foreground">
+                  €9,99
+                </span>
+                <span className="text-xs font-medium text-muted-foreground">/ pagamento único</span>
+              </div>
+            </div>
+            <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shadow-sm text-primary">
+              <Zap className="size-5" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mb-4">
+            Perfeito se você já atingiu o limite semanal ou mensal ou prefere não utilizar uma
+            assinatura premium recorrente neste momento. Adiciona 50 scans definitivos ao seu
+            utilizador.
+          </p>
+          <div className="flex justify-end pt-2">
+            <Button
+              className="h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/95 transition-all duration-300 shadow-sm"
+              onClick={startCreditsCheckout}
+              disabled={buyingCredits}
+            >
+              {buyingCredits ? <Loader2 className="size-4 animate-spin" /> : "Comprar 50 Créditos"}
+            </Button>
+          </div>
         </div>
       </div>
 

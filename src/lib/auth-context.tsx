@@ -51,6 +51,8 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
+const expiredUpdatesInProgress = new Set<string>();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -69,12 +71,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle(),
       supabase.from("user_roles").select("role").eq("user_id", uid),
     ]);
+
+    let typedSub = sub as Subscription | null;
+
+    if (typedSub && typedSub.status === "active" && typedSub.current_period_end) {
+      const expired = new Date(typedSub.current_period_end) < new Date();
+      if (expired) {
+        if (!expiredUpdatesInProgress.has(uid)) {
+          expiredUpdatesInProgress.add(uid);
+          console.log("[Auth] Subscription has expired dynamically. Updating database state...");
+          try {
+            await supabase
+              .from("subscriptions")
+              .update({ status: "free", plan: null, ai_agent_enabled: false })
+              .eq("user_id", uid);
+          } catch (err) {
+            console.error("[Auth] Fail to update expired subscription in database:", err);
+          } finally {
+            expiredUpdatesInProgress.delete(uid);
+          }
+        }
+        typedSub = {
+          ...typedSub,
+          status: "free",
+          plan: null,
+          ai_agent_enabled: false,
+          scans_credits: typedSub.scans_credits,
+        };
+      }
+    }
+
     setProfile(prof as Profile | null);
-    setSubscription(sub as Subscription | null);
+    setSubscription(typedSub);
     setIsAdmin(!!roles?.some((r) => r.role === "admin"));
 
     // Daily credits reset for free users (to 3 if < 3, once per day)
-    const typedSub = sub as Subscription | null;
     if (
       uid &&
       typedSub &&
@@ -87,9 +118,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (lastReset !== today) {
         console.log("[Auth] Daily credit reset triggered for user:", uid);
-        await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
         localStorage.setItem(lastResetKey, today);
-        // We'll let the realtime subscription channel handle the state update
+        try {
+          await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
+        } catch (err) {
+          console.error("[Auth] Daily reset update error:", err);
+        }
       }
     }
   };

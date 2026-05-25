@@ -18,8 +18,19 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Shield, Users, Zap, Gift, Loader2, Crown, Activity } from "lucide-react";
+import {
+  ArrowLeft,
+  Shield,
+  Users,
+  Zap,
+  Gift,
+  Loader2,
+  Crown,
+  Activity,
+  Search,
+} from "lucide-react";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "motion/react";
 
 export const Route = createFileRoute("/admin")({ component: AdminPage });
 
@@ -35,7 +46,7 @@ function AdminPage() {
   const [rBonus, setRBonus] = useState(0);
   const [rSending, setRSending] = useState(false);
 
-  const { data: users } = useQuery({
+  const { data: users, isLoading: queryLoading } = useQuery({
     queryKey: ["admin_users"],
     enabled: isAdmin,
     queryFn: async () => {
@@ -70,10 +81,14 @@ function AdminPage() {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-black grid place-items-center">
-        <Loader2 className="size-12 animate-spin text-white" />
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <Loader2 className="size-10 animate-spin text-primary" />
+        <p className="text-xs text-muted-foreground mt-3 font-semibold uppercase tracking-wider">
+          Verificando credenciais...
+        </p>
       </div>
     );
+
   if (!user || !isAdmin) return <Navigate to="/" />;
 
   const togglePremium = async (uid: string, on: boolean) => {
@@ -107,7 +122,7 @@ function AdminPage() {
       },
       { onConflict: "user_id,data" },
     );
-    toast.success(`+${n} scans adicionados`);
+    toast.success(n > 0 ? `+${n} scans creditados` : `${n} scans removidos`);
     qc.invalidateQueries({ queryKey: ["admin_users"] });
   };
 
@@ -120,7 +135,7 @@ function AdminPage() {
 
   const submitReward = async () => {
     if (!rewardFor || !rTitulo.trim()) {
-      toast.error("Informe um título");
+      toast.error("Por favor, informe um título para a recompensa");
       return;
     }
     setRSending(true);
@@ -133,12 +148,12 @@ function AdminPage() {
       });
       toast.success(
         rBonus > 0
-          ? `Recompensa enviada. O usuário receberá +${rBonus} scans ao reivindicar.`
+          ? `Recompensa enviada! O usuário receberá +${rBonus} scans ao reivindicar.`
           : "Recompensa enviada",
       );
       setRewardFor(null);
     } catch (e: any) {
-      toast.error(e?.message ?? "Erro ao enviar");
+      toast.error(e?.message ?? "Erro ao enviar recompensa");
     } finally {
       setRSending(false);
     }
@@ -151,197 +166,298 @@ function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen bg-black">
-      <div className="bg-white text-black p-5 flex items-center gap-4 sticky top-0 z-50 shadow-2xl">
-        <Link to="/perfil" className="p-1 hover:bg-black/5 rounded-lg transition-colors">
-          <ArrowLeft className="size-6" />
+    <div className="min-h-screen bg-background text-foreground pb-20">
+      {/* Premium Sticky Header */}
+      <header className="bg-card/90 backdrop-blur-md border-b border-border/50 sticky top-0 z-50 px-5 py-4 flex items-center gap-4 shadow-sm">
+        <Link
+          to="/perfil"
+          className="size-10 rounded-full bg-secondary hover:bg-muted flex items-center justify-center transition-colors shrink-0"
+        >
+          <ArrowLeft className="size-5 text-primary stroke-[2.5]" />
         </Link>
-        <Shield className="size-6" />
-        <h1 className="text-xl font-display font-black tracking-tight">Painel Admin</h1>
-      </div>
+        <div className="flex items-center gap-2">
+          <div className="size-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+            <Shield className="size-4.5 stroke-[2.5]" />
+          </div>
+          <div>
+            <h1 className="text-base font-display font-black tracking-tight text-primary leading-none">
+              Painel Admin
+            </h1>
+            <span className="text-[9px] tracking-[0.2em] uppercase text-muted-foreground/85 font-black">
+              Controle Geral
+            </span>
+          </div>
+        </div>
+      </header>
 
-      <div className="mx-auto max-w-[480px] p-6 space-y-6 animate-in fade-in duration-700">
+      <div className="mx-auto max-w-[480px] px-4 py-6 space-y-6">
+        {/* Statistics Widgets */}
         <div className="grid grid-cols-3 gap-3">
-          <Card className="glass rounded-[24px] p-4 text-center border-white/5 shadow-xl">
-            <Users className="size-5 mx-auto text-white/40 mb-2" />
-            <div className="text-2xl font-display font-black text-white">{totalUsers}</div>
-            <div className="text-[10px] text-white/30 font-black uppercase tracking-widest">
+          <Card className="bg-card rounded-[24px] p-3.5 text-center border border-border/40 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-primary/30" />
+            <Users className="size-4.5 mx-auto text-primary mb-1.5" />
+            <div className="text-xl font-display font-black text-foreground">{totalUsers}</div>
+            <div className="text-[9px] text-muted-foreground font-black uppercase tracking-wider mt-0.5">
               Usuários
             </div>
           </Card>
-          <Card className="glass rounded-[24px] p-4 text-center border-white/5 shadow-xl">
-            <Crown className="size-5 mx-auto text-white mb-2" />
-            <div className="text-2xl font-display font-black text-white">{totalPremium}</div>
-            <div className="text-[10px] text-white/30 font-black uppercase tracking-widest">
+
+          <Card className="bg-card rounded-[24px] p-3.5 text-center border border-border/40 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-accent" />
+            <Crown className="size-4.5 mx-auto text-accent mb-1.5" />
+            <div className="text-xl font-display font-black text-foreground">{totalPremium}</div>
+            <div className="text-[9px] text-muted-foreground font-black uppercase tracking-wider mt-0.5">
               Premium
             </div>
           </Card>
-          <Card className="glass rounded-[24px] p-4 text-center border-white/5 shadow-xl">
-            <Activity className="size-5 mx-auto text-white/40 mb-2" />
-            <div className="text-2xl font-display font-black text-white">{totalScansToday}</div>
-            <div className="text-[10px] text-white/30 font-black uppercase tracking-widest">
-              Scans hoje
+
+          <Card className="bg-card rounded-[24px] p-3.5 text-center border border-border/40 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-water/40" />
+            <Activity className="size-4.5 mx-auto text-water mb-1.5" />
+            <div className="text-xl font-display font-black text-foreground">{totalScansToday}</div>
+            <div className="text-[9px] text-muted-foreground font-black uppercase tracking-wider mt-0.5">
+              Scans Hoje
             </div>
           </Card>
         </div>
 
-        <Card className="glass rounded-[32px] p-6 space-y-4 border-white/5 shadow-xl">
-          <div className="flex items-center gap-3">
-            <Users className="size-5 text-white/40" />
-            <b className="text-[11px] font-black uppercase tracking-widest">Gerenciar Usuários</b>
+        {/* Search Panel */}
+        <Card className="bg-card rounded-[28px] p-5 space-y-3.5 border border-border/45 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Search className="size-4 text-primary/60" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary/80">
+              Procurar utilizadores
+            </span>
           </div>
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por email ou nome..."
-            className="h-12 rounded-2xl bg-white/5 border-white/10 focus:ring-2 ring-white/10"
-          />
+          <div className="relative">
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por e-mail ou nome..."
+              className="h-12 pl-11 pr-4 rounded-xl bg-secondary/50 border-border/60 text-sm placeholder:text-muted-foreground/60 text-foreground font-medium focus-visible:ring-primary/25"
+            />
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/50">
+              <Search className="size-4" />
+            </div>
+          </div>
         </Card>
 
-        {filtered.map((u) => (
-          <Card
-            key={u.id}
-            className="glass rounded-[32px] p-6 space-y-4 border-white/5 shadow-xl group"
-          >
-            <div className="flex items-center gap-4">
-              <Avatar className="size-14 ring-2 ring-white/5 shadow-xl overflow-hidden">
-                {u.avatar_url && (
-                  <AvatarImage src={u.avatar_url} alt={u.nome ?? ""} className="object-cover" />
+        {/* User Management List */}
+        <div className="space-y-4">
+          {queryLoading && (
+            <div className="text-center py-8">
+              <Loader2 className="size-8 animate-spin text-primary mx-auto" />
+              <p className="text-xs text-muted-foreground mt-2 font-medium">
+                Buscando tabela de usuários...
+              </p>
+            </div>
+          )}
+
+          {!queryLoading && filtered.length === 0 && (
+            <div className="text-center py-10 bg-card rounded-[28px] border border-border/30 p-6">
+              <p className="text-sm font-medium text-muted-foreground">
+                Nenhum utilizador encontrado com este termo.
+              </p>
+            </div>
+          )}
+
+          {filtered.map((u, idx) => (
+            <motion.div
+              key={u.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(idx * 0.05, 0.45) }}
+            >
+              <Card className="bg-card rounded-[32px] p-5.5 space-y-4 border border-border/45 shadow-md hover:shadow-lg transition-all relative overflow-hidden">
+                {/* Visual Accent for Premiums */}
+                {u.premium && (
+                  <div className="absolute top-0 right-0 bg-accent/15 text-accent text-[8px] font-black uppercase tracking-widest px-4 py-1.5 rounded-bl-[16px] flex items-center gap-1 shadow-sm">
+                    <Crown className="size-2.5" />
+                    Premium
+                  </div>
                 )}
-                <AvatarFallback className="bg-white/10 text-white font-black">
-                  {(u.nome ?? u.email ?? "U").slice(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-base tracking-tight truncate text-white">
-                  {u.nome ?? "Sem Nome"}
+
+                {/* Profile Header */}
+                <div className="flex items-center gap-3.5">
+                  <Avatar className="size-13 ring-2 ring-primary/10 shadow-sm overflow-hidden shrink-0">
+                    {u.avatar_url ? (
+                      <AvatarImage src={u.avatar_url} alt={u.nome ?? ""} className="object-cover" />
+                    ) : null}
+                    <AvatarFallback className="bg-primary/10 text-primary font-black text-sm">
+                      {(u.nome ?? u.email ?? "U").slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  <div className="flex-1 min-w-0 pr-12">
+                    <div className="font-bold text-sm tracking-tight truncate text-foreground leading-tight">
+                      {u.nome ?? "Sem Nome"}
+                    </div>
+                    <div className="text-[10px] font-semibold text-muted-foreground/80 truncate mt-0.5 font-mono">
+                      {u.email}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-block">
+                        Hoje: {u.scans} scans
+                      </span>
+                      {u.bonus > 0 && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-accent bg-accent/10 px-2 py-0.5 rounded-full inline-block">
+                          +{u.bonus} bônus
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-white/30 truncate">
-                  {u.email}
+
+                {/* Premium Switch Control */}
+                <div className="flex items-center justify-between py-2.5 px-3 bg-secondary/50 rounded-2xl border border-border/30">
+                  <div className="flex items-center gap-2">
+                    <Crown className="size-4 text-accent" />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-primary">
+                      Acesso Vitalício / Manual
+                    </span>
+                  </div>
+                  <Switch
+                    checked={u.premium}
+                    onCheckedChange={(v) => togglePremium(u.id, v)}
+                    className="data-[state=checked]:bg-accent"
+                  />
                 </div>
-                <div className="text-[10px] font-black uppercase tracking-widest text-white/20 mt-1">
-                  Hoje: {u.scans} scans · +{u.bonus} bônus
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-2 border-y border-white/5">
-              <span className="text-[11px] font-black uppercase tracking-widest text-white/60">
-                Acesso Premium
-              </span>
-              <Switch checked={u.premium} onCheckedChange={(v) => togglePremium(u.id, v)} />
-            </div>
-            <div className="grid grid-cols-1 gap-2 pt-2">
-              <div className="flex flex-col gap-2">
-                <div className="flex gap-2">
+
+                {/* Scan Actions & Rewards Trigger */}
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10 rounded-xl bg-secondary/60 hover:bg-muted border border-border/50 text-[10px] font-black uppercase tracking-wider text-primary cursor-pointer active:scale-98"
+                      onClick={() => addBonus(u.id, 3)}
+                    >
+                      <Zap className="size-3 mr-1 text-primary stroke-[2.5]" /> +3 Scans
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10 rounded-xl bg-secondary/60 hover:bg-muted border border-border/50 text-[10px] font-black uppercase tracking-wider text-destructive cursor-pointer active:scale-98"
+                      onClick={() => addBonus(u.id, -3)}
+                    >
+                      <Zap className="size-3 mr-1 text-destructive stroke-[2.5] rotate-180" /> -3
+                      Scans
+                    </Button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10 rounded-xl bg-secondary/60 hover:bg-muted border border-border/50 text-[10px] font-black uppercase tracking-wider text-primary cursor-pointer active:scale-98"
+                      onClick={() => addBonus(u.id, 10)}
+                    >
+                      <Zap className="size-3 mr-1 text-primary stroke-[2.5]" /> +10 Scans
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 h-10 rounded-xl bg-secondary/60 hover:bg-muted border border-border/50 text-[10px] font-black uppercase tracking-wider text-destructive cursor-pointer active:scale-98"
+                      onClick={() => addBonus(u.id, -10)}
+                    >
+                      <Zap className="size-3 mr-1 text-destructive stroke-[2.5] rotate-180" /> -10
+                      Scans
+                    </Button>
+                  </div>
+
                   <Button
-                    className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/5 text-[10px] font-black uppercase tracking-widest"
-                    onClick={() => addBonus(u.id, 3)}
+                    className="w-full h-11.5 mt-1 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 text-[10px] font-black uppercase tracking-wider cursor-pointer active:scale-98 flex items-center justify-center shadow-sm"
+                    onClick={() => openReward(u)}
                   >
-                    <Zap className="size-3 mr-1.5" /> +3 Scans
-                  </Button>
-                  <Button
-                    className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/5 text-[10px] font-black uppercase tracking-widest"
-                    onClick={() => addBonus(u.id, -3)}
-                  >
-                    <Zap className="size-3 mr-1.5 opacity-40 rotate-180" /> -3 Scans
+                    <Gift className="size-3.5 mr-1.5 stroke-[2.5]" /> Enviar Recompensa Especial
                   </Button>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/5 text-[10px] font-black uppercase tracking-widest"
-                    onClick={() => addBonus(u.id, 10)}
-                  >
-                    <Zap className="size-3 mr-1.5" /> +10 Scans
-                  </Button>
-                  <Button
-                    className="flex-1 h-10 rounded-xl bg-white/5 hover:bg-white/10 text-white border border-white/5 text-[10px] font-black uppercase tracking-widest"
-                    onClick={() => addBonus(u.id, -10)}
-                  >
-                    <Zap className="size-3 mr-1.5 opacity-40 rotate-180" /> -10 Scans
-                  </Button>
-                </div>
-              </div>
-              <Button
-                className="w-full h-12 rounded-xl bg-white text-black hover:bg-zinc-200 text-[10px] font-black uppercase tracking-widest"
-                onClick={() => openReward(u)}
-              >
-                <Gift className="size-4 mr-2" /> Enviar Recompensa
-              </Button>
-            </div>
-          </Card>
-        ))}
+              </Card>
+            </motion.div>
+          ))}
+        </div>
       </div>
 
-      <Dialog open={!!rewardFor} onOpenChange={(o) => !o && setRewardFor(null)}>
-        <DialogContent className="glass border-white/10 rounded-[32px] max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white font-black">
-              <Gift className="size-5" /> Enviar Recompensa
-            </DialogTitle>
-            <DialogDescription className="text-white/40">
-              Para: <b className="text-white">{rewardFor?.nome}</b>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest ml-1">
-                Título
-              </Label>
-              <Input
-                value={rTitulo}
-                onChange={(e) => setRTitulo(e.target.value)}
-                placeholder="Ex: Parabéns pelo progresso!"
-                className="h-12 rounded-2xl bg-white/5 border-white/10"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest ml-1">
-                Descrição
-              </Label>
-              <Textarea
-                value={rDesc}
-                onChange={(e) => setRDesc(e.target.value)}
-                placeholder="Mensagem para o usuário"
-                rows={3}
-                className="rounded-2xl bg-white/5 border-white/10"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-[10px] font-black uppercase tracking-widest ml-1">
-                Bônus de scans
-              </Label>
-              <Input
-                type="number"
-                min={0}
-                value={rBonus}
-                onChange={(e) => setRBonus(parseInt(e.target.value) || 0)}
-                className="h-12 rounded-2xl bg-white/5 border-white/10"
-              />
-            </div>
-          </div>
-          <DialogFooter className="flex-col gap-2">
-            <Button
-              className="w-full h-14 rounded-2xl bg-white text-black hover:bg-zinc-200 font-black uppercase tracking-widest text-xs"
-              onClick={submitReward}
-              disabled={rSending}
-            >
-              {rSending ? (
-                <Loader2 className="size-5 animate-spin mr-2" />
-              ) : (
-                <Gift className="size-5 mr-2" />
-              )}
-              Enviar
-            </Button>
-            <Button
-              variant="ghost"
-              className="w-full h-12 rounded-2xl text-white/40 font-black uppercase tracking-widest text-[10px]"
-              onClick={() => setRewardFor(null)}
-            >
-              Cancelar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Reward Modal Dialog */}
+      <AnimatePresence>
+        {rewardFor && (
+          <Dialog open={!!rewardFor} onOpenChange={(o) => !o && setRewardFor(null)}>
+            <DialogContent className="bg-card border-border/50 rounded-[32px] max-w-[92vw] sm:max-w-sm p-6 shadow-2xl">
+              <DialogHeader className="text-left">
+                <DialogTitle className="flex items-center gap-2 text-primary font-display font-black text-lg">
+                  <Gift className="size-5.5 text-accent stroke-[2]" /> Enviar Recompensa
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground/85 mt-1">
+                  Enviando bônus para: <b className="text-foreground">{rewardFor.nome}</b>
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4.5">
+                {/* Title Input */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                    Título do Alerta
+                  </Label>
+                  <Input
+                    value={rTitulo}
+                    onChange={(e) => setRTitulo(e.target.value)}
+                    placeholder="Ex: Presente do Nutricionista!"
+                    className="h-12 rounded-xl bg-secondary/40 border-border/60 text-sm font-medium focus-visible:ring-primary/20"
+                  />
+                </div>
+
+                {/* Description Input */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                    Mensagem de Descrição
+                  </Label>
+                  <Textarea
+                    value={rDesc}
+                    onChange={(e) => setRDesc(e.target.value)}
+                    placeholder="Explique o motivo do prêmio ou dê conselhos nutricionais..."
+                    rows={3}
+                    className="rounded-xl bg-secondary/40 border-border/60 text-sm font-medium focus-visible:ring-primary/20 resize-none"
+                  />
+                </div>
+
+                {/* Scan Count Input */}
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                    Quantidade de Scans de Bônus
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={rBonus}
+                    onChange={(e) => setRBonus(parseInt(e.target.value) || 0)}
+                    className="h-12 rounded-xl bg-secondary/40 border-border/60 text-sm font-medium focus-visible:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter className="flex flex-col gap-2.5 sm:flex-col mt-2">
+                <Button
+                  className="w-full h-13.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-wider text-xs cursor-pointer active:scale-98 flex items-center justify-center shadow-md shadow-primary/10"
+                  onClick={submitReward}
+                  disabled={rSending}
+                >
+                  {rSending ? (
+                    <Loader2 className="size-4.5 animate-spin" />
+                  ) : (
+                    <>
+                      <Gift className="size-4.5 mr-2 stroke-[2.5]" />
+                      Confirmar Envio
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full h-11 rounded-xl text-muted-foreground/60 hover:text-foreground hover:bg-secondary/40 font-black uppercase tracking-wider text-[10px] cursor-pointer"
+                  onClick={() => setRewardFor(null)}
+                >
+                  Cancelar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

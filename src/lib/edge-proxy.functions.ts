@@ -3,7 +3,7 @@ import { getApiUrl } from "./utils";
 type Body = Record<string, unknown> | undefined;
 
 export const invokeEdge = async (data: { name: string; body?: Body }) => {
-  const url = getApiUrl("/api/edge");
+  const url = "/api/edge";
   console.log(`[EdgeProxy] Calling: ${url}`);
   try {
     const res = await fetch(url, {

@@ -58,6 +58,8 @@
     "embla-carousel-react": "^8.6.0",
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
+    "google-auth-library": "^10.6.2",
+    "googleapis": "^172.0.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
     "motion": "^12.38.0",
