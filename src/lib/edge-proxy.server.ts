@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../integrations/supabase/client.server.js";
+import nodemailer from "nodemailer";
 
 import { getAppSettings } from "./settings.server.js";
 
@@ -461,22 +462,98 @@ async function handlePasswordReset(body: Body) {
 
   if (action === "request") {
     if (!email) throw new Error("Email é obrigatório");
+    // Verify user existence
+    const { data: userData, error: listError } = await (admin as any).auth.admin.listUsers();
+    if (listError) throw new Error(`Erro ao verificar e-mail: ${listError.message}`);
+
+    const targetUser = userData.users.find((u: any) => u.email?.toLowerCase().trim() === email);
+
+    if (!targetUser) throw new Error("O e-mail inserido não corresponde a uma conta ativa");
+
     // Generate 15 digit/char code
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
     let code = "";
     for (let i = 0; i < 15; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
 
     // Save/Upsert in table 'password_reset_codes'
-    await (admin as any).from("password_reset_codes").upsert({
-      email,
-      code,
-      created_at: new Date().toISOString(),
-    });
+    const { error: upsertError } = await (admin as any).from("password_reset_codes").upsert(
+      {
+        email,
+        code,
+        created_at: new Date().toISOString(),
+        user_id: targetUser.id,
+      },
+      { onConflict: "email" },
+    );
+
+    if (upsertError) {
+      throw new Error(`Erro ao guardar código de segurança: ${upsertError.message}`);
+    }
 
     // SMTP Send
     console.log(`[SMTP] Enviando código para ${email}: ${code}`);
-    // Here you would integrate with your SMTP provider (e.g., nodemailer)
-    // using secrets from env/settings.
+    const settings = await getAppSettings();
+    const smtpHost = settings.SMTP_HOST || process.env.SMTP_HOST;
+    const smtpUser = settings.SMTP_USER || process.env.SMTP_USER;
+    const smtpPass = settings.SMTP_PASS || process.env.SMTP_PASS;
+    const smtpPort = settings.SMTP_PORT || process.env.SMTP_PORT || "587";
+    const smtpSecure = (settings.SMTP_SECURE || process.env.SMTP_SECURE || "") === "true";
+    const smtpSender = settings.SMTP_SENDER || process.env.SMTP_SENDER || smtpUser;
+
+    if (smtpHost && smtpUser) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port: parseInt(smtpPort),
+          secure: smtpSecure,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass,
+          },
+        });
+
+        await transporter.sendMail({
+          from: smtpSender,
+          to: email,
+          subject: "Redefinição de Senha",
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+              <h2 style="color: #007bff;">Redefinição de Senha</h2>
+              <p>Olá,</p>
+              <p>Recebemos uma solicitação para redefinir a sua senha. Utilize o código de segurança abaixo para prosseguir:</p>
+              <div style="padding: 20px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px;">
+                ${code}
+              </div>
+              <p>Se você não solicitou esta redefinição, por favor, ignore este e-mail.</p>
+              <p>Atenciosamente,<br>Equipe Sar.Scan</p>
+            </div>
+          `,
+        });
+        console.log(`[SMTP] E-mail enviado com sucesso para ${email}`);
+      } catch (err: any) {
+        console.error(`[SMTP] Erro ao enviar e-mail para ${email}:`, err);
+        throw new Error(`Erro ao enviar e-mail de recuperação: ${err.message}`);
+      }
+    } else {
+      console.warn("[SMTP] Configuração de SMTP incompleta.");
+      throw new Error("Erro na configuração de envio de email: SMTP incompleto.");
+    }
+
+    return { success: true };
+  } else if (action === "verify") {
+    const code = body?.code as string;
+    if (!email || !code) throw new Error("Dados incompletos");
+
+    const { data: record } = await (admin as any)
+      .from("password_reset_codes")
+      .select("*")
+      .eq("email", email)
+      .eq("code", code.trim())
+      .maybeSingle();
+
+    if (!record) {
+      throw new Error("Código de segurança inválido ou expirado");
+    }
 
     return { success: true };
   } else if (action === "confirm") {
@@ -493,12 +570,12 @@ async function handlePasswordReset(body: Body) {
       .maybeSingle();
 
     if (!record) {
-      throw new Error("Código inválido ou expirado");
+      throw new Error("Código de segurança inválido ou expirado");
     }
 
     // Update password
     const { data: userData } = await (admin as any).auth.admin.listUsers();
-    const targetUser = userData.users.find((u: any) => u.email === email);
+    const targetUser = userData.users.find((u: any) => u.email?.toLowerCase().trim() === email);
 
     if (!targetUser) throw new Error("Usuário não encontrado");
 

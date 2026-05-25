@@ -19,33 +19,47 @@ serve(async (req) => {
 
   try {
     const { action, email, code, password } = await req.json();
+    const cleanEmail = email ? email.toLowerCase().trim() : "";
 
     if (action === "request") {
-      // Verify user existence
-      const { data: { users }, error: listError } = await supabaseClient.auth.admin.listUsers();
-      const targetUser = users.find((u: any) => u.email === email);
-      
-      if (listError || !targetUser) throw new Error("Usuário não encontrado");
+      if (!cleanEmail) throw new Error("Email é obrigatório");
 
-      const newCode = Array.from(Array(15), () => 
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*"
-        .charAt(Math.floor(Math.random() * 70))
+      // Verify user existence
+      const {
+        data: { users },
+        error: listError,
+      } = await supabaseClient.auth.admin.listUsers();
+      if (listError) throw new Error(`Erro ao listar usuários: ${listError.message}`);
+
+      const targetUser = users.find((u: any) => u.email?.toLowerCase().trim() === cleanEmail);
+
+      if (!targetUser) throw new Error("O e-mail inserido não corresponde a uma conta ativa");
+
+      const newCode = Array.from(Array(15), () =>
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*".charAt(
+          Math.floor(Math.random() * 70),
+        ),
       ).join("");
 
-      await supabaseClient
-        .from("password_reset_codes")
-        .upsert({
-          email,
+      const { error: upsertError } = await supabaseClient.from("password_reset_codes").upsert(
+        {
+          email: cleanEmail,
           code: newCode,
           created_at: new Date().toISOString(),
-          user_id: targetUser.id, // Ensure we store user_id
-        });
+          user_id: targetUser.id,
+        },
+        { onConflict: "email" },
+      );
+
+      if (upsertError) {
+        throw new Error(`Erro ao guardar código de segurança: ${upsertError.message}`);
+      }
 
       // Email sending via SMTP
       const smtpHost = Deno.env.get("SMTP_HOST");
       const smtpUser = Deno.env.get("SMTP_USER");
 
-      console.log(`[SMTP] Tentando enviar e-mail para ${email} via ${smtpHost}`);
+      console.log(`[SMTP] Tentando enviar e-mail para ${cleanEmail} via ${smtpHost}`);
 
       if (smtpHost && smtpUser) {
         const transporter = nodemailer.createTransport({
@@ -60,13 +74,13 @@ serve(async (req) => {
 
         await transporter.sendMail({
           from: Deno.env.get("SMTP_SENDER"),
-          to: email,
+          to: cleanEmail,
           subject: "Redefinição de Senha",
           html: `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
               <h2 style="color: #007bff;">Redefinição de Senha</h2>
               <p>Olá,</p>
-              <p>Recebemos uma solicitação para redefinir a sua senha. Utilize o código abaixo para prosseguir:</p>
+              <p>Recebemos uma solicitação para redefinir a sua senha. Utilize o código de segurança abaixo para prosseguir:</p>
               <div style="padding: 20px; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 5px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px;">
                 ${newCode}
               </div>
@@ -75,7 +89,7 @@ serve(async (req) => {
             </div>
           `,
         });
-        console.log(`[SMTP] E-mail enviado com sucesso para ${email}`);
+        console.log(`[SMTP] E-mail enviado com sucesso para ${cleanEmail}`);
       } else {
         console.warn("[SMTP] SMTP configuration missing.");
         throw new Error("Erro na configuração de envio de email");
@@ -85,30 +99,53 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
-    } else if (action === "confirm") {
-      if (!email || !code || !password) throw new Error("Dados incompletos");
+    } else if (action === "verify") {
+      if (!cleanEmail || !code) throw new Error("Dados incompletos");
 
       const { data: record, error: recordError } = await supabaseClient
         .from("password_reset_codes")
         .select("*")
-        .eq("email", email)
+        .eq("email", cleanEmail)
+        .eq("code", code.trim())
+        .maybeSingle();
+
+      if (recordError || !record) {
+        throw new Error("Código de segurança inválido ou expirado");
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    } else if (action === "confirm") {
+      if (!cleanEmail || !code || !password) throw new Error("Dados incompletos");
+
+      const { data: record, error: recordError } = await supabaseClient
+        .from("password_reset_codes")
+        .select("*")
+        .eq("email", cleanEmail)
         .eq("code", code)
         .maybeSingle();
 
       if (recordError || !record) {
-        throw new Error("Código inválido ou expirado");
+        throw new Error("Código de segurança inválido ou expirado");
       }
 
-      const { data: { users }, error: listError } = await supabaseClient.auth.admin.listUsers();
-      const targetUser = users.find((u: any) => u.email === email);
-      
-      if (listError || !targetUser) throw new Error("Usuário não encontrado");
+      const {
+        data: { users },
+        error: listError,
+      } = await supabaseClient.auth.admin.listUsers();
+      if (listError) throw new Error(`Erro ao verificar usuário: ${listError.message}`);
+
+      const targetUser = users.find((u: any) => u.email?.toLowerCase().trim() === cleanEmail);
+
+      if (!targetUser) throw new Error("Usuário não encontrado");
 
       await supabaseClient.auth.admin.updateUserById(targetUser.id, {
         password: password,
       });
 
-      await supabaseClient.from("password_reset_codes").delete().eq("email", email);
+      await supabaseClient.from("password_reset_codes").delete().eq("email", cleanEmail);
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -117,10 +154,10 @@ serve(async (req) => {
     }
 
     throw new Error("Ação inválida");
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: any) {
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
+      status: 200,
     });
   }
 });

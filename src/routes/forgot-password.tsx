@@ -94,7 +94,8 @@ function ForgotPage() {
         <div className="bg-card border border-border/40 rounded-[32px] p-6 sm:p-8 shadow-xl glow-soft">
           <form onSubmit={onSubmit} className="space-y-6">
             <p className="text-xs text-muted-foreground/90 leading-relaxed text-center">
-              Insira o e-mail associado à sua conta para receber um código de segurança e redefinir o seu acesso.
+              Insira o e-mail associado à sua conta para receber um código de segurança e redefinir
+              o seu acesso.
             </p>
 
             {/* Email Field */}

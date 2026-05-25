@@ -39,6 +39,51 @@ function createSupabaseClient() {
     },
   });
 
+  // Intercept Supabase Edge Function invokes to route through our own server's full-stack API proxy.
+  // This ensures reliability when direct Edge Functions on the active Supabase project are not deployed or fail.
+  const originalInvoke = client.functions.invoke.bind(client.functions);
+  client.functions.invoke = async function (functionName, options) {
+    try {
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const url = `${origin}/api/edge`;
+      console.log(
+        `[Supabase Proxy] Intercepting function invoke: ${functionName} -> Proxying to local API ${url}`,
+      );
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: functionName,
+          body: options?.body,
+        }),
+      });
+
+      if (response.ok) {
+        const resBody = await response.json();
+        // If our backend internal returned an actual error string as `error` key:
+        if (resBody && typeof resBody === "object" && "error" in resBody && resBody.error) {
+          console.warn(`[Supabase Proxy] Proxy returned inner error: ${resBody.error}`);
+          return { data: null, error: new Error(resBody.error) };
+        }
+        return { data: resBody, error: null };
+      } else {
+        const errorText = await response.text();
+        console.warn(
+          `[Supabase Proxy] Proxy request returned status ${response.status}: ${errorText}. Falling back to direct Supabase invoke.`,
+        );
+      }
+    } catch (e) {
+      console.warn(
+        `[Supabase Proxy] Failed to route via proxy, falling back to direct Supabase invoke. Error:`,
+        e,
+      );
+    }
+    return originalInvoke(functionName, options);
+  };
+
   return client;
 }
 

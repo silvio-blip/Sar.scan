@@ -256,7 +256,6 @@ function PerfilPage() {
         </div>
       </Card>
 
-
       <Button
         variant="outline"
         className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
