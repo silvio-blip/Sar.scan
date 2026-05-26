@@ -251,6 +251,16 @@ function AppLayout() {
             });
           }
         });
+
+        PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
+          console.log("[Push] Ação de notificação realizada (clique):", action);
+          // Redirecionar para o ecrã do chat
+          try {
+            router.navigate({ to: "/chat" });
+          } catch (routeErr) {
+            console.error("[Push] Erro ao redirecionar para o chat:", routeErr);
+          }
+        });
       }
     }
   }, [user]);
