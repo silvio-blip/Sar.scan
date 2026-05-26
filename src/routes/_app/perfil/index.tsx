@@ -26,6 +26,7 @@ import {
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { isInstalledApp } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
@@ -255,6 +256,11 @@ function PerfilPage() {
           />
         </div>
       </Card>
+
+      <div className="border-t border-border" />
+
+      {/* Agendador de Lembrete de Água */}
+      <WaterReminderScheduler userId={user?.id} />
 
       <Button
         variant="outline"

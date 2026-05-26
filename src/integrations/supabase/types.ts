@@ -158,6 +158,7 @@ export type Database = {
           avatar_url: string | null;
           created_at: string;
           email: string | null;
+          fcm_token: string | null;
           id: string;
           idade: number | null;
           nome: string | null;
@@ -171,6 +172,7 @@ export type Database = {
           avatar_url?: string | null;
           created_at?: string;
           email?: string | null;
+          fcm_token?: string | null;
           id: string;
           idade?: number | null;
           nome?: string | null;
@@ -184,6 +186,7 @@ export type Database = {
           avatar_url?: string | null;
           created_at?: string;
           email?: string | null;
+          fcm_token?: string | null;
           id?: string;
           idade?: number | null;
           nome?: string | null;

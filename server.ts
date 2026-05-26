@@ -100,7 +100,8 @@ async function startServer() {
       }
 
       const settings = await getAppSettings();
-      const serverKey = settings.fcm_server_key;
+      const serverKey =
+        settings.fcm_server_key || process.env.FCM_SERVER_KEY || process.env.VITE_FCM_SERVER_KEY;
       let fcmResultLog = null;
 
       if (!serverKey) {

@@ -36,6 +36,7 @@ import type { NutritionFood } from "@/components/nutrition-modal";
 import { useSubscriptionRealtime, useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { Gauge } from "@/components/gauge";
 import { WaterTracker } from "@/components/water-tracker";
+import { NutritionTip } from "@/components/nutrition-tip";
 
 import { CreditDisplay } from "@/components/credit-display";
 
@@ -419,6 +420,11 @@ function ScannerPage() {
             targetMl={profile?.meta_agua ?? 2000}
             onAdd={addWater}
           />
+        </div>
+
+        {/* Tip of the Day */}
+        <div className="w-full relative z-10">
+          <NutritionTip />
         </div>
 
         {/* Camera/Results View Area */}
