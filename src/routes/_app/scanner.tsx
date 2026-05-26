@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { isInstalledApp } from "@/lib/utils";
+import { isInstalledApp, getFoodEmoji } from "@/lib/utils";
 import { useCamera } from "@/lib/CameraContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -597,37 +597,64 @@ function ScannerPage() {
             Ver tudo
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          {sugestoes?.slice(0, 4).map((f, i) => (
-            <motion.button
-              key={`${f.nome}-${i}`}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15 + i * 0.05 }}
-              onClick={() => setPicked(f)}
-              className="bg-card rounded-[32px] p-3 text-left hover:bg-secondary/40 transition-all duration-300 flex flex-col gap-3 group border border-border shadow-sm relative overflow-hidden"
-            >
-              <div className="relative aspect-square w-full rounded-[24px] overflow-hidden shadow-sm border border-border">
-                <FoodImage
-                  src={f.foto_url}
-                  alt={f.nome}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-60" />
-                <div className="absolute bottom-2.5 right-2.5 bg-white/95 px-2 py-0.5 rounded-full text-[9px] font-black text-zinc-900 border border-zinc-200">
-                  {Math.round(f.cal)} kcal
+        <div className="flex flex-col gap-3">
+          {sugestoes?.slice(0, 5).map((f, i) => {
+            const emoji = getFoodEmoji(f.nome);
+            return (
+              <motion.button
+                key={`${f.nome}-${i}`}
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.12 + i * 0.04 }}
+                onClick={() => setPicked(f)}
+                className="w-full bg-card rounded-[22px] p-3 hover:bg-secondary/20 active:scale-[0.99] border border-border/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05),0_1px_3px_-1px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 flex items-center gap-3.5 group relative overflow-hidden text-left"
+              >
+                {/* Left Side: Soft circle with centered large Emoji */}
+                <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">
+                  {emoji}
                 </div>
-              </div>
-              <div className="px-1.5 pb-1">
-                <div className="font-bold text-xs text-foreground line-clamp-2 tracking-tight leading-snug min-h-[2rem]">
-                  {f.nome}
+
+                {/* Center Side: Food Name & Highlighted Calories */}
+                <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center">
+                  <span className="font-bold text-sm tracking-tight text-foreground truncate block leading-tight">
+                    {f.nome}
+                  </span>
+                  <span className="text-xs font-black text-rose-500/90 mt-1 flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />
+                    {Math.round(f.cal)} kcal
+                  </span>
                 </div>
-                <div className="text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground/80 mt-1.5">
-                  Adicionar ao diário
+
+                {/* Right Side: Cleanly mapped macronutrient values */}
+                <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+                  <div className="bg-emerald-500/5 px-2 py-1.5 rounded-xl border border-emerald-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+                    <span className="block text-[8px] font-black uppercase text-emerald-600/80 tracking-wide">
+                      P
+                    </span>
+                    <span className="block text-[11px] font-black leading-none text-emerald-700 mt-0.5">
+                      {Math.round(f.prot)}g
+                    </span>
+                  </div>
+                  <div className="bg-amber-500/5 px-2 py-1.5 rounded-xl border border-amber-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+                    <span className="block text-[8px] font-black uppercase text-amber-600/80 tracking-wide">
+                      C
+                    </span>
+                    <span className="block text-[11px] font-black leading-none text-amber-700 mt-0.5">
+                      {Math.round(f.carb)}g
+                    </span>
+                  </div>
+                  <div className="bg-indigo-500/5 px-2 py-1.5 rounded-xl border border-indigo-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+                    <span className="block text-[8px] font-black uppercase text-indigo-600/80 tracking-wide">
+                      G
+                    </span>
+                    <span className="block text-[11px] font-black leading-none text-indigo-700 mt-0.5">
+                      {Math.round(f.gord)}g
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </motion.button>
-          ))}
+              </motion.button>
+            );
+          })}
         </div>
       </section>
     </div>

@@ -8,6 +8,7 @@ import { ArrowLeft, Search, Crown, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { NutritionModal, type NutritionFood } from "@/components/nutrition-modal";
 import { FoodImage } from "@/components/food-image";
+import { getFoodEmoji } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 
@@ -169,49 +170,61 @@ export function BuscarPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
-        {showList.map((f, i) => (
-          <button
-            key={`${f.nome}-${i}`}
-            onClick={() => setSelected(f)}
-            className="rounded-[28px] border border-border/50 bg-card p-3 text-left transition-all duration-300 hover:bg-secondary/20 hover:border-border active:scale-95 flex flex-col gap-2.5 shadow-sm group relative overflow-hidden"
-          >
-            <div className="relative aspect-square w-full rounded-[20px] overflow-hidden shadow-sm border border-border">
-              <FoodImage
-                src={f.foto_url}
-                alt={f.nome}
-                eager={i < 4}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-60" />
-              <div className="absolute bottom-2 right-2 bg-white/95 px-2 py-0.5 rounded-full text-[9px] font-black text-zinc-900 border border-zinc-200">
-                {Math.round(f.cal)} kcal
+      <div className="flex flex-col gap-3">
+        {showList.map((f, i) => {
+          const emoji = getFoodEmoji(f.nome);
+          return (
+            <button
+              key={`${f.nome}-${i}`}
+              onClick={() => setSelected(f)}
+              className="w-full bg-card rounded-[22px] p-3 hover:bg-secondary/20 active:scale-[0.99] border border-border/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05),0_1px_3px_-1px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 flex items-center gap-3.5 group relative overflow-hidden text-left"
+            >
+              {/* Left Side: Soft circle with centered large Emoji */}
+              <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">
+                {emoji}
               </div>
-            </div>
-            <div className="px-1 pb-1 space-y-2 flex-1 flex flex-col justify-between">
-              <div className="font-bold text-xs text-foreground line-clamp-2 tracking-tight leading-snug min-h-[2rem]">
-                {f.nome}
+
+              {/* Center Side: Food Name & Highlighted Calories */}
+              <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center">
+                <span className="font-bold text-sm tracking-tight text-foreground truncate block leading-tight">
+                  {f.nome}
+                </span>
+                <span className="text-xs font-black text-rose-500/90 mt-1 flex items-center gap-1">
+                  <span className="size-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />
+                  {Math.round(f.cal)} kcal
+                </span>
               </div>
-              <div className="flex items-center gap-1.5 overflow-hidden">
-                {[
-                  { l: "P", v: f.prot },
-                  { l: "C", v: f.carb },
-                  { l: "G", v: f.gord },
-                ].map((m) => (
-                  <div
-                    key={m.l}
-                    className="flex-1 bg-secondary/30 py-1 rounded-lg border border-border/30 text-center"
-                  >
-                    <div className="text-[7.5px] font-black uppercase text-muted-foreground mb-0.5">
-                      {m.l}
-                    </div>
-                    <div className="text-[10px] font-black text-foreground">{Math.round(m.v)}g</div>
-                  </div>
-                ))}
+
+              {/* Right Side: Cleanly mapped macronutrient values */}
+              <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+                <div className="bg-emerald-500/5 px-2 py-1.5 rounded-xl border border-emerald-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+                  <span className="block text-[8px] font-black uppercase text-emerald-600/80 tracking-wide">
+                    P
+                  </span>
+                  <span className="block text-[11px] font-black leading-none text-emerald-700 mt-0.5">
+                    {Math.round(f.prot)}g
+                  </span>
+                </div>
+                <div className="bg-amber-500/5 px-2 py-1.5 rounded-xl border border-amber-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+                  <span className="block text-[8px] font-black uppercase text-amber-600/80 tracking-wide">
+                    C
+                  </span>
+                  <span className="block text-[11px] font-black leading-none text-amber-700 mt-0.5">
+                    {Math.round(f.carb)}g
+                  </span>
+                </div>
+                <div className="bg-indigo-500/5 px-2 py-1.5 rounded-xl border border-indigo-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+                  <span className="block text-[8px] font-black uppercase text-indigo-600/80 tracking-wide">
+                    G
+                  </span>
+                  <span className="block text-[11px] font-black leading-none text-indigo-700 mt-0.5">
+                    {Math.round(f.gord)}g
+                  </span>
+                </div>
               </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {!isLoading && showList.length === 0 && q.trim() && !variants && (
