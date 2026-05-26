@@ -83,22 +83,32 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
         }
       }
 
-      // Schedule reminders
+      // Schedule reminders (strictly in the future to prevent instant retroactive firing on registration)
       const list = scheduleTimes.map((time, idx) => {
         const [hourStr, minStr] = time.split(":");
         const hour = parseInt(hourStr, 10);
         const minute = parseInt(minStr, 10);
+
+        const now = new Date();
+        const scheduledDate = new Date();
+        scheduledDate.setHours(hour);
+        scheduledDate.setMinutes(minute);
+        scheduledDate.setSeconds(0);
+        scheduledDate.setMilliseconds(0);
+
+        // Se o horário já passou hoje, começa a agendar a partir de amanhã para evitar o spam imediato
+        if (scheduledDate.getTime() <= now.getTime()) {
+          scheduledDate.setDate(scheduledDate.getDate() + 1);
+        }
 
         return {
           id: 99990 + idx,
           title: "Hora de beber água! 💧",
           body: "Mantenha o seu corpo hidratado para acelerar o seu metabolismo e queimar mais gordura.",
           schedule: {
-            on: {
-              hour,
-              minute,
-            },
+            at: scheduledDate,
             repeats: true,
+            every: "day" as any,
             allowWhileIdle: true,
           },
           sound: "default",

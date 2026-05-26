@@ -6,6 +6,7 @@ import { FoodImage } from "@/components/food-image";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
+import { isInstalledApp, dataURLtoFile } from "@/lib/utils";
 
 export type NutritionFood = {
   nome: string;
@@ -83,6 +84,53 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     }
   };
 
+  const handleSelectCapacitorPhoto = async () => {
+    if (isInstalledApp()) {
+      try {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        try {
+          const check = await Camera.checkPermissions();
+          if (check.photos !== "granted") {
+            await Camera.requestPermissions({ permissions: ["photos"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+        });
+
+        if (photo.dataUrl && user) {
+          setUploading(true);
+          try {
+            const file = await dataURLtoFile(photo.dataUrl, `manual-photo-${Date.now()}.jpg`);
+            const url = await uploadFoodPhoto(file, user.id, "manual");
+            setPhotoUrl(url);
+          } catch (uploadErr) {
+            console.error("Capacitor upload error in dialog:", uploadErr);
+            toast.error("Falha ao salvar foto");
+          } finally {
+            setUploading(false);
+          }
+        }
+      } catch (err: any) {
+        console.error("Capacitor picker error in modal:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          fileRef.current?.click();
+        }
+      }
+    } else {
+      fileRef.current?.click();
+    }
+  };
+
   const handleAdd = async () => {
     if (!food) return;
     setBusy(true);
@@ -113,7 +161,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                 ref={fileRef}
                 type="file"
                 accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
-                className="hidden"
+                className="sr-only absolute pointer-events-none w-0 h-0"
                 onChange={handleFile}
               />
               <div className="absolute bottom-4 right-4 flex gap-2">
@@ -132,7 +180,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   size="sm"
                   variant="secondary"
                   className="rounded-full h-10 bg-white/90 text-zinc-900 border border-zinc-200 hover:bg-white shadow-md gap-2 px-4"
-                  onClick={() => fileRef.current?.click()}
+                  onClick={handleSelectCapacitorPhoto}
                   disabled={uploading}
                 >
                   {uploading ? (

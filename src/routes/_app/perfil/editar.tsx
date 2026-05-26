@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { isInstalledApp, dataURLtoFile } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/perfil/editar")({ component: EditarPerfil });
 
@@ -64,6 +65,63 @@ function EditarPerfil() {
     }
   };
 
+  const handleAvatarPick = async () => {
+    if (isInstalledApp()) {
+      try {
+        const {
+          Camera: CapCamera,
+          CameraResultType,
+          CameraSource,
+        } = await import("@capacitor/camera");
+        try {
+          const check = await CapCamera.checkPermissions();
+          if (check.photos !== "granted") {
+            await CapCamera.requestPermissions({ permissions: ["photos"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await CapCamera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+        });
+
+        if (photo.dataUrl && user) {
+          setUploading(true);
+          try {
+            const file = await dataURLtoFile(photo.dataUrl, `avatar-${Date.now()}.jpg`);
+            const path = `${user.id}/avatar-${Date.now()}.jpg`;
+            const { error } = await supabase.storage
+              .from("avatars")
+              .upload(path, file, { upsert: true });
+            if (error) throw error;
+            const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+            setAvatarUrl(data.publicUrl);
+            toast.success("Foto carregada");
+          } catch (uploadErr) {
+            console.error("Capacitor avatar upload error:", uploadErr);
+            toast.error("Falha ao salvar avatar");
+          } finally {
+            setUploading(false);
+          }
+        }
+      } catch (err: any) {
+        console.error("Capacitor avatar picker error:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          fileRef.current?.click();
+        }
+      }
+    } else {
+      fileRef.current?.click();
+    }
+  };
+
   const save = async () => {
     if (!user) return;
     setSaving(true);
@@ -104,7 +162,7 @@ function EditarPerfil() {
             </AvatarFallback>
           </Avatar>
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={handleAvatarPick}
             className="absolute bottom-1 right-1 bg-primary text-primary-foreground rounded-full p-2.5 shadow-md transition-all hover:scale-110 active:scale-90 hover:bg-primary/95"
             disabled={uploading}
           >
@@ -118,7 +176,7 @@ function EditarPerfil() {
             ref={fileRef}
             type="file"
             accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
-            className="hidden"
+            className="sr-only absolute pointer-events-none w-0 h-0"
             onChange={onPickFile}
           />
         </div>

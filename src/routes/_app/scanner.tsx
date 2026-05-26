@@ -335,6 +335,43 @@ function ScannerPage() {
     e.target.value = "";
   };
 
+  const handleGalleryUpload = async () => {
+    if (isInstalledApp()) {
+      try {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        try {
+          const check = await Camera.checkPermissions();
+          if (check.photos !== "granted") {
+            await Camera.requestPermissions({ permissions: ["photos"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+        });
+
+        if (photo.dataUrl) {
+          runScan(photo.dataUrl);
+        }
+      } catch (err: any) {
+        console.error("Capacitor gallery pick error:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          fileRef.current?.click();
+        }
+      }
+    } else {
+      fileRef.current?.click();
+    }
+  };
+
   const confirmar = async (items: (ScannedFood & { porcoes: number })[]) => {
     if (!user || items.length === 0) return;
     let uploadedPhotoUrl: string | null = null;
@@ -524,7 +561,7 @@ function ScannerPage() {
         {!detected && !picked && (
           <div className="flex items-center justify-center gap-8 mt-1">
             <button
-              onClick={() => fileRef.current?.click()}
+              onClick={handleGalleryUpload}
               disabled={scanning}
               className="size-13 rounded-[20px] bg-secondary hover:bg-muted border border-border flex items-center justify-center transition-all active:scale-90 disabled:opacity-30"
               title="Upload da Galeria"
@@ -571,7 +608,7 @@ function ScannerPage() {
         ref={fileRef}
         type="file"
         accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
-        className="hidden"
+        className="sr-only absolute pointer-events-none w-0 h-0"
         onChange={onPickGallery}
       />
 
@@ -580,7 +617,7 @@ function ScannerPage() {
         type="file"
         accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
         capture="environment"
-        className="hidden"
+        className="sr-only absolute pointer-events-none w-0 h-0"
         onChange={onPickGallery}
       />
 
