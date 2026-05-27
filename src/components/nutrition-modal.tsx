@@ -84,51 +84,8 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     }
   };
 
-  const handleSelectCapacitorPhoto = async () => {
-    if (isInstalledApp()) {
-      try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-        try {
-          const check = await Camera.checkPermissions();
-          if (check.photos !== "granted") {
-            await Camera.requestPermissions({ permissions: ["photos"] });
-          }
-        } catch (permErr) {
-          console.warn("[Capacitor Permissions Error]", permErr);
-        }
-
-        const photo = await Camera.getPhoto({
-          quality: 85,
-          allowEditing: false,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Photos,
-        });
-
-        if (photo.dataUrl && user) {
-          setUploading(true);
-          try {
-            const file = await dataURLtoFile(photo.dataUrl, `manual-photo-${Date.now()}.jpg`);
-            const url = await uploadFoodPhoto(file, user.id, "manual");
-            setPhotoUrl(url);
-          } catch (uploadErr) {
-            console.error("Capacitor upload error in dialog:", uploadErr);
-            toast.error("Falha ao salvar foto");
-          } finally {
-            setUploading(false);
-          }
-        }
-      } catch (err: any) {
-        console.error("Capacitor picker error in modal:", err);
-        if (
-          err?.message !== "User cancelled photos app" &&
-          err?.message?.indexOf("cancelled") === -1
-        ) {
-          fileRef.current?.click();
-        }
-      }
-    } else {
-      fileRef.current?.click();
-    }
+  const handleSelectCapacitorPhoto = () => {
+    fileRef.current?.click();
   };
 
   const handleAdd = async () => {
@@ -160,7 +117,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               <input
                 ref={fileRef}
                 type="file"
-                accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
+                accept="image/*"
                 className="sr-only absolute pointer-events-none w-0 h-0"
                 onChange={handleFile}
               />

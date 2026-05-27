@@ -129,10 +129,30 @@ function createSupabaseClient() {
               }),
             });
           } catch (fallbackErr: any) {
-            console.error("[Supabase Proxy] Fallback fetch also failed:", fallbackErr);
-            throw new Error(
-              `Ambas as conexões de IA falharam (Failed to fetch). Certifique-se de que o seu telemóvel está ligado à Internet e as permissões de rede estão configuradas no Android Studio. Detalhe: ${fallbackErr.message || fallbackErr}`,
+            console.error(
+              "[Supabase Proxy] Both local API proxies failed. Trying DIRECT Supabase functions invoke as last fallback...",
+              fallbackErr,
             );
+            if (typeof originalInvoke === "function") {
+              try {
+                const directResult = await originalInvoke.call(
+                  realFunctionsInstance,
+                  functionName,
+                  options,
+                );
+                console.log("[Supabase Proxy] Direct Supabase invoke succeeded:", directResult);
+                return directResult;
+              } catch (directErr: any) {
+                console.error("[Supabase Proxy] Direct invoke fallback also failed:", directErr);
+                throw new Error(
+                  `Todas as tentativas de conexão de IA falharam (Failed to fetch). Certifique-se de que o seu telemóvel está ligado à Internet. Chamada Direta Supabase: ${directErr.message || directErr}`,
+                );
+              }
+            } else {
+              throw new Error(
+                `Ambas as conexões de IA falharam (Failed to fetch) e o invocador original não está disponível. Certifique-se de que o seu telemóvel está ligado à Internet. Detalhe: ${fallbackErr.message || fallbackErr}`,
+              );
+            }
           }
         }
 

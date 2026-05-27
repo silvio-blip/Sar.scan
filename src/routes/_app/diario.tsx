@@ -168,58 +168,8 @@ function DiarioPage() {
     }
   };
 
-  const handleSelectPhoto = async () => {
-    if (isInstalledApp()) {
-      try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-        try {
-          const check = await Camera.checkPermissions();
-          if (check.photos !== "granted") {
-            await Camera.requestPermissions({ permissions: ["photos"] });
-          }
-        } catch (permErr) {
-          console.warn("[Capacitor Permissions Error]", permErr);
-        }
-
-        const photo = await Camera.getPhoto({
-          quality: 85,
-          allowEditing: false,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Photos,
-        });
-
-        if (photo.dataUrl && open && user) {
-          setUploadingPhoto(true);
-          try {
-            const file = await dataURLtoFile(photo.dataUrl, `edited-photo-${Date.now()}.jpg`);
-            const url = await uploadFoodPhoto(file, user.id, "edit");
-            const { error } = await supabase
-              .from("food_entries")
-              .update({ foto_url: url })
-              .eq("id", open.id);
-            if (error) throw error;
-            setOpen({ ...open, foto_url: url });
-            qc.invalidateQueries({ queryKey: ["entries"] });
-            toast.success("Foto atualizada");
-          } catch (uploadErr) {
-            console.error("Upload error of capacitor file:", uploadErr);
-            toast.error("Falha ao salvar foto");
-          } finally {
-            setUploadingPhoto(false);
-          }
-        }
-      } catch (err: any) {
-        console.error("Capacitor picker error:", err);
-        if (
-          err?.message !== "User cancelled photos app" &&
-          err?.message?.indexOf("cancelled") === -1
-        ) {
-          fileRef.current?.click();
-        }
-      }
-    } else {
-      fileRef.current?.click();
-    }
+  const handleSelectPhoto = () => {
+    fileRef.current?.click();
   };
 
   return (
@@ -458,7 +408,7 @@ function DiarioPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
+                  accept="image/*"
                   className="sr-only absolute pointer-events-none w-0 h-0"
                   onChange={trocarFoto}
                 />

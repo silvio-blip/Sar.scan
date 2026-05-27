@@ -335,41 +335,8 @@ function ScannerPage() {
     e.target.value = "";
   };
 
-  const handleGalleryUpload = async () => {
-    if (isInstalledApp()) {
-      try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-        try {
-          const check = await Camera.checkPermissions();
-          if (check.photos !== "granted") {
-            await Camera.requestPermissions({ permissions: ["photos"] });
-          }
-        } catch (permErr) {
-          console.warn("[Capacitor Permissions Error]", permErr);
-        }
-
-        const photo = await Camera.getPhoto({
-          quality: 85,
-          allowEditing: false,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Photos,
-        });
-
-        if (photo.dataUrl) {
-          runScan(photo.dataUrl);
-        }
-      } catch (err: any) {
-        console.error("Capacitor gallery pick error:", err);
-        if (
-          err?.message !== "User cancelled photos app" &&
-          err?.message?.indexOf("cancelled") === -1
-        ) {
-          fileRef.current?.click();
-        }
-      }
-    } else {
-      fileRef.current?.click();
-    }
+  const handleGalleryUpload = () => {
+    fileRef.current?.click();
   };
 
   const confirmar = async (items: (ScannedFood & { porcoes: number })[]) => {
@@ -607,7 +574,7 @@ function ScannerPage() {
       <input
         ref={fileRef}
         type="file"
-        accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
+        accept="image/*"
         className="sr-only absolute pointer-events-none w-0 h-0"
         onChange={onPickGallery}
       />
@@ -615,7 +582,7 @@ function ScannerPage() {
       <input
         ref={cameraRef}
         type="file"
-        accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
+        accept="image/*"
         capture="environment"
         className="sr-only absolute pointer-events-none w-0 h-0"
         onChange={onPickGallery}
