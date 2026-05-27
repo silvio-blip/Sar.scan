@@ -94,14 +94,47 @@ function createSupabaseClient() {
           headers["Authorization"] = authHeader;
         }
 
-        const response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            name: functionName,
-            body: options?.body,
-          }),
-        });
+        let response;
+        try {
+          response = await fetch(url, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              name: functionName,
+              body: options?.body,
+            }),
+          });
+        } catch (fetchErr) {
+          console.warn("[Supabase Proxy] Primary fetch failed. Trying fallback URL...", fetchErr);
+          const fallbackUrl = url.includes(
+            "ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
+          )
+            ? url.replace(
+                "ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
+                "ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
+              )
+            : url.replace(
+                "ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
+                "ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
+              );
+
+          console.log(`[Supabase Proxy] Fetching fallback: ${fallbackUrl}`);
+          try {
+            response = await fetch(fallbackUrl, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                name: functionName,
+                body: options?.body,
+              }),
+            });
+          } catch (fallbackErr: any) {
+            console.error("[Supabase Proxy] Fallback fetch also failed:", fallbackErr);
+            throw new Error(
+              `Ambas as conexões de IA falharam (Failed to fetch). Certifique-se de que o seu telemóvel está ligado à Internet e as permissões de rede estão configuradas no Android Studio. Detalhe: ${fallbackErr.message || fallbackErr}`,
+            );
+          }
+        }
 
         if (response.ok) {
           const resBody = await response.json();
