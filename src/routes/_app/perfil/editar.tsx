@@ -65,8 +65,81 @@ function EditarPerfil() {
     }
   };
 
-  const handleAvatarPick = () => {
-    fileRef.current?.click();
+  const handleAvatarPick = async () => {
+    if (isInstalledApp()) {
+      try {
+        const {
+          Camera: CapCamera,
+          CameraResultType,
+          CameraSource,
+        } = await import("@capacitor/camera");
+        try {
+          const check = await CapCamera.checkPermissions();
+          if (check.photos !== "granted") {
+            await CapCamera.requestPermissions({ permissions: ["photos"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await CapCamera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+        });
+
+        if (photo.dataUrl && user) {
+          setUploading(true);
+          try {
+            const file = await dataURLtoFile(photo.dataUrl, `avatar-${Date.now()}.jpg`);
+            const path = `${user.id}/avatar-${Date.now()}.jpg`;
+            const { error } = await supabase.storage
+              .from("avatars")
+              .upload(path, file, { upsert: true });
+            if (error) throw error;
+            const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+            setAvatarUrl(data.publicUrl);
+            toast.success("Foto carregada");
+          } catch (uploadErr) {
+            console.error("Capacitor avatar upload error:", uploadErr);
+            toast.error("Falha ao salvar avatar");
+          } finally {
+            setUploading(false);
+          }
+        } else if (photo.webPath && user) {
+          setUploading(true);
+          try {
+            const response = await fetch(photo.webPath);
+            const blob = await response.blob();
+            const file = new File([blob], `avatar-${Date.now()}.jpg`, { type: "image/jpeg" });
+            const path = `${user.id}/avatar-${Date.now()}.jpg`;
+            const { error } = await supabase.storage
+              .from("avatars")
+              .upload(path, file, { upsert: true });
+            if (error) throw error;
+            const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+            setAvatarUrl(data.publicUrl);
+            toast.success("Foto carregada");
+          } catch (uploadErr) {
+            console.error("Capacitor avatar upload error by webPath:", uploadErr);
+            toast.error("Falha ao salvar avatar");
+          } finally {
+            setUploading(false);
+          }
+        }
+      } catch (err: any) {
+        console.error("Capacitor avatar picker error:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          fileRef.current?.click();
+        }
+      }
+    } else {
+      fileRef.current?.click();
+    }
   };
 
   const save = async () => {

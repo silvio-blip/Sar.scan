@@ -335,8 +335,60 @@ function ScannerPage() {
     e.target.value = "";
   };
 
-  const handleGalleryUpload = () => {
-    fileRef.current?.click();
+  const handleGalleryUpload = async () => {
+    if (isInstalledApp()) {
+      try {
+        const {
+          Camera: CapCamera,
+          CameraResultType,
+          CameraSource,
+        } = await import("@capacitor/camera");
+        try {
+          const check = await CapCamera.checkPermissions();
+          if (check.photos !== "granted") {
+            await CapCamera.requestPermissions({ permissions: ["photos"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await CapCamera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Photos,
+        });
+
+        if (photo.dataUrl) {
+          runScan(photo.dataUrl);
+        } else if (photo.webPath) {
+          try {
+            const response = await fetch(photo.webPath);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (reader.result) {
+                runScan(String(reader.result));
+              }
+            };
+            reader.readAsDataURL(blob);
+          } catch (blobErr) {
+            console.error("Failed to read image webPath:", blobErr);
+            toast.error("Erro ao ler imagem da galeria.");
+          }
+        }
+      } catch (err: any) {
+        console.error("Capacitor gallery pick error:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          fileRef.current?.click();
+        }
+      }
+    } else {
+      fileRef.current?.click();
+    }
   };
 
   const confirmar = async (items: (ScannedFood & { porcoes: number })[]) => {
