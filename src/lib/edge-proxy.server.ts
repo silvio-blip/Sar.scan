@@ -21,7 +21,8 @@ async function getGeminiKey() {
   const settings = await getAppSettings();
   console.log("[Edge] Settings object keys:", Object.keys(settings));
 
-  const key =
+  // 1. Direct standard checks
+  let key =
     settings.gemini_api_key ||
     settings.GEMINI_API_KEY ||
     settings.gemini_key ||
@@ -29,6 +30,54 @@ async function getGeminiKey() {
     settings.GoogleGeminiApiKey ||
     process.env.GEMINI_API_KEY ||
     process.env.VITE_GEMINI_API_KEY;
+
+  // 2. Fuzzy case-insensitive database check if not resolved yet
+  if (!key) {
+    console.log("[Edge] Key not resolved via direct matches. Running database fuzzy check...");
+    for (const k of Object.keys(settings)) {
+      const lower = k.toLowerCase();
+      if (lower.includes("gemini") && (lower.includes("key") || lower.includes("api"))) {
+        console.log(`[Edge] Fuzzy matched DB key: "${k}"`);
+        key = settings[k];
+        break;
+      }
+    }
+  }
+
+  // 3. Fallback database check any containing "gemini"
+  if (!key) {
+    for (const k of Object.keys(settings)) {
+      if (k.toLowerCase().includes("gemini")) {
+        console.log(`[Edge] Universal database match for "gemini": "${k}"`);
+        key = settings[k];
+        break;
+      }
+    }
+  }
+
+  // 4. Fuzzy environment variable check
+  if (!key) {
+    console.log("[Edge] Key not found in DB. Running environment variable fuzzy check...");
+    for (const k of Object.keys(process.env)) {
+      const lower = k.toLowerCase();
+      if (lower.includes("gemini") && (lower.includes("key") || lower.includes("api"))) {
+        console.log(`[Edge] Fuzzy matched environment variable: "${k}"`);
+        key = process.env[k];
+        break;
+      }
+    }
+  }
+
+  // 5. Universal environment fallback containing any "gemini"
+  if (!key) {
+    for (const k of Object.keys(process.env)) {
+      if (k.toLowerCase().includes("gemini")) {
+        console.log(`[Edge] Universal environment match for "gemini": "${k}"`);
+        key = process.env[k];
+        break;
+      }
+    }
+  }
 
   if (key) {
     _cachedKey = key;
