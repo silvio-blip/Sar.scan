@@ -32,10 +32,14 @@ export function BuscarPage() {
         .limit(100);
       if (cached && cached.length >= 50)
         return cached.map((c) => ({ ...c, porcao: "1 porção" })) as Food[];
-      const { data, error } = await supabase.functions.invoke("search-food-ai", {
-        body: { mode: "popular" },
+      
+      const response = await fetch('/api/edge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: "search-food-ai", body: { mode: "popular" } })
       });
-      if (error || data?.error) throw new Error(data?.error ?? "Erro ao carregar alimentos");
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error ?? "Erro ao carregar alimentos");
       return (data.alimentos ?? []) as Food[];
     },
   });
@@ -66,11 +70,15 @@ export function BuscarPage() {
     if (!q.trim()) return;
     setAiBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke("search-food-ai", {
-        body: { query: q, mode: "variants", user_id: user?.id },
+      const response = await fetch('/api/edge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: "search-food-ai", body: { query: q, mode: "variants", user_id: user?.id } })
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      
+      const data = await response.json();
+      
+      if (!response.ok || data.error) throw new Error(data.error || "Erro ao realizar busca");
 
       const alimentos = (data.alimentos ?? []) as Food[];
       if (alimentos.length === 0) {
@@ -79,7 +87,7 @@ export function BuscarPage() {
         });
       }
       setVariants(alimentos);
-    } catch (e) {
+    } catch (e: any) {
       console.error("AI Search error:", e);
       toast.error(
         e instanceof Error

@@ -1277,12 +1277,15 @@ function ChatPage() {
 
         /* Message insert removed to prevent duplication (handled by edge function) */
 
-        const { data, error } = await supabase.functions.invoke("nutrition-chat", {
-          body: { message: text, user_id: user.id },
+        const response = await fetch('/api/edge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: "nutrition-chat", body: { message: text, user_id: user.id } })
         });
-
-        if (error || (data as { error?: string })?.error)
-          throw new Error((data as { error?: string })?.error ?? "Erro");
+        const data = await response.json();
+        
+        if (!response.ok || data.error)
+          throw new Error(data.error ?? "Erro");
 
         // Increment usage
         if (!isAdmin) {

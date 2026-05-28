@@ -278,33 +278,54 @@ function ScannerPage() {
         );
       }
 
-      console.log("[Scanner] Chamando Supabase Edge Function 'scan-food'...");
-      const { data, error } = await supabase.functions.invoke("scan-food", {
-        body: { image: dataUrl, user_id: user.id },
-      });
+      console.log("🚀 A iniciar scan manual para o endpoint /api/edge...");
 
-      if (error) {
-        console.error("❌ Erro ao invocar a Edge Function 'scan-food':", error);
-        throw error;
-      }
-
-      console.log("[Scanner] Resposta recebida da Edge Function:", data);
-
-      if (data?.ok === false || !data?.itens?.length) {
-        toast.message("Alimento não identificado", {
-          description:
-            data?.error ??
-            "Não conseguimos identificar um alimento nessa imagem. Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
+      try {
+        const response = await fetch('/api/edge', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: "scan-food",
+            body: { image: dataUrl, user_id: user.id }
+          })
         });
-        setScanPhoto(null);
+
+        if (!response.ok) {
+           const errorData = await response.json().catch(() => ({}));
+           throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        console.log("✅ RAW DATA RECEIVED:", JSON.stringify(data, null, 2));
+
+        // O backend (edge-proxy.server.ts/handleScanFood) retorna { ok: true, itens: ..., total: ... }
+        if (data.ok && Array.isArray(data.itens)) {
+          if (data.itens.length === 0) {
+            toast.info("Nenhum alimento identificado.", {
+              description: "Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
+            });
+            setDetected(null);
+            setScanPhoto(null);
+            setScanning(false);
+            return;
+          }
+          setDetected(data.itens as ScannedFood[]);
+        } else {
+          console.error("Estrutura de dados inesperada:", data);
+          throw new Error(data.error || "Formato de resposta inválido");
+        }
+
+        // Seguir com a lógica de sucesso (refresh etc)
+        await refresh();
+        qc.invalidateQueries({ queryKey: ["scan_usage"] });
         return;
+      } catch (err: any) {
+        console.error("💥 Falha na comunicação do aplicativo:", err.message);
+        throw err;
       }
-
-      // Atualiza counts após scan bem sucedido (server já deduziu)
-      await refresh();
-      qc.invalidateQueries({ queryKey: ["scan_usage"] });
-
-      setDetected(data.itens as ScannedFood[]);
     } catch (e: any) {
       console.error("Detalhes do erro:", e);
       toast.error(
