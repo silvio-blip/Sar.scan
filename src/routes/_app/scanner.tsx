@@ -302,20 +302,25 @@ function ScannerPage() {
         console.log("✅ RAW DATA RECEIVED:", JSON.stringify(data, null, 2));
 
         // O backend (edge-proxy.server.ts/handleScanFood) retorna { ok: true, itens: ..., total: ... }
-        if (data.ok && Array.isArray(data.itens)) {
-          if (data.itens.length === 0) {
+        // Se ok for false, pode ser o erro de "no_food"
+        if (!data.ok) {
+          if (data.reason === "no_food") {
             toast.info("Nenhum alimento identificado.", {
-              description: "Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
+              description: data.error || "Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
             });
             setDetected(null);
             setScanPhoto(null);
             setScanning(false);
             return;
           }
-          setDetected(data.itens as ScannedFood[]);
+          throw new Error(data.error || "Erro ao processar imagem");
+        }
+
+        if (Array.isArray(data.itens)) {
+           setDetected(data.itens as ScannedFood[]);
         } else {
           console.error("Estrutura de dados inesperada:", data);
-          throw new Error(data.error || "Formato de resposta inválido");
+          throw new Error("Formato de resposta inválido");
         }
 
         // Seguir com a lógica de sucesso (refresh etc)
