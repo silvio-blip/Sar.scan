@@ -1,3 +1,4 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -45,6 +46,43 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
 
   // API Routes
+
+  // Proxy for invokeEdge
+  app.post("/api/gemini-scan", async (req, res) => {
+    try {
+      const { base64Data: rawBase64Data } = req.body;
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
+      
+      // Remove o prefixo se existir (ex: data:image/jpeg;base64,...) e extrai o mimeType
+      const parts = rawBase64Data.split(",");
+      const base64Data = parts.length > 1 ? parts[1] : parts[0];
+      
+      // Tenta extrair o mimeType (ex: "data:image/webp;base64" -> "image/webp")
+      const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+      
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
+      const promptText = `Analisa esta imagem de comida.
+Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações.
+O formato deve ser exatamente:
+{
+  "itens": [
+    { "nome": "nome do alimento", "calorias": 0 }
+  ]
+}`;
+      const result = await model.generateContent([
+        promptText,
+        { inlineData: { data: base64Data, mimeType: mimeType } }
+      ]);
+      const textoFinal = await result.response.text();
+      res.json({ result: textoFinal });
+    } catch (error: any) {
+      console.error("[Server] /api/gemini-scan error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Proxy for invokeEdge
   app.post("/api/edge", async (req, res) => {
