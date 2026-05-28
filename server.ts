@@ -69,9 +69,16 @@ Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações
 O formato deve ser exatamente:
 {
   "itens": [
-    { "nome": "nome do alimento", "calorias": 0 }
+    { 
+      "nome": "string",
+      "quantidade": "string (ex: 100g, 1 unidade)",
+      "cal": number, 
+      "carb": number, 
+      "prot": number, 
+      "gord": number 
+    }
   ]
-}`;
+}`; 
       const result = await model.generateContent([
         promptText,
         { inlineData: { data: base64Data, mimeType: mimeType } }
