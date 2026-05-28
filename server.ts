@@ -1,42 +1,6 @@
-import fs from "fs";
+import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Load .env file into process.env before any other imports load
-try {
-  const envPath = path.resolve(process.cwd(), ".env");
-  if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, "utf-8");
-    envContent.split("\n").forEach((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return;
-      const index = trimmed.indexOf("=");
-      if (index > 0) {
-        const key = trimmed.slice(0, index).trim();
-        let value = trimmed.slice(index + 1).trim();
-        if (
-          (value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))
-        ) {
-          value = value.slice(1, -1);
-        }
-        if (!process.env[key]) {
-          process.env[key] = value;
-        }
-      }
-    });
-    console.log("[Env Loader] Variáveis do arquivo .env carregadas com sucesso!");
-  } else {
-    console.log("[Env Loader] Arquivo .env não encontrado no diretório raiz.");
-  }
-} catch (err) {
-  console.warn("[Env Loader] Erro ao carregar arquivo .env:", err);
-}
-
-import express from "express";
 import { createServer as createViteServer } from "vite";
 import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";
 import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
@@ -44,6 +8,13 @@ import { handleStripeWebhook } from "./src/lib/stripe.webhook";
 import { verifyGooglePlayPurchaseInternal } from "./src/lib/google-play.server";
 import { supabaseAdmin } from "./src/integrations/supabase/client.server";
 import { getAppSettings } from "./src/lib/settings.server";
+
+// Logic from edge-proxy and stripe functions
+// Since we want to keep it simple, we'll import the logic directly if possible or copy it.
+// To avoid complex restructuring, I'll define the API routes here and use the logic from the existing files.
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
@@ -54,22 +25,15 @@ async function startServer() {
     const origin = req.headers.origin;
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Credentials", "true");
     } else {
       res.setHeader("Access-Control-Allow-Origin", "*");
     }
-
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-
-    const requestHeaders = req.headers["access-control-request-headers"];
-    if (requestHeaders) {
-      res.setHeader("Access-Control-Allow-Headers", requestHeaders);
-    } else {
-      res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Requested-With, stripe-signature, apikey, x-client-info",
-      );
-    }
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, X-Requested-With, stripe-signature",
+    );
+    res.setHeader("Access-Control-Allow-Credentials", "true");
 
     if (req.method === "OPTIONS") {
       res.sendStatus(200);

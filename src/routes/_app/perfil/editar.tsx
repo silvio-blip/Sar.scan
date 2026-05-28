@@ -107,26 +107,6 @@ function EditarPerfil() {
           } finally {
             setUploading(false);
           }
-        } else if (photo.webPath && user) {
-          setUploading(true);
-          try {
-            const response = await fetch(photo.webPath);
-            const blob = await response.blob();
-            const file = new File([blob], `avatar-${Date.now()}.jpg`, { type: "image/jpeg" });
-            const path = `${user.id}/avatar-${Date.now()}.jpg`;
-            const { error } = await supabase.storage
-              .from("avatars")
-              .upload(path, file, { upsert: true });
-            if (error) throw error;
-            const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-            setAvatarUrl(data.publicUrl);
-            toast.success("Foto carregada");
-          } catch (uploadErr) {
-            console.error("Capacitor avatar upload error by webPath:", uploadErr);
-            toast.error("Falha ao salvar avatar");
-          } finally {
-            setUploading(false);
-          }
         }
       } catch (err: any) {
         console.error("Capacitor avatar picker error:", err);
@@ -195,7 +175,7 @@ function EditarPerfil() {
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
+            accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
             className="sr-only absolute pointer-events-none w-0 h-0"
             onChange={onPickFile}
           />

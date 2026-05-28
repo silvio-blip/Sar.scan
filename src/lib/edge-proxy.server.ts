@@ -21,8 +21,7 @@ async function getGeminiKey() {
   const settings = await getAppSettings();
   console.log("[Edge] Settings object keys:", Object.keys(settings));
 
-  // 1. Direct standard checks
-  let key =
+  const key =
     settings.gemini_api_key ||
     settings.GEMINI_API_KEY ||
     settings.gemini_key ||
@@ -30,54 +29,6 @@ async function getGeminiKey() {
     settings.GoogleGeminiApiKey ||
     process.env.GEMINI_API_KEY ||
     process.env.VITE_GEMINI_API_KEY;
-
-  // 2. Fuzzy case-insensitive database check if not resolved yet
-  if (!key) {
-    console.log("[Edge] Key not resolved via direct matches. Running database fuzzy check...");
-    for (const k of Object.keys(settings)) {
-      const lower = k.toLowerCase();
-      if (lower.includes("gemini") && (lower.includes("key") || lower.includes("api"))) {
-        console.log(`[Edge] Fuzzy matched DB key: "${k}"`);
-        key = settings[k];
-        break;
-      }
-    }
-  }
-
-  // 3. Fallback database check any containing "gemini"
-  if (!key) {
-    for (const k of Object.keys(settings)) {
-      if (k.toLowerCase().includes("gemini")) {
-        console.log(`[Edge] Universal database match for "gemini": "${k}"`);
-        key = settings[k];
-        break;
-      }
-    }
-  }
-
-  // 4. Fuzzy environment variable check
-  if (!key) {
-    console.log("[Edge] Key not found in DB. Running environment variable fuzzy check...");
-    for (const k of Object.keys(process.env)) {
-      const lower = k.toLowerCase();
-      if (lower.includes("gemini") && (lower.includes("key") || lower.includes("api"))) {
-        console.log(`[Edge] Fuzzy matched environment variable: "${k}"`);
-        key = process.env[k];
-        break;
-      }
-    }
-  }
-
-  // 5. Universal environment fallback containing any "gemini"
-  if (!key) {
-    for (const k of Object.keys(process.env)) {
-      if (k.toLowerCase().includes("gemini")) {
-        console.log(`[Edge] Universal environment match for "gemini": "${k}"`);
-        key = process.env[k];
-        break;
-      }
-    }
-  }
 
   if (key) {
     _cachedKey = key;
@@ -93,19 +44,7 @@ async function getGeminiKey() {
 }
 
 async function getGeminiModel() {
-  const settings = await getAppSettings();
-  const m = settings.gemini_model || process.env.GEMINI_MODEL || "gemini-1.5-flash";
-  if (
-    m.includes("3.5-flash") ||
-    m.includes("gemini-3.5") ||
-    m.toLowerCase() === "gemini-3.5-flash"
-  ) {
-    console.log(
-      `[getGeminiModel] Mapeando o modelo não oficial '${m}' para 'gemini-1.5-flash' para compatibilidade com REST API.`,
-    );
-    return "gemini-1.5-flash";
-  }
-  return m;
+  return "gemini-3.5-flash";
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
@@ -314,7 +253,7 @@ async function handleScanFood(body: Body) {
   });
 
   const parsed = safeJson<{ itens?: Array<Record<string, unknown>> }>(text);
-  let itens = (parsed?.itens ?? []).map((i) => ({
+  const itens = (parsed?.itens ?? []).map((i) => ({
     nome: String(i.nome ?? "Alimento"),
     quantidade: String(i.quantidade ?? "1 porção"),
     cal: Number(i.cal ?? 0),
@@ -325,22 +264,14 @@ async function handleScanFood(body: Body) {
   }));
 
   if (itens.length === 0) {
-    console.warn(
-      "[Scan] Gemini retornou lista vazia. Usando fallback inteligente 'Refeição Estimada'.",
-    );
-    itens = [
-      {
-        nome: "Refeição Estimada (Fuzzy)",
-        quantidade: "1 dose",
-        cal: 450,
-        carb: 45,
-        prot: 25,
-        gord: 15,
-        foto_url: null,
-      },
-    ];
+    return {
+      ok: false,
+      reason: "no_food",
+      error:
+        "Não conseguimos identificar um alimento nessa imagem. Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
+      itens: [],
+    };
   }
-
   const total = itens.reduce(
     (a, i) => ({
       cal: a.cal + i.cal,

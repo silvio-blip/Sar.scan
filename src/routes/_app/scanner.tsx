@@ -254,10 +254,42 @@ function ScannerPage() {
     try {
       const dataUrl = await resizeAndCompressImage(rawUrl);
       setScanPhoto(dataUrl);
+
+      // --- DIAGNÓSTICO / HEALTH CHECK COORDENADO ---
+      const supabaseUrl = (supabase as any).supabaseUrl || "";
+      const supabaseKey = (supabase as any).supabaseKey || "";
+      const maskedKey = supabaseKey
+        ? supabaseKey.slice(0, 12) + "..." + supabaseKey.slice(-6)
+        : "ausente";
+
+      console.log("=== [Sar.scan Diagnóstico de Rede] ===");
+      console.log("📍 Supabase URL:", supabaseUrl);
+      console.log("🔑 Supabase Key (Mascarada):", maskedKey);
+
+      if (!supabaseUrl) {
+        throw new Error(
+          "A URL do Supabase é indefinida no frontend. Verifique suas variáveis de ambiente.",
+        );
+      }
+
+      if (supabaseUrl.includes("localhost") || supabaseUrl.includes("127.0.0.1")) {
+        console.warn(
+          "⚠️ ATENÇÃO: A URL aponta para localhost! Em emuladores Android, use 'http://10.0.2.2:54321' em vez de localhost/127.0.0.1 para acessar as funções locais.",
+        );
+      }
+
+      console.log("[Scanner] Chamando Supabase Edge Function 'scan-food'...");
       const { data, error } = await supabase.functions.invoke("scan-food", {
-        body: { image: dataUrl, user_id: user.id }, // Passando user_id para o server gerenciar créditos
+        body: { image: dataUrl, user_id: user.id },
       });
-      if (error) throw error;
+
+      if (error) {
+        console.error("❌ Erro ao invocar a Edge Function 'scan-food':", error);
+        throw error;
+      }
+
+      console.log("[Scanner] Resposta recebida da Edge Function:", data);
+
       if (data?.ok === false || !data?.itens?.length) {
         toast.message("Alimento não identificado", {
           description:
@@ -273,8 +305,8 @@ function ScannerPage() {
       qc.invalidateQueries({ queryKey: ["scan_usage"] });
 
       setDetected(data.itens as ScannedFood[]);
-    } catch (e) {
-      console.error("Scan error:", e);
+    } catch (e: any) {
+      console.error("Detalhes do erro:", e);
       toast.error(
         e instanceof Error
           ? `Erro na identificação: ${e.message}`
@@ -338,21 +370,17 @@ function ScannerPage() {
   const handleGalleryUpload = async () => {
     if (isInstalledApp()) {
       try {
-        const {
-          Camera: CapCamera,
-          CameraResultType,
-          CameraSource,
-        } = await import("@capacitor/camera");
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
         try {
-          const check = await CapCamera.checkPermissions();
+          const check = await Camera.checkPermissions();
           if (check.photos !== "granted") {
-            await CapCamera.requestPermissions({ permissions: ["photos"] });
+            await Camera.requestPermissions({ permissions: ["photos"] });
           }
         } catch (permErr) {
           console.warn("[Capacitor Permissions Error]", permErr);
         }
 
-        const photo = await CapCamera.getPhoto({
+        const photo = await Camera.getPhoto({
           quality: 85,
           allowEditing: false,
           resultType: CameraResultType.DataUrl,
@@ -361,21 +389,6 @@ function ScannerPage() {
 
         if (photo.dataUrl) {
           runScan(photo.dataUrl);
-        } else if (photo.webPath) {
-          try {
-            const response = await fetch(photo.webPath);
-            const blob = await response.blob();
-            const reader = new FileReader();
-            reader.onload = () => {
-              if (reader.result) {
-                runScan(String(reader.result));
-              }
-            };
-            reader.readAsDataURL(blob);
-          } catch (blobErr) {
-            console.error("Failed to read image webPath:", blobErr);
-            toast.error("Erro ao ler imagem da galeria.");
-          }
         }
       } catch (err: any) {
         console.error("Capacitor gallery pick error:", err);
@@ -626,7 +639,7 @@ function ScannerPage() {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
         className="sr-only absolute pointer-events-none w-0 h-0"
         onChange={onPickGallery}
       />
@@ -634,7 +647,7 @@ function ScannerPage() {
       <input
         ref={cameraRef}
         type="file"
-        accept="image/*"
+        accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
         capture="environment"
         className="sr-only absolute pointer-events-none w-0 h-0"
         onChange={onPickGallery}

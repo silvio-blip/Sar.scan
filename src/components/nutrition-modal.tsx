@@ -116,20 +116,6 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
           } finally {
             setUploading(false);
           }
-        } else if (photo.webPath && user) {
-          setUploading(true);
-          try {
-            const response = await fetch(photo.webPath);
-            const blob = await response.blob();
-            const file = new File([blob], `manual-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
-            const url = await uploadFoodPhoto(file, user.id, "manual");
-            setPhotoUrl(url);
-          } catch (uploadErr) {
-            console.error("Capacitor upload error in dialog by webPath:", uploadErr);
-            toast.error("Falha ao salvar foto");
-          } finally {
-            setUploading(false);
-          }
         }
       } catch (err: any) {
         console.error("Capacitor picker error in modal:", err);
@@ -174,7 +160,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               <input
                 ref={fileRef}
                 type="file"
-                accept="image/*"
+                accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
                 className="sr-only absolute pointer-events-none w-0 h-0"
                 onChange={handleFile}
               />

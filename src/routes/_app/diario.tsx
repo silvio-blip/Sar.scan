@@ -171,21 +171,17 @@ function DiarioPage() {
   const handleSelectPhoto = async () => {
     if (isInstalledApp()) {
       try {
-        const {
-          Camera: CapCamera,
-          CameraResultType,
-          CameraSource,
-        } = await import("@capacitor/camera");
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
         try {
-          const check = await CapCamera.checkPermissions();
+          const check = await Camera.checkPermissions();
           if (check.photos !== "granted") {
-            await CapCamera.requestPermissions({ permissions: ["photos"] });
+            await Camera.requestPermissions({ permissions: ["photos"] });
           }
         } catch (permErr) {
           console.warn("[Capacitor Permissions Error]", permErr);
         }
 
-        const photo = await CapCamera.getPhoto({
+        const photo = await Camera.getPhoto({
           quality: 85,
           allowEditing: false,
           resultType: CameraResultType.DataUrl,
@@ -207,27 +203,6 @@ function DiarioPage() {
             toast.success("Foto atualizada");
           } catch (uploadErr) {
             console.error("Upload error of capacitor file:", uploadErr);
-            toast.error("Falha ao salvar foto");
-          } finally {
-            setUploadingPhoto(false);
-          }
-        } else if (photo.webPath && open && user) {
-          setUploadingPhoto(true);
-          try {
-            const response = await fetch(photo.webPath);
-            const blob = await response.blob();
-            const file = new File([blob], `edited-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
-            const url = await uploadFoodPhoto(file, user.id, "edit");
-            const { error } = await supabase
-              .from("food_entries")
-              .update({ foto_url: url })
-              .eq("id", open.id);
-            if (error) throw error;
-            setOpen({ ...open, foto_url: url });
-            qc.invalidateQueries({ queryKey: ["entries"] });
-            toast.success("Foto atualizada");
-          } catch (uploadErr) {
-            console.error("Upload error of capacitor file webPath:", uploadErr);
             toast.error("Falha ao salvar foto");
           } finally {
             setUploadingPhoto(false);
@@ -483,7 +458,7 @@ function DiarioPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/*"
+                  accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
                   className="sr-only absolute pointer-events-none w-0 h-0"
                   onChange={trocarFoto}
                 />
