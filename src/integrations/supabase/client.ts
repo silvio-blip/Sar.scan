@@ -56,13 +56,59 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                 }
               }
 
-              const isLocalOnly = true;
+              // 1. Primeiro tenta fazer a chamada DIRETA para a função na nuvem do Supabase.
+              // Isto funciona nativamente em produção, sites Vercel, PWAs e aplicativos móveis (Capacitor)
+              // porque as credenciais do Supabase já estão embutidas na aplicação. Não exige servidor Node próprio
+              // nem configuração de variáveis de ambiente de base de url como VITE_API_BASE_URL.
+              if (typeof originalInvoke === "function") {
+                try {
+                  console.log(
+                    `[Supabase SDK] Invocando função de nuvem "${functionName}" diretamente...`,
+                  );
+                  const directResult = await originalInvoke.call(
+                    realFunctionsInstance,
+                    functionName,
+                    options,
+                  );
+                  if (directResult && !directResult.error) {
+                    console.log(
+                      `[Supabase SDK] Sucesso na chamada direta da função de nuvem "${functionName}".`,
+                    );
+                    return directResult;
+                  }
 
+                  const errMessage = String(
+                    directResult?.error?.message || directResult?.error || "",
+                  ).toLowerCase();
+                  const isFunctionNotFound =
+                    errMessage.includes("not found") ||
+                    errMessage.includes("404") ||
+                    errMessage.includes("failed to fetch") ||
+                    directResult?.error?.status === 404;
+
+                  if (!isFunctionNotFound) {
+                    console.log(
+                      `[Supabase SDK] Função "${functionName}" retornou erro de lógica operacional. Retornando ao chamador.`,
+                    );
+                    return directResult;
+                  }
+
+                  console.warn(
+                    `[Supabase SDK] Função de nuvem "${functionName}" não encontrada ou indisponível (Erro: ${errMessage}). Tentando proxy local...`,
+                  );
+                } catch (directErr: any) {
+                  const directErrStr = String(directErr?.message || directErr);
+                  console.warn(
+                    `[Supabase SDK] Chamada direta da função de nuvem falhou com exceção: ${directErrStr}. Tentando proxy local...`,
+                  );
+                }
+              }
+
+              // 2. Se a chamada direta falhar por inocorrência (ex: em ambiente sandbox do AI Studio),
+              // recorremos ao proxy Node local (/api/edge) que está a correr no nosso backend Express de desenvolvimento.
               try {
                 const url = getApiUrl("/api/edge");
-                console.log(
-                  `[Supabase Proxy Sync] Intercepting function invoke: ${functionName} -> Proxying to local API ${url}`,
-                );
+                console.log(`[Supabase Proxy] Roteando para API de proxy local: ${url}`);
 
                 let authHeader = "";
                 try {
@@ -73,7 +119,7 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                     authHeader = `Bearer ${session.access_token}`;
                   }
                 } catch (e) {
-                  console.warn("[Supabase Proxy] Failed to get session:", e);
+                  console.warn("[Supabase Proxy] Erro ao carregar sessão para o proxy:", e);
                 }
 
                 const headers: Record<string, string> = {
@@ -83,81 +129,14 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                   headers["Authorization"] = authHeader;
                 }
 
-                let response;
-                try {
-                  response = await fetch(url, {
-                    method: "POST",
-                    headers,
-                    body: JSON.stringify({
-                      name: functionName,
-                      body: options?.body,
-                    }),
-                  });
-                } catch (fetchErr) {
-                  console.warn(
-                    "[Supabase Proxy] Primary fetch failed. Trying fallback URL...",
-                    fetchErr,
-                  );
-                  const fallbackUrl = url.includes(
-                    "ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
-                  )
-                    ? url.replace(
-                        "ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
-                        "ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
-                      )
-                    : url.replace(
-                        "ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
-                        "ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app",
-                      );
-
-                  console.log(`[Supabase Proxy] Fetching fallback: ${fallbackUrl}`);
-                  try {
-                    response = await fetch(fallbackUrl, {
-                      method: "POST",
-                      headers,
-                      body: JSON.stringify({
-                        name: functionName,
-                        body: options?.body,
-                      }),
-                    });
-                  } catch (fallbackErr: any) {
-                    console.error("[Supabase Proxy] Both local API proxies failed.", fallbackErr);
-
-                    const detailError = fallbackErr.message || String(fallbackErr);
-                    const explainMsg = `As chamadas de IA falharam porque a aplicação não conseguiu ligar ao servidor de API em '${url}' ou '${fallbackUrl}' (Erro: ${detailError}). Se estiver a usar o telemóvel/aplicativo instalado ou site de produção, certifique-se de que o servidor backend está online e que a variável de ambiente VITE_API_BASE_URL está configurada com o endereço público correto do seu backend.`;
-
-                    if (typeof originalInvoke === "function") {
-                      console.log(
-                        "[Supabase Proxy] Trying DIRECT cloud Supabase functions invoke as last fallback...",
-                      );
-                      try {
-                        const directResult = await originalInvoke.call(
-                          realFunctionsInstance,
-                          functionName,
-                          options,
-                        );
-                        console.log(
-                          "[Supabase Proxy] Direct Supabase invoke succeeded:",
-                          directResult,
-                        );
-                        if (directResult?.error) {
-                          throw new Error(directResult.error.message || String(directResult.error));
-                        }
-                        return directResult;
-                      } catch (directErr: any) {
-                        console.error(
-                          "[Supabase Proxy] Direct invoke fallback also failed:",
-                          directErr,
-                        );
-                        throw new Error(
-                          `${explainMsg} Chamada Direta Supabase também falhou: ${directErr.message || directErr}`,
-                        );
-                      }
-                    } else {
-                      throw new Error(explainMsg);
-                    }
-                  }
-                }
+                const response = await fetch(url, {
+                  method: "POST",
+                  headers,
+                  body: JSON.stringify({
+                    name: functionName,
+                    body: options?.body,
+                  }),
+                });
 
                 if (response.ok) {
                   const resBody = await response.json();
@@ -167,7 +146,7 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                     "error" in resBody &&
                     resBody.error
                   ) {
-                    console.warn(`[Supabase Proxy] Proxy returned inner error: ${resBody.error}`);
+                    console.warn(`[Supabase Proxy] Proxy retornou erro interno: ${resBody.error}`);
                     return { data: null, error: new Error(resBody.error) };
                   }
                   return { data: resBody, error: null };
@@ -178,38 +157,27 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                     const parsed = JSON.parse(errorText);
                     parsedError = parsed?.error || parsed?.message || "";
                   } catch {
-                    // not json
+                    // ignore
                   }
                   const errMsg =
                     parsedError ||
                     errorText ||
                     `Erro no servidor local (status ${response.status})`;
                   console.warn(
-                    `[Supabase Proxy] Proxy request returned status ${response.status}: ${errMsg}.`,
+                    `[Supabase Proxy] Proxy falhou com status ${response.status}: ${errMsg}`,
                   );
-
-                  if (isLocalOnly) {
-                    return { data: null, error: new Error(errMsg) };
-                  }
+                  return { data: null, error: new Error(errMsg) };
                 }
               } catch (e: any) {
                 const errMsg = e?.message || String(e);
-                console.warn(
-                  `[Supabase Proxy] Failed to route via proxy. ${isLocalOnly ? "Failing" : "Falling back"}. Error:`,
-                  e,
-                );
-                if (isLocalOnly) {
-                  return { data: null, error: new Error(errMsg) };
-                }
+                console.error(`[Supabase Proxy] Falha grave no proxy local:`, e);
+                return {
+                  data: null,
+                  error: new Error(
+                    `Não foi possível executar a função "${functionName}". Ocorreu um erro ao ligar ao serviço de IA. Detalhes: ${errMsg}`,
+                  ),
+                };
               }
-
-              if (typeof originalInvoke === "function") {
-                return originalInvoke.call(realFunctionsInstance, functionName, options);
-              }
-              return {
-                data: null,
-                error: new Error("Proxy failed and original invoke unavailable"),
-              };
             };
           }
           return Reflect.get(fnTarget, fnProp, fnReceiver);
