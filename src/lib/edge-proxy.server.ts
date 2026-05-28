@@ -94,7 +94,18 @@ async function getGeminiKey() {
 
 async function getGeminiModel() {
   const settings = await getAppSettings();
-  return settings.gemini_model || process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const m = settings.gemini_model || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (
+    m.includes("3.5-flash") ||
+    m.includes("gemini-3.5") ||
+    m.toLowerCase() === "gemini-3.5-flash"
+  ) {
+    console.log(
+      `[getGeminiModel] Mapeando o modelo não oficial '${m}' para 'gemini-1.5-flash' para compatibilidade com REST API.`,
+    );
+    return "gemini-1.5-flash";
+  }
+  return m;
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };

@@ -121,11 +121,15 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                       }),
                     });
                   } catch (fallbackErr: any) {
-                    console.error(
-                      "[Supabase Proxy] Both local API proxies failed. Trying DIRECT Supabase functions invoke as last fallback...",
-                      fallbackErr,
-                    );
+                    console.error("[Supabase Proxy] Both local API proxies failed.", fallbackErr);
+
+                    const detailError = fallbackErr.message || String(fallbackErr);
+                    const explainMsg = `As chamadas de IA falharam porque a aplicação não conseguiu ligar ao servidor de API em '${url}' ou '${fallbackUrl}' (Erro: ${detailError}). Se estiver a usar o telemóvel/aplicativo instalado ou site de produção, certifique-se de que o servidor backend está online e que a variável de ambiente VITE_API_BASE_URL está configurada com o endereço público correto do seu backend.`;
+
                     if (typeof originalInvoke === "function") {
+                      console.log(
+                        "[Supabase Proxy] Trying DIRECT cloud Supabase functions invoke as last fallback...",
+                      );
                       try {
                         const directResult = await originalInvoke.call(
                           realFunctionsInstance,
@@ -136,6 +140,9 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                           "[Supabase Proxy] Direct Supabase invoke succeeded:",
                           directResult,
                         );
+                        if (directResult?.error) {
+                          throw new Error(directResult.error.message || String(directResult.error));
+                        }
                         return directResult;
                       } catch (directErr: any) {
                         console.error(
@@ -143,13 +150,11 @@ export const supabase = new Proxy({} as ReturnType<typeof createSupabaseClient>,
                           directErr,
                         );
                         throw new Error(
-                          `Todas as tentativas de conexão de IA falharam (Failed to fetch). Certifique-se de que o seu telemóvel está ligado à Internet. Chamada Direta Supabase: ${directErr.message || directErr}`,
+                          `${explainMsg} Chamada Direta Supabase também falhou: ${directErr.message || directErr}`,
                         );
                       }
                     } else {
-                      throw new Error(
-                        `Ambas as conexões de IA falharam (Failed to fetch) e o invocador original não está disponível. Certifique-se de que o seu telemóvel está ligado à Internet. Detalhe: ${fallbackErr.message || fallbackErr}`,
-                      );
+                      throw new Error(explainMsg);
                     }
                   }
                 }
