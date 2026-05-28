@@ -2,16 +2,30 @@ import { createClient } from "@supabase/supabase-js";
 import { getApiUrl } from "@/lib/utils";
 import type { Database } from "./types";
 
+function cleanEnvValue(val: string | undefined): string | undefined {
+  if (!val) return val;
+  let cleaned = val.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  return cleaned.trim();
+}
+
 function createSupabaseClient() {
-  const SUPABASE_URL =
+  const SUPABASE_URL = cleanEnvValue(
     import.meta.env.VITE_SUPABASE_URL ||
     import.meta.env.SUPABASE_URL ||
-    (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined);
+    (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined)
+  );
 
-  const SUPABASE_PUBLISHABLE_KEY =
+  const SUPABASE_PUBLISHABLE_KEY = cleanEnvValue(
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
     import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
-    (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined);
+    (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined)
+  );
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [
@@ -89,6 +103,8 @@ function createSupabaseClient() {
 
         let response;
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 15000);
           response = await fetch(url, {
             method: "POST",
             headers,
@@ -96,7 +112,9 @@ function createSupabaseClient() {
               name: functionName,
               body: options?.body,
             }),
+            signal: controller.signal,
           });
+          clearTimeout(timeoutId);
         } catch (fetchErr) {
           console.warn(
             "[Supabase Proxy] Chamada principal falhou. Tentando URL alternativa...",
@@ -116,6 +134,8 @@ function createSupabaseClient() {
 
           console.log(`[Supabase Proxy] Chamando fallback: ${fallbackUrl}`);
           try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
             response = await fetch(fallbackUrl, {
               method: "POST",
               headers,
@@ -123,11 +143,13 @@ function createSupabaseClient() {
                 name: functionName,
                 body: options?.body,
               }),
+              signal: controller.signal,
             });
+            clearTimeout(timeoutId);
           } catch (fallbackErr: any) {
             console.error("[Supabase Proxy] Conexão alternativa também falhou:", fallbackErr);
             throw new Error(
-              `Ambas as conexões de IA falharam (Failed to fetch). Certifique-se de que o seu telemóvel está ligado à Internet e as permissões de rede estão configuradas no Android Studio. Detalhe: ${fallbackErr.message || fallbackErr}`,
+              `Ambas as conexões de IA falharam (Failed to fetch). Detalhe: ${fallbackErr.message || fallbackErr}`,
             );
           }
         }

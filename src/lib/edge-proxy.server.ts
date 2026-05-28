@@ -39,7 +39,7 @@ async function getGeminiKey() {
     return key;
   }
 
-  console.error("[Edge] Gemini key NOT found!");
+  console.error("[Edge] Gemini key NOT found! Settings found:", Object.keys(settings), "Env has GEMINI_API_KEY:", !!process.env.GEMINI_API_KEY);
   throw new Error("Chave Gemini não configurada (não encontrada em app_settings nem environment)");
 }
 

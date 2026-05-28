@@ -5,12 +5,25 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "./types";
 
+function cleanEnvValue(val: string | undefined): string | undefined {
+  if (!val) return val;
+  let cleaned = val.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  return cleaned.trim();
+}
+
 function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY =
+  const SUPABASE_URL = cleanEnvValue(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+  const SUPABASE_SERVICE_ROLE_KEY = cleanEnvValue(
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_PUBLISHABLE_KEY ||
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      process.env.SUPABASE_PUBLISHABLE_KEY ||
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  );
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     const missing = [
