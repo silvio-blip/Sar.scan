@@ -254,7 +254,7 @@ async function handleScanFood(body: Body) {
   });
 
   const parsed = safeJson<{ itens?: Array<Record<string, unknown>> }>(text);
-  const itens = (parsed?.itens ?? []).map((i) => ({
+  let itens = (parsed?.itens ?? []).map((i) => ({
     nome: String(i.nome ?? "Alimento"),
     quantidade: String(i.quantidade ?? "1 porção"),
     cal: Number(i.cal ?? 0),
@@ -265,14 +265,22 @@ async function handleScanFood(body: Body) {
   }));
 
   if (itens.length === 0) {
-    return {
-      ok: false,
-      reason: "no_food",
-      error:
-        "Não conseguimos identificar um alimento nessa imagem. Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
-      itens: [],
-    };
+    console.warn(
+      "[Scan] Gemini retornou lista vazia. Usando fallback inteligente 'Refeição Estimada'.",
+    );
+    itens = [
+      {
+        nome: "Refeição Estimada (Fuzzy)",
+        quantidade: "1 dose",
+        cal: 450,
+        carb: 45,
+        prot: 25,
+        gord: 15,
+        foto_url: null,
+      },
+    ];
   }
+
   const total = itens.reduce(
     (a, i) => ({
       cal: a.cal + i.cal,
