@@ -1,9 +1,11 @@
 export function SarLogo({
   size = "lg",
   align = "center",
+  className = "",
 }: {
   size?: "sm" | "md" | "lg";
   align?: "left" | "center";
+  className?: string;
 }) {
   const sizes = {
     sm: "text-2xl",
@@ -12,10 +14,12 @@ export function SarLogo({
   };
 
   return (
-    <div className={`flex items-center gap-3 ${align === "center" ? "flex-col" : "flex-row"}`}>
+    <div
+      className={`flex items-center gap-3 ${align === "center" ? "flex-col" : "flex-row"} ${className}`}
+    >
       {/* Circle Icon similarly stylized */}
       <img
-        src="https://qqrynovbilducybxmlcj.supabase.co/storage/v1/object/public/avatars/faaeddb7-632c-4d95-b799-97992370a248/avatar-1778290824058.jpeg"
+        src="https://i.imgur.com/pwXdv52.png"
         alt="Logo"
         className="size-10 rounded-full object-cover shadow-[0_0_20px_rgba(255,255,255,0.2)]"
       />

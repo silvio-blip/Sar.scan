@@ -16,9 +16,16 @@ function SignupPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!acceptedTerms) {
+      toast.error(
+        "Por favor, declare que aceita os termos e políticas de privacidade para prosseguir.",
+      );
+      return;
+    }
     if (password.length < 6) {
       toast.error("A senha precisa ter no mínimo 6 caracteres");
       return;
@@ -144,6 +151,41 @@ function SignupPage() {
                 >
                   {show ? <EyeOff className="size-4.5" /> : <Eye className="size-4.5" />}
                 </button>
+              </div>
+            </div>
+
+            {/* Aceitar Termos e Privacidade Checkbox */}
+            <div className="flex items-start gap-3 px-1.5 py-1">
+              <button
+                type="button"
+                onClick={() => setAcceptedTerms(!acceptedTerms)}
+                className={`size-5 rounded-md border flex items-center justify-center shrink-0 transition-all cursor-pointer ${
+                  acceptedTerms
+                    ? "bg-primary border-primary text-primary-foreground shadow-sm shadow-primary/15"
+                    : "border-border/80 hover:border-primary/50 bg-secondary/30"
+                }`}
+                id="accept-terms-checkbox"
+                aria-checked={acceptedTerms}
+                role="checkbox"
+              >
+                {acceptedTerms && <span className="text-[10px] font-black">✓</span>}
+              </button>
+              <div className="text-[11px] font-semibold text-muted-foreground/85 leading-tight select-none">
+                Declaro que li e concordo integralmente com os{" "}
+                <Link
+                  to="/direitos-privacidade"
+                  className="text-primary hover:underline font-bold transition-all"
+                >
+                  Termos de Uso
+                </Link>{" "}
+                e{" "}
+                <Link
+                  to="/direitos-privacidade"
+                  className="text-primary hover:underline font-bold transition-all"
+                >
+                  Política de Privacidade
+                </Link>{" "}
+                do sar.scan.
               </div>
             </div>
 
