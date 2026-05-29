@@ -262,6 +262,27 @@ function PerfilPage() {
       {/* Agendador de Lembrete de Água */}
       <WaterReminderScheduler userId={user?.id} />
 
+      <div className="border-t border-border" />
+
+      {/* Direitos e Privacidade link */}
+      <Link
+        to="/direitos-privacidade"
+        className="block transform transition hover:scale-[1.02] active:scale-95"
+      >
+        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
+          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <Shield className="size-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-foreground">Direitos e Privacidade</div>
+            <div className="text-[11px] text-muted-foreground font-semibold">
+              Termos de uso, limites de créditos e privacidade de dados
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </Card>
+      </Link>
+
       <Button
         variant="outline"
         className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
