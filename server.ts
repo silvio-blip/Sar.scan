@@ -51,14 +51,53 @@ async function startServer() {
 
   // API Routes
 
+  function cleanApiKey(val: string | undefined | null): string | null {
+    if (!val) return null;
+    let cleaned = val.trim();
+    if (
+      (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))
+    ) {
+      cleaned = cleaned.slice(1, -1);
+    }
+    cleaned = cleaned.trim();
+    if (
+      !cleaned ||
+      cleaned === "undefined" ||
+      cleaned === "null" ||
+      cleaned === '""' ||
+      cleaned === "''"
+    ) {
+      return null;
+    }
+    return cleaned;
+  }
+
   // Proxy for invokeEdge
   app.post("/api/gemini-scan", async (req, res) => {
     try {
       const { base64Data: rawBase64Data } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+
+      const settings = await getAppSettings().catch((err) => {
+        console.warn("[Server] Falha ao buscar app_settings:", err);
+        return {} as any;
+      });
+
+      const candidateKeys = [
+        settings?.gemini_api_key,
+        settings?.GEMINI_API_KEY,
+        settings?.gemini_key,
+        settings?.GEMINI_KEY,
+        settings?.GoogleGeminiApiKey,
+        process.env.GEMINI_API_KEY,
+        process.env.VITE_GEMINI_API_KEY,
+      ];
+      const rawApiKey = candidateKeys.find((k) => k && k !== "undefined" && k !== "null");
+      const apiKey = cleanApiKey(rawApiKey);
+
       if (!apiKey)
         throw new Error(
-          "GEMINI_API_KEY is not configured (checked process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar em 'Settings > Secrets' ou no arquivo .env",
+          "GEMINI_API_KEY is not configured (checked app_settings table, process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar em 'Settings > Secrets', na tabela app_settings ou no arquivo .env",
         );
 
       // Remove o prefixo se existir (ex: data:image/jpeg;base64,...) e extrai o mimeType

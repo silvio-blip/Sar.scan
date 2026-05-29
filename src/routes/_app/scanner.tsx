@@ -304,6 +304,23 @@ function ScannerPage() {
       const clientApiKey = cleanApiKey(rawClientApiKey);
       let textoFinal = "";
 
+      const callServerProxy = async (imageStr: string) => {
+        console.log("🔌 A usar proxy de servidor...");
+        const response = await fetch("/api/gemini-scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64Data: imageStr }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+        }
+
+        const responseData = await response.json();
+        return responseData.result;
+      };
+
       if (clientApiKey && clientApiKey.startsWith("AIzaSy")) {
         console.log("🚀 A iniciar scan direto de IA no Frontend (REST API compatível)...");
         try {
@@ -359,24 +376,14 @@ O formato deve ser exatamente:
           textoFinal = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
           console.log("✅ Sucesso em scan direto de IA!");
         } catch (erroDireto: any) {
-          console.error("💥 Erro no scan direto de IA:", erroDireto);
-          throw erroDireto;
+          console.warn(
+            "💥 Erro no scan direto de IA, a tentar proxy do servidor como fallback:",
+            erroDireto,
+          );
+          textoFinal = await callServerProxy(dataUrl);
         }
       } else {
-        console.log("🔌 VITE_GEMINI_API_KEY ausente no client-side. A usar proxy de servidor...");
-        const response = await fetch("/api/gemini-scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ base64Data: dataUrl }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
-        }
-
-        const responseData = await response.json();
-        textoFinal = responseData.result;
+        textoFinal = await callServerProxy(dataUrl);
       }
 
       console.log("✅ RAW DATA RECEIVED:", textoFinal);

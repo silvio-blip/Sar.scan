@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { loadEnv } from "../src/lib/env-loader.server.js";
+import { getAppSettings } from "../src/lib/settings.server.js";
 
 // Garantir que as variáveis do .env estão carregadas
 loadEnv();
@@ -46,13 +47,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { base64Data: rawBase64Data } = req.body;
-    const candidateKeys = [process.env.GEMINI_API_KEY, process.env.VITE_GEMINI_API_KEY];
+
+    const settings = await getAppSettings().catch((err) => {
+      console.warn("[Vercel] Falha ao buscar app_settings:", err);
+      return {} as any;
+    });
+
+    const candidateKeys = [
+      settings?.gemini_api_key,
+      settings?.GEMINI_API_KEY,
+      settings?.gemini_key,
+      settings?.GEMINI_KEY,
+      settings?.GoogleGeminiApiKey,
+      process.env.GEMINI_API_KEY,
+      process.env.VITE_GEMINI_API_KEY,
+    ];
     const rawApiKey = candidateKeys.find((k) => k && k !== "undefined" && k !== "null");
     const apiKey = cleanApiKey(rawApiKey);
 
     if (!apiKey) {
       throw new Error(
-        "GEMINI_API_KEY is not configured (checked process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar a variável no painel de controle ou no arquivo .env.",
+        "GEMINI_API_KEY is not configured (checked app_settings table, process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar a variável no painel de controle ou no arquivo .env.",
       );
     }
 
