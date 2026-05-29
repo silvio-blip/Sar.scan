@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (lastReset !== today) {
         console.log("[Auth] Daily credit reset triggered for user:", uid);
         localStorage.setItem(lastResetKey, today);
-        if (typedSub.scans_credits !== 3) {
+        if (typedSub.scans_credits < 3) {
           try {
             await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
             typedSub.scans_credits = 3;

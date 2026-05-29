@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { createStripeCheckout, syncStripePlans } from "@/lib/stripe.functions";
 import { initializeGooglePlayIAP, requestGooglePlayPurchase } from "@/lib/google-play.functions";
 import { isInstalledApp } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -131,10 +132,40 @@ function PremiumPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const activateFreeTrial = async () => {
+    if (!user) return;
+    setLoading("monthly"); // Reutilizar estado de carga
+    try {
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + 7);
+      
+      const { error } = await supabase.from('subscriptions').upsert({
+        user_id: user.id,
+        status: 'trialing',
+        trial_end: trialEnd.toISOString(),
+        plan: 'monthly',
+        ai_agent_enabled: true,
+        scans_credits: 21
+      });
+      
+      if (error) throw error;
+      
+      toast.success("Teste grátis de 7 dias ativado!");
+      if (refresh) await refresh();
+      
+      const likelyPlan = PLANS.find((p) => p.id === "monthly") || PLANS[1];
+      setPurchasedPlan(likelyPlan);
+      setShowSuccessModal(true);
+    } catch (e: any) {
+      console.error(e);
+      toast.error("Erro ao ativar o teste grátis.");
+    } finally {
+      setLoading(null);
+    }
+  };
+
   const triggerAppReturnDeepLinks = useCallback(() => {
     console.log("[DeepLink] Iniciando redirecionamento para o App...");
-
-    // Tentar fechar a janela se estivermos num CustomTab/WebView/InAppBrowser que nos chamou
     try {
       window.close();
     } catch (e) {
@@ -316,7 +347,7 @@ function PremiumPage() {
             className="w-full max-w-sm"
           >
             <Button
-              onClick={() => setConfirmingPlan(PLANS[1])} // Default trial to Monthly
+              onClick={() => activateFreeTrial()} // Activate trial directly
               className="w-full h-16 rounded-full bg-gradient-to-r from-zinc-100 to-white text-black hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-black flex flex-col items-center justify-center gap-0 shadow-[0_20px_50px_rgba(255,255,255,0.15)] ring-1 ring-white/50 group"
             >
               <div className="flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -324,7 +355,7 @@ function PremiumPage() {
                 <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
               </div>
               <span className="text-[9px] font-bold text-black/50 uppercase tracking-[0.1em]">
-                Experimente o Premium por 1 semana
+                Escaneie alimentos por 7 dias
               </span>
             </Button>
           </motion.div>
@@ -419,19 +450,9 @@ function PremiumPage() {
                         ? "bg-primary text-primary-foreground hover:bg-primary/95"
                         : "bg-secondary text-foreground hover:bg-muted"
                     }`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      startCheckout(p.id); // Direct purchase
-                    }}
-                    disabled={!!loading || (isPremium && subscription?.plan === p.id)}
+                    disabled={true}
                   >
-                    {loading === p.id ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : isPremium && subscription?.plan === p.id ? (
-                      "Plano Atual"
-                    ) : (
-                      `Ativar ${p.label}`
-                    )}
+                    Em breve
                   </Button>
                 </div>
               </div>
@@ -469,10 +490,9 @@ function PremiumPage() {
           <div className="flex justify-end pt-2">
             <Button
               className="h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/95 transition-all duration-300 shadow-sm"
-              onClick={startCreditsCheckout}
-              disabled={buyingCredits}
+              disabled={true}
             >
-              {buyingCredits ? <Loader2 className="size-4 animate-spin" /> : "Comprar 50 Créditos"}
+              Em breve
             </Button>
           </div>
         </div>
@@ -545,7 +565,7 @@ function PremiumPage() {
               Comece 7 dias grátis
             </h2>
             <p className="text-muted-foreground text-sm font-medium mb-8">
-              Experimente todas as funções premium agora sem custos iniciais.
+              Escaneie seus alimentos gratuitamente por 7 dias.                
             </p>
 
             <div className="w-full space-y-3 mb-8">
@@ -626,7 +646,7 @@ function PremiumPage() {
               </h2>
               <p className="text-white/60 text-sm font-medium mb-8">
                 {purchasedPlan?.trialDays
-                  ? `Você tem 7 dias para explorar todas as ferramentas Premium sem custo.`
+                  ? `Você tem 7 dias para usar o scanner de alimentos.`
                   : "Parabéns! Você acaba de desbloquear o acesso total ao sar.scan."}
               </p>
 

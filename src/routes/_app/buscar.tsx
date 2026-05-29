@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 type Food = NutritionFood & { porcao?: string };
 
 export function BuscarPage() {
-  const { user, isPremium } = useAuth();
+  const { user, isPremium, subscription } = useAuth();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Food | null>(null);
@@ -133,28 +133,19 @@ export function BuscarPage() {
         </div>
       </div>
 
-      {isPremium ? (
-        q.trim() && (
-          <Button
-            onClick={buscarIA}
-            disabled={aiBusy}
-            className="w-full h-12 rounded-[20px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold shadow-sm transition-all"
-          >
-            {aiBusy ? (
-              <Loader2 className="size-5 animate-spin mr-2" />
-            ) : (
-              <Sparkles className="size-5 mr-2" />
-            )}
-            Analisar com IA: "{q}"
-          </Button>
-        )
-      ) : (
-        <div className="bg-secondary/40 rounded-[20px] p-4 flex items-center gap-3 justify-center text-[10px] font-black uppercase tracking-widest border border-border/80 shadow-sm overflow-hidden relative">
-          <Crown className="size-4 text-accent relative z-10 animate-pulse" />
-          <span className="text-foreground/80 relative z-10 font-bold font-sans">
-            Assine o Premium para buscar qualquer comida por IA
-          </span>
-        </div>
+      {q.trim() && (
+        <Button
+          onClick={buscarIA}
+          disabled={aiBusy}
+          className="w-full h-12 rounded-[20px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold shadow-sm transition-all"
+        >
+          {aiBusy ? (
+            <Loader2 className="size-5 animate-spin mr-2" />
+          ) : (
+            <Sparkles className="size-5 mr-2" />
+          )}
+          Analisar com IA: "{q}"
+        </Button>
       )}
 
       {variants && (
@@ -240,8 +231,7 @@ export function BuscarPage() {
 
       {!isLoading && showList.length === 0 && q.trim() && !variants && (
         <p className="text-center text-sm text-muted-foreground py-4">
-          Nada encontrado
-          {isPremium ? ". Use a busca por IA acima." : ". Assine Premium para buscar com IA."}
+          Nada encontrado. Use a busca por IA acima.
         </p>
       )}
 

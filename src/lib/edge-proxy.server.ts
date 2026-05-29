@@ -244,7 +244,7 @@ async function handleNutritionChat(body: Body) {
     if (!status?.isAdmin) {
       const planKey = status?.plan || "free";
       const hasAccess =
-        status?.status === "active" &&
+        (status?.status === "active" || status?.status === "trialing") &&
         (planKey === "monthly" || planKey === "yearly" || planKey === "annual" || !planKey);
 
       if (!hasAccess) {
@@ -443,7 +443,7 @@ export async function getUserStatus(userId: string) {
         .from("scan_usage")
         .insert({ user_id: userId, data: today, count: 0, bonus: 0 });
 
-      if (finalSub.scans_credits !== 3) {
+      if (finalSub.scans_credits < 3) {
         await (admin as any)
           .from("subscriptions")
           .update({ scans_credits: 3 })
@@ -551,15 +551,6 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
           return await handleSearchFoodAi(data.body);
         }
         if (!userId) throw new Error("Usuário não identificado");
-
-        // Verifica se o usuário tem um plano ativo
-        const status = await getUserStatus(userId);
-        const hasPaidPlan = status?.isAdmin || status?.status === "active";
-        if (!hasPaidPlan) {
-          throw new Error(
-            "A busca por inteligência artificial é um recurso exclusivo para assinantes dos novos planos (Semanal, Mensal ou Anual). Assine um plano para liberar!",
-          );
-        }
 
         // Verifica se pode usar IA (deduz crédito ou incrementa contador diário)
         const eligibility = await checkEligibility(userId);
