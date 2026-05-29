@@ -168,7 +168,21 @@ function SignupPage() {
         {/* Footer info and Support Info */}
         <div className="text-center pt-2">
           <p className="text-[10px] tracking-wide text-muted-foreground/65">
-            Ao se registrar, você concorda com nossos Termos de Uso e Política de Privacidade.
+            Ao se registrar, você concorda com nossos{" "}
+            <Link
+              to="/direitos-privacidade"
+              className="text-primary hover:underline font-bold transition-all"
+            >
+              Termos de Uso
+            </Link>{" "}
+            e{" "}
+            <Link
+              to="/direitos-privacidade"
+              className="text-primary hover:underline font-bold transition-all"
+            >
+              Política de Privacidade
+            </Link>
+            .
           </p>
         </div>
       </motion.div>
