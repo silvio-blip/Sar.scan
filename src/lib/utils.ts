@@ -58,9 +58,13 @@ export function getApiUrl(path: string): string {
       );
       return `${configuredBaseUrl}${cleanPath}`;
     }
+    const isSharedPreview =
+      typeof window !== "undefined" && window.location.hostname.includes("run.app");
     const baseUrl = import.meta.env.DEV
       ? "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
-      : "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
+      : isSharedPreview
+        ? "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
+        : "https://sar-scan.vercel.app";
 
     const finalUrl = `${baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl}${cleanPath}`;
     console.warn(`[getApiUrl] Capacitor fallback to absolute URL: ${finalUrl}`);
@@ -87,9 +91,13 @@ export function getApiUrl(path: string): string {
     return `${configuredBaseUrl}${cleanPath}`;
   }
 
+  const isSharedPreview =
+    typeof window !== "undefined" && window.location.hostname.includes("run.app");
   const baseUrl = import.meta.env.DEV
     ? "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
-    : "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
+    : isSharedPreview
+      ? "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app"
+      : "https://sar-scan.vercel.app";
 
   const finalUrl = `${baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl}${cleanPath}`;
   console.warn(

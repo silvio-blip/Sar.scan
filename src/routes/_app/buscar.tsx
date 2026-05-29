@@ -8,7 +8,7 @@ import { ArrowLeft, Search, Crown, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { NutritionModal, type NutritionFood } from "@/components/nutrition-modal";
 import { FoodImage } from "@/components/food-image";
-import { getFoodEmoji } from "@/lib/utils";
+import { getFoodEmoji, getApiUrl } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 
@@ -33,7 +33,7 @@ export function BuscarPage() {
       if (cached && cached.length >= 50)
         return cached.map((c) => ({ ...c, porcao: "1 porção" })) as Food[];
 
-      const response = await fetch("/api/edge", {
+      const response = await fetch(getApiUrl("/api/edge"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "search-food-ai", body: { mode: "popular" } }),
@@ -70,7 +70,7 @@ export function BuscarPage() {
     if (!q.trim()) return;
     setAiBusy(true);
     try {
-      const response = await fetch("/api/edge", {
+      const response = await fetch(getApiUrl("/api/edge"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
