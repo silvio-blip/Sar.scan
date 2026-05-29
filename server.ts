@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -70,8 +69,6 @@ async function startServer() {
       const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
 
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
       const promptText = `Analisa esta imagem de comida.
 Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações.
 O formato deve ser exatamente:
@@ -87,11 +84,37 @@ O formato deve ser exatamente:
     }
   ]
 }`;
-      const result = await model.generateContent([
-        promptText,
-        { inlineData: { data: base64Data, mimeType: mimeType } },
-      ]);
-      const textoFinal = await result.response.text();
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: promptText },
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data,
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Erro na API do Gemini (${response.status}): ${errorText}`);
+      }
+
+      const responseData = await response.json();
+      const textoFinal = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
       res.json({ result: textoFinal });
     } catch (error: any) {
       console.error("[Server] /api/gemini-scan error:", error);

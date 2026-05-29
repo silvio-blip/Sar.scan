@@ -2,7 +2,6 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { isInstalledApp, getFoodEmoji } from "@/lib/utils";
@@ -306,15 +305,13 @@ function ScannerPage() {
       let textoFinal = "";
 
       if (clientApiKey && clientApiKey.startsWith("AIzaSy")) {
-        console.log("🚀 A iniciar scan direto de IA no Frontend (Capacitor compatível)...");
+        console.log("🚀 A iniciar scan direto de IA no Frontend (REST API compatível)...");
         try {
           const parts = dataUrl.split(",");
           const base64Data = parts.length > 1 ? parts[1] : parts[0];
           const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
           const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
 
-          const genAI = new GoogleGenerativeAI(clientApiKey);
-          const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
           const promptText = `Analisa esta imagem de comida.
 Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações.
 O formato deve ser exatamente:
@@ -330,11 +327,36 @@ O formato deve ser exatamente:
     }
   ]
 }`;
-          const result = await model.generateContent([
-            promptText,
-            { inlineData: { data: base64Data, mimeType: mimeType } },
-          ]);
-          textoFinal = await result.response.text();
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${encodeURIComponent(clientApiKey)}`;
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              contents: [
+                {
+                  parts: [
+                    { text: promptText },
+                    {
+                      inlineData: {
+                        mimeType,
+                        data: base64Data,
+                      },
+                    },
+                  ],
+                },
+              ],
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Erro na API do Gemini (${response.status}): ${errorText}`);
+          }
+
+          const responseData = await response.json();
+          textoFinal = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
           console.log("✅ Sucesso em scan direto de IA!");
         } catch (erroDireto: any) {
           console.error("💥 Erro no scan direto de IA:", erroDireto);

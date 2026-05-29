@@ -83,7 +83,7 @@ async function getGeminiKey() {
 }
 
 async function getGeminiModel() {
-  return "gemini-3.5-flash";
+  return "gemini-flash-lite-latest";
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
