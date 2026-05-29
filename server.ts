@@ -7,7 +7,7 @@ import { createServer as createViteServer } from "vite";
 import { loadEnv } from "./src/lib/env-loader.server";
 loadEnv();
 
-import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";
+import { invokeEdgeInternal, checkEligibility, deductScan } from "./src/lib/edge-proxy.server";
 import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
 import { verifyGooglePlayPurchaseInternal } from "./src/lib/google-play.server";
@@ -76,7 +76,13 @@ async function startServer() {
   // Proxy for invokeEdge
   app.post("/api/gemini-scan", async (req, res) => {
     try {
-      const { base64Data: rawBase64Data } = req.body;
+      const { base64Data: rawBase64Data, user_id: userId, deduct_on_fail: deductOnFail } = req.body;
+
+      let eligibility: any = null;
+      if (userId) {
+        // Verifica elegibilidade e lança erro caso não possua créditos / limite diário
+        eligibility = await checkEligibility(userId);
+      }
 
       const settings = await getAppSettings().catch((err) => {
         console.warn("[Server] Falha ao buscar app_settings:", err);
@@ -154,6 +160,30 @@ O formato deve ser exatamente:
 
       const responseData = await response.json();
       const textoFinal = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+      // Verificar se algum alimento foi de fato identificado
+      let hasFoods = false;
+      try {
+        const cleanJson = textoFinal.replace(/```json\n?|\n?```/g, "").trim();
+        const parsed = JSON.parse(cleanJson);
+        const list = parsed?.itens || parsed?.items || [];
+        if (Array.isArray(list) && list.length > 0) {
+          hasFoods = true;
+        }
+      } catch (err) {
+        console.warn("[Server] Parsing response text failed:", err);
+      }
+
+      // Se elegível e houve identificação ou se foi a 3ª falha consecutiva, cobramos o scan
+      if (userId && eligibility) {
+        if (hasFoods || deductOnFail) {
+          console.log(
+            `[Billing Dev] Debitante scan do usuário ${userId}. Motivo: hasFoods=${hasFoods}, deductOnFail=${deductOnFail}`,
+          );
+          await deductScan(userId, eligibility);
+        }
+      }
+
       res.json({ result: textoFinal });
     } catch (error: any) {
       console.error("[Server] /api/gemini-scan error:", error);

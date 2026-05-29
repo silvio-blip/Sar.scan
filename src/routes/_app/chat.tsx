@@ -1004,16 +1004,23 @@ function ChatPage() {
       if (isAdmin) return { count: 0, limit: -1, plan: "admin" };
 
       const planKey = subscription?.plan || "free";
-      const [{ data: limitData }, { data: usageData }] = await Promise.all([
-        supabase.from("plan_limits").select("chat_limit").eq("plan", planKey).single(),
-        supabase
-          .from("chat_usage")
-          .select("usage_count, last_message_at")
-          .eq("user_id", user!.id)
-          .maybeSingle(),
-      ]);
+      let limit = 0;
+      if (subscription?.status === "active" || subscription?.status === "trialing") {
+        if (planKey === "yearly" || planKey === "annual" || !subscription?.plan) {
+          limit = -1; // unlimited
+        } else if (planKey === "monthly") {
+          limit = 50;
+        } else if (planKey === "weekly") {
+          limit = 0; // weekly has no access
+        }
+      }
 
-      const limit = limitData?.chat_limit ?? 0;
+      const { data: usageData } = await supabase
+        .from("chat_usage")
+        .select("usage_count, last_message_at")
+        .eq("user_id", user!.id)
+        .maybeSingle();
+
       let currentUsage = usageData?.usage_count ?? 0;
 
       if (usageData?.last_message_at) {
@@ -1244,17 +1251,23 @@ function ChatPage() {
         // Check limits for non-admins
         if (!isAdmin) {
           const planKey = subscription?.plan || "free";
+          let limit = 0;
+          if (subscription?.status === "active" || subscription?.status === "trialing") {
+            if (planKey === "yearly" || planKey === "annual" || !subscription?.plan) {
+              limit = -1; // unlimited
+            } else if (planKey === "monthly") {
+              limit = 50;
+            } else if (planKey === "weekly") {
+              limit = 0; // weekly has no access
+            }
+          }
 
-          const [{ data: limitData }, { data: usageData }] = await Promise.all([
-            supabase.from("plan_limits").select("chat_limit").eq("plan", planKey).single(),
-            supabase
-              .from("chat_usage")
-              .select("usage_count, last_message_at")
-              .eq("user_id", user.id)
-              .maybeSingle(),
-          ]);
+          const { data: usageData } = await supabase
+            .from("chat_usage")
+            .select("usage_count, last_message_at")
+            .eq("user_id", user.id)
+            .maybeSingle();
 
-          const limit = limitData?.chat_limit ?? 0;
           let currentUsage = usageData?.usage_count ?? 0;
 
           // Daily reset logic for monthly plan (or anyone with a limit)

@@ -239,6 +239,50 @@ async function handleNutritionChat(body: Body) {
   const userId = body?.user_id ? String(body.user_id) : null;
   if (!message) return { reply: "" };
 
+  if (userId) {
+    const status = await getUserStatus(userId);
+    if (!status?.isAdmin) {
+      const planKey = status?.plan || "free";
+      const hasAccess =
+        status?.status === "active" &&
+        (planKey === "monthly" || planKey === "yearly" || planKey === "annual" || !planKey);
+
+      if (!hasAccess) {
+        throw new Error(
+          "O chat de nutrição com Inteligência Artificial é exclusivo para assinantes dos novos planos Mensal ou Anual. Assine um desses planos para liberar!",
+        );
+      }
+
+      // Verificação de limite diário para o plano Mensal (limite 50 mensagens por dia)
+      if (planKey === "monthly") {
+        const admin = getAdminSafe();
+        if (admin) {
+          const { data: usageData } = await (admin as any)
+            .from("chat_usage")
+            .select("usage_count, last_message_at")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          let currentUsage = usageData?.usage_count ?? 0;
+
+          if (usageData?.last_message_at) {
+            const lastDate = new Date(usageData.last_message_at).toDateString();
+            const today = new Date().toDateString();
+            if (lastDate !== today) {
+              currentUsage = 0;
+            }
+          }
+
+          if (currentUsage >= 50) {
+            throw new Error(
+              "Você atingiu o limite de 50 mensagens diárias do seu plano Mensal. Faça o upgrade para o plano Anual para ter mensagens ilimitadas!",
+            );
+          }
+        }
+      }
+    }
+  }
+
   const { text } = await geminiCall({
     systemInstruction:
       "Você é um nutricionista brasileiro amigável. Respostas curtas, claras e em português.",
@@ -323,14 +367,14 @@ async function handleScanFood(body: Body) {
   return { ok: true, itens, total };
 }
 
-async function getUserStatus(userId: string) {
+export async function getUserStatus(userId: string) {
   const admin = getAdminSafe();
   if (!admin) return null;
 
   const [{ data: sub }, { data: roles }, { data: profile }] = await Promise.all([
     (admin as any)
       .from("subscriptions")
-      .select("status, scans_credits, ai_agent_enabled, current_period_end")
+      .select("status, scans_credits, ai_agent_enabled, current_period_end, plan")
       .eq("user_id", userId)
       .maybeSingle(),
     (admin as any).from("user_roles").select("role").eq("user_id", userId),
@@ -363,73 +407,110 @@ async function getUserStatus(userId: string) {
     }
   }
 
-  // Se não existir subscription, criamos uma 'free' por padrão como solicitado
+  // Se não existir subscription, criamos uma 'free' por padrão com 3 créditos
   if (!finalSub) {
     const { data: newSub } = await (admin as any)
       .from("subscriptions")
       .insert({
         user_id: userId,
         status: "free",
-        scans_credits: 0,
+        scans_credits: 3,
         ai_agent_enabled: isAdmin, // Habilita IA para admins na criação
       })
       .select()
       .single();
-    return { ...newSub, isAdmin };
+    finalSub = newSub;
+  }
+
+  // Se for usuário free (sem plano ou status free), redefinir seus créditos para exatamente 3 a cada 24h
+  if (finalSub && (!finalSub.plan || finalSub.status === "free")) {
+    const today = new Date().toISOString().split("T")[0];
+    const { data: usage } = await (admin as any)
+      .from("scan_usage")
+      .select("count")
+      .eq("user_id", userId)
+      .eq("data", today)
+      .maybeSingle();
+
+    if (!usage) {
+      // É um novo dia para o usuário. Reinicia seus créditos de scans para exatamente 3.
+      console.log(
+        `[Daily Reset Backend] Resetando scans_credits para 3 do usuário free: ${userId}`,
+      );
+
+      // Salva marcação em scan_usage de hoje para evitar repetir este loop no mesmo dia
+      await (admin as any)
+        .from("scan_usage")
+        .insert({ user_id: userId, data: today, count: 0, bonus: 0 });
+
+      if (finalSub.scans_credits !== 3) {
+        await (admin as any)
+          .from("subscriptions")
+          .update({ scans_credits: 3 })
+          .eq("user_id", userId);
+
+        finalSub = {
+          ...finalSub,
+          scans_credits: 3,
+        };
+      }
+    }
   }
 
   return { ...finalSub, isAdmin };
 }
 
-async function checkEligibility(userId: string) {
+export async function checkEligibility(userId: string) {
   const admin = getAdminSafe();
   if (!admin) throw new Error("Erro de conexão com o banco");
 
   const status = await getUserStatus(userId);
   if (status?.isAdmin) return { type: "admin" as const, val: -1 };
 
-  const today = new Date().toISOString().split("T")[0];
-
-  // 1. Verificar uso diário gratuito
-  const { data: usage } = await (admin as any)
-    .from("scan_usage")
-    .select("count")
-    .eq("user_id", userId)
-    .eq("data", today)
-    .maybeSingle();
-  const currentDailyCount = (usage as any)?.count ?? 0;
-  if (currentDailyCount < 3) return { type: "free" as const, val: currentDailyCount };
-
-  // 2. Verificar créditos do plano
+  // Unificação: a elegibilidade e quantidade de fotos do usuário livre ou pago é medida direto pelo campo scans_credits
   const credits = status?.scans_credits ?? 0;
-  if (credits > 0) return { type: "paid" as const, val: credits };
+  if (credits > 0) {
+    return { type: "paid" as const, val: credits };
+  }
 
   throw new Error(
     "Você atingiu o limite de 3 scans gratuitos por dia. Assine um plano para continuar escaneando ou aguarde amanhã!",
   );
 }
 
-async function deductScan(
+export async function deductScan(
   userId: string,
   eligibility: { type: "free" | "paid" | "admin"; val: number },
 ) {
-  if (eligibility.type === "admin") return; // Admin não deduz nada
+  if (eligibility.type === "admin" || eligibility.val < 0) return; // Admin não deduz nada
 
   const admin = getAdminSafe();
   const today = new Date().toISOString().split("T")[0];
 
-  if (eligibility.type === "free") {
+  // Deduzir 1 crédito de scans_credits do usuário
+  await (admin as any)
+    .from("subscriptions")
+    .update({ scans_credits: Math.max(0, eligibility.val - 1) })
+    .eq("user_id", userId);
+
+  // Também incrementar o scan_usage para auditoria/estatística
+  try {
+    const { data: usage } = await (admin as any)
+      .from("scan_usage")
+      .select("count")
+      .eq("user_id", userId)
+      .eq("data", today)
+      .maybeSingle();
+
+    const currentCount = usage?.count ?? 0;
     await (admin as any)
       .from("scan_usage")
       .upsert(
-        { user_id: userId, data: today, count: eligibility.val + 1 },
+        { user_id: userId, data: today, count: currentCount + 1 },
         { onConflict: "user_id,data" },
       );
-  } else {
-    await (admin as any)
-      .from("subscriptions")
-      .update({ scans_credits: eligibility.val - 1 })
-      .eq("user_id", userId);
+  } catch (err) {
+    console.warn("[Backend deductScan] Falha ao incrementar scan_usage para estatística:", err);
   }
 }
 
@@ -470,6 +551,16 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
           return await handleSearchFoodAi(data.body);
         }
         if (!userId) throw new Error("Usuário não identificado");
+
+        // Verifica se o usuário tem um plano ativo
+        const status = await getUserStatus(userId);
+        const hasPaidPlan = status?.isAdmin || status?.status === "active";
+        if (!hasPaidPlan) {
+          throw new Error(
+            "A busca por inteligência artificial é um recurso exclusivo para assinantes dos novos planos (Semanal, Mensal ou Anual). Assine um plano para liberar!",
+          );
+        }
+
         // Verifica se pode usar IA (deduz crédito ou incrementa contador diário)
         const eligibility = await checkEligibility(userId);
         const result = await handleSearchFoodAi(data.body);

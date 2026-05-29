@@ -105,13 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSubscription(typedSub);
     setIsAdmin(!!roles?.some((r) => r.role === "admin"));
 
-    // Daily credits reset for free users (to 3 if < 3, once per day)
-    if (
-      uid &&
-      typedSub &&
-      (!typedSub.plan || typedSub.status === "free") &&
-      typedSub.scans_credits < 3
-    ) {
+    // Daily credits reset for free users (to exactly 3, once per day)
+    if (uid && typedSub && (!typedSub.plan || typedSub.status === "free")) {
       const lastResetKey = `sar_last_reset_${uid}`;
       const today = new Date().toDateString();
       const lastReset = localStorage.getItem(lastResetKey);
@@ -119,10 +114,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (lastReset !== today) {
         console.log("[Auth] Daily credit reset triggered for user:", uid);
         localStorage.setItem(lastResetKey, today);
-        try {
-          await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
-        } catch (err) {
-          console.error("[Auth] Daily reset update error:", err);
+        if (typedSub.scans_credits !== 3) {
+          try {
+            await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
+            typedSub.scans_credits = 3;
+          } catch (err) {
+            console.error("[Auth] Daily reset update error:", err);
+          }
         }
       }
     }

@@ -177,10 +177,9 @@ function ScannerPage() {
     },
   });
 
-  const dailyFreeRemaining = Math.max(0, 3 - (usage?.count ?? 0));
   const remaining = isUnlimited
     ? Infinity
-    : dailyFreeRemaining + (subscription?.scans_credits ?? 0) + (usage?.bonus ?? 0);
+    : (subscription?.scans_credits ?? 0) + (usage?.bonus ?? 0);
 
   useEffect(() => {
     // Midnight reset notification logic
@@ -300,16 +299,21 @@ function ScannerPage() {
         );
       }
 
-      const rawClientApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const clientApiKey = cleanApiKey(rawClientApiKey);
       let textoFinal = "";
+
+      const failedCount = Number(localStorage.getItem("failed_scans_count") || "0");
+      const is3rdFail = failedCount >= 2;
 
       const callServerProxy = async (imageStr: string) => {
         console.log("🔌 A usar proxy de servidor...");
         const response = await fetch(getApiUrl("/api/gemini-scan"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ base64Data: imageStr }),
+          body: JSON.stringify({
+            base64Data: imageStr,
+            user_id: user?.id,
+            deduct_on_fail: is3rdFail,
+          }),
         });
 
         if (!response.ok) {
@@ -321,70 +325,7 @@ function ScannerPage() {
         return responseData.result;
       };
 
-      if (clientApiKey && clientApiKey.startsWith("AIzaSy")) {
-        console.log("🚀 A iniciar scan direto de IA no Frontend (REST API compatível)...");
-        try {
-          const parts = dataUrl.split(",");
-          const base64Data = parts.length > 1 ? parts[1] : parts[0];
-          const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
-          const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-
-          const promptText = `Analisa esta imagem de comida.
-Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações.
-O formato deve ser exatamente:
-{
-  "itens": [
-    { 
-      "nome": "string",
-      "quantidade": "string (ex: 100g, 1 unidade)",
-      "cal": number, 
-      "carb": number, 
-      "prot": number, 
-      "gord": number 
-    }
-  ]
-}`;
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${encodeURIComponent(clientApiKey)}`;
-          const response = await fetch(url, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              contents: [
-                {
-                  parts: [
-                    { text: promptText },
-                    {
-                      inlineData: {
-                        mimeType,
-                        data: base64Data,
-                      },
-                    },
-                  ],
-                },
-              ],
-            }),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Erro na API do Gemini (${response.status}): ${errorText}`);
-          }
-
-          const responseData = await response.json();
-          textoFinal = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          console.log("✅ Sucesso em scan direto de IA!");
-        } catch (erroDireto: any) {
-          console.warn(
-            "💥 Erro no scan direto de IA, a tentar proxy do servidor como fallback:",
-            erroDireto,
-          );
-          textoFinal = await callServerProxy(dataUrl);
-        }
-      } else {
-        textoFinal = await callServerProxy(dataUrl);
-      }
+      textoFinal = await callServerProxy(dataUrl);
 
       console.log("✅ RAW DATA RECEIVED:", textoFinal);
 
@@ -401,19 +342,34 @@ O formato deve ser exatamente:
         );
       }
 
-      const itens = parsedResult.itens || [];
+      const itens = parsedResult.itens || parsedResult.items || [];
 
       if (itens.length === 0) {
-        toast.info("Nenhum alimento identificado.", {
-          description:
-            "Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
-        });
+        const newFailedCount = failedCount + 1;
+        if (newFailedCount >= 3) {
+          localStorage.setItem("failed_scans_count", "0");
+          toast.error(
+            "3 tentativas seguidas sem detectar alimentos. 1 scan foi debitado de sua conta.",
+            {
+              description: "Evite fotos borradas ou escuras ao escanear alimentos.",
+            },
+          );
+        } else {
+          localStorage.setItem("failed_scans_count", String(newFailedCount));
+          toast.info("Nenhum alimento identificado.", {
+            description: `Tentativa ${newFailedCount}/3 seguidas falhas. Na 3ª consecutiva, 1 scan será debitado.`,
+          });
+        }
         setDetected(null);
         setScanPhoto(null);
         setScanning(false);
+        await refresh();
+        qc.invalidateQueries({ queryKey: ["scan_usage"] });
         return;
       }
 
+      // Sucesso! Zerar contador de falhas consecutivas
+      localStorage.setItem("failed_scans_count", "0");
       setDetected(itens as ScannedFood[]);
 
       // Seguir com a lógica de sucesso (refresh etc)
