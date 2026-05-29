@@ -422,8 +422,9 @@ export async function getUserStatus(userId: string) {
     finalSub = newSub;
   }
 
-  // Se for usuário free (sem plano ou status free), redefinir seus créditos para exatamente 3 a cada 24h
-  if (finalSub && (!finalSub.plan || finalSub.status === "free")) {
+  // Se for usuário free (sem plano ou status free), redefinir seus créditos para 3 a cada 24h
+  if (finalSub && finalSub.status === "free") {
+    const dailyLimit = 3;
     const today = new Date().toISOString().split("T")[0];
     const { data: usage } = await (admin as any)
       .from("scan_usage")
@@ -433,9 +434,9 @@ export async function getUserStatus(userId: string) {
       .maybeSingle();
 
     if (!usage) {
-      // É um novo dia para o usuário. Reinicia seus créditos de scans para exatamente 3.
+      // É um novo dia para o usuário. Reinicia seus créditos de scans para o limite diário.
       console.log(
-        `[Daily Reset Backend] Resetando scans_credits para 3 do usuário free: ${userId}`,
+        `[Daily Reset Backend] Resetando scans_credits para ${dailyLimit} do usuário free: ${userId}`,
       );
 
       // Salva marcação em scan_usage de hoje para evitar repetir este loop no mesmo dia
@@ -443,15 +444,15 @@ export async function getUserStatus(userId: string) {
         .from("scan_usage")
         .insert({ user_id: userId, data: today, count: 0, bonus: 0 });
 
-      if (finalSub.scans_credits < 3) {
+      if (finalSub.scans_credits < dailyLimit) {
         await (admin as any)
           .from("subscriptions")
-          .update({ scans_credits: 3 })
+          .update({ scans_credits: dailyLimit })
           .eq("user_id", userId);
 
         finalSub = {
           ...finalSub,
-          scans_credits: 3,
+          scans_credits: dailyLimit,
         };
       }
     }
@@ -531,7 +532,8 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
 
         // Admin sempre liberado
         if (!status?.isAdmin) {
-          if (data.name === "nutrition-chat" && !status?.ai_agent_enabled) {
+          // Bloqueia chat se não for assinante ativo (trialing não tem chat)
+          if (data.name === "nutrition-chat" && status?.status !== "active") {
             throw new Error(
               "O chat da inteligência artificial está disponível apenas para assinantes pagantes.",
             );

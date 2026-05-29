@@ -139,13 +139,13 @@ function PremiumPage() {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 7);
       
-      const { error } = await supabase.from('subscriptions').upsert({
+      const { error } = await supabase.from("subscriptions").upsert({
         user_id: user.id,
-        status: 'trialing',
+        status: "trialing",
         trial_end: trialEnd.toISOString(),
-        plan: 'monthly',
+        plan: "monthly",
         ai_agent_enabled: true,
-        scans_credits: 21
+        scans_credits: 30,
       });
       
       if (error) throw error;
@@ -355,7 +355,7 @@ function PremiumPage() {
                 <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
               </div>
               <span className="text-[9px] font-bold text-black/50 uppercase tracking-[0.1em]">
-                Escaneie alimentos por 7 dias
+                30 scans total por 7 dias
               </span>
             </Button>
           </motion.div>
@@ -565,7 +565,7 @@ function PremiumPage() {
               Comece 7 dias grátis
             </h2>
             <p className="text-muted-foreground text-sm font-medium mb-8">
-              Escaneie seus alimentos gratuitamente por 7 dias.                
+              30 scans totais gratuitos para escanear alimentos por 7 dias.
             </p>
 
             <div className="w-full space-y-3 mb-8">
@@ -646,7 +646,7 @@ function PremiumPage() {
               </h2>
               <p className="text-white/60 text-sm font-medium mb-8">
                 {purchasedPlan?.trialDays
-                  ? `Você tem 7 dias para usar o scanner de alimentos.`
+                  ? `Você tem 7 dias com 30 scans totais para escanear alimentos.`
                   : "Parabéns! Você acaba de desbloquear o acesso total ao sar.scan."}
               </p>
 
