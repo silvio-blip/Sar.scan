@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import React, { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { isInstalledApp, getFoodEmoji } from "@/lib/utils";
@@ -278,58 +279,95 @@ function ScannerPage() {
         );
       }
 
-      console.log("🚀 A iniciar scan manual para o endpoint /api/edge...");
+      const clientApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      let textoFinal = "";
 
-      try {
-          const response = await fetch('/api/gemini-scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ base64Data: dataUrl })
-          });
+      if (clientApiKey) {
+        console.log("🚀 A iniciar scan direto de IA no Frontend (Capacitor compatível)...");
+        try {
+          const parts = dataUrl.split(",");
+          const base64Data = parts.length > 1 ? parts[1] : parts[0];
+          const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
+          const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+
+          const genAI = new GoogleGenerativeAI(clientApiKey);
+          const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
+          const promptText = `Analisa esta imagem de comida.
+Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações.
+O formato deve ser exatamente:
+{
+  "itens": [
+    { 
+      "nome": "string",
+      "quantidade": "string (ex: 100g, 1 unidade)",
+      "cal": number, 
+      "carb": number, 
+      "prot": number, 
+      "gord": number 
+    }
+  ]
+}`;
+          const result = await model.generateContent([
+            promptText,
+            { inlineData: { data: base64Data, mimeType: mimeType } },
+          ]);
+          textoFinal = await result.response.text();
+          console.log("✅ Sucesso em scan direto de IA!");
+        } catch (erroDireto: any) {
+          console.error("💥 Erro no scan direto de IA:", erroDireto);
+          throw erroDireto;
+        }
+      } else {
+        console.log("🔌 VITE_GEMINI_API_KEY ausente no client-side. A usar proxy de servidor...");
+        const response = await fetch("/api/gemini-scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64Data: dataUrl }),
+        });
 
         if (!response.ok) {
-           const errorData = await response.json().catch(() => ({}));
-           throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
         }
 
         const responseData = await response.json();
-        const textoFinal = responseData.result;
-        
-        console.log("✅ RAW DATA RECEIVED FROM GEMINI:", textoFinal);
-        
-        // Parse o JSON retornado pela IA
-        let parsedResult;
-        try {
-           // Limpeza básica se a IA retornar markdown code blocks
-           const jsonStr = textoFinal.replace(/```json\n?|\n?```/g, "").trim();
-           parsedResult = JSON.parse(jsonStr);
-        } catch (e) {
-          console.error("Erro ao fazer parse do resultado:", e);
-          throw new Error("Não foi possível processar a resposta da IA.");
-        }
-
-        const itens = parsedResult.itens || [];
-        
-        if (itens.length === 0) {
-          toast.info("Nenhum alimento identificado.", {
-            description: "Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
-          });
-          setDetected(null);
-          setScanPhoto(null);
-          setScanning(false);
-          return;
-        }
-
-        setDetected(itens as ScannedFood[]);
-
-        // Seguir com a lógica de sucesso (refresh etc)
-        await refresh();
-        qc.invalidateQueries({ queryKey: ["scan_usage"] });
-        return;
-      } catch (err: any) {
-        console.error("💥 Falha na comunicação do aplicativo:", err.message);
-        throw err;
+        textoFinal = responseData.result;
       }
+
+      console.log("✅ RAW DATA RECEIVED:", textoFinal);
+
+      // Parse o JSON retornado pela IA
+      let parsedResult;
+      try {
+        // Limpeza básica se a IA retornar markdown code blocks
+        const jsonStr = textoFinal.replace(/```json\n?|\n?```/g, "").trim();
+        parsedResult = JSON.parse(jsonStr);
+      } catch (e) {
+        console.error("Erro ao fazer parse do resultado:", e);
+        throw new Error(
+          "Não foi possível processar a resposta da IA. O formato de resposta retornado pela IA está incorreto ou incompleto.",
+        );
+      }
+
+      const itens = parsedResult.itens || [];
+
+      if (itens.length === 0) {
+        toast.info("Nenhum alimento identificado.", {
+          description:
+            "Tente tirar outra foto mais de perto, com melhor enquadramento e sob boa iluminação.",
+        });
+        setDetected(null);
+        setScanPhoto(null);
+        setScanning(false);
+        return;
+      }
+
+      setDetected(itens as ScannedFood[]);
+
+      // Seguir com a lógica de sucesso (refresh etc)
+      await refresh();
+      qc.invalidateQueries({ queryKey: ["scan_usage"] });
+      return;
     } catch (e: any) {
       console.error("Detalhes do erro:", e);
       toast.error(

@@ -1,8 +1,41 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
+
+// Função para ler variáveis de ambiente do arquivo .env manualmente
+function loadEnv() {
+  try {
+    const envPath = path.join(process.cwd(), ".env");
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, "utf-8");
+      content.split("\n").forEach((line) => {
+        const trimmed = line.trim();
+        if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
+          const firstEquals = trimmed.indexOf("=");
+          const key = trimmed.substring(0, firstEquals).trim();
+          let value = trimmed.substring(firstEquals + 1).trim();
+          if (
+            (value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))
+          ) {
+            value = value.substring(1, value.length - 1);
+          }
+          if (key) {
+            process.env[key] = value;
+          }
+        }
+      });
+      console.log("[Server] Sincronização automática: Variáveis carregadas de .env!");
+    }
+  } catch (err) {
+    console.warn("[Server] Erro ao tentar ler o arquivo .env:", err);
+  }
+}
+loadEnv();
+
 import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";
 import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
@@ -51,17 +84,20 @@ async function startServer() {
   app.post("/api/gemini-scan", async (req, res) => {
     try {
       const { base64Data: rawBase64Data } = req.body;
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("GEMINI_API_KEY is not configured");
-      
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      if (!apiKey)
+        throw new Error(
+          "GEMINI_API_KEY is not configured (checked process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar em 'Settings > Secrets' ou no arquivo .env",
+        );
+
       // Remove o prefixo se existir (ex: data:image/jpeg;base64,...) e extrai o mimeType
       const parts = rawBase64Data.split(",");
       const base64Data = parts.length > 1 ? parts[1] : parts[0];
-      
+
       // Tenta extrair o mimeType (ex: "data:image/webp;base64" -> "image/webp")
       const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
-      
+
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-flash-lite-latest" });
       const promptText = `Analisa esta imagem de comida.
@@ -78,10 +114,10 @@ O formato deve ser exatamente:
       "gord": number 
     }
   ]
-}`; 
+}`;
       const result = await model.generateContent([
         promptText,
-        { inlineData: { data: base64Data, mimeType: mimeType } }
+        { inlineData: { data: base64Data, mimeType: mimeType } },
       ]);
       const textoFinal = await result.response.text();
       res.json({ result: textoFinal });
