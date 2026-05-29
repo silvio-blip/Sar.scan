@@ -18,6 +18,28 @@ function getAdminSafe() {
   }
 }
 
+function cleanApiKey(val: string | undefined | null): string | null {
+  if (!val) return null;
+  let cleaned = val.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  cleaned = cleaned.trim();
+  if (
+    !cleaned ||
+    cleaned === "undefined" ||
+    cleaned === "null" ||
+    cleaned === '""' ||
+    cleaned === "''"
+  ) {
+    return null;
+  }
+  return cleaned;
+}
+
 let _cachedKey: string | null = null;
 async function getGeminiKey() {
   if (_cachedKey) return _cachedKey;
@@ -35,9 +57,8 @@ async function getGeminiKey() {
     process.env.VITE_GEMINI_API_KEY,
   ];
 
-  const key = candidateKeys
-    .map((k) => (typeof k === "string" ? k.trim() : ""))
-    .find((k) => k && k !== "undefined" && k !== "null");
+  const rawKey = candidateKeys.find((k) => k && k !== "undefined" && k !== "null");
+  const key = cleanApiKey(rawKey);
 
   if (key) {
     _cachedKey = key;

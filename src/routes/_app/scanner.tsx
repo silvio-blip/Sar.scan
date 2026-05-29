@@ -45,6 +45,28 @@ export const Route = createFileRoute("/_app/scanner")({ component: ScannerPage }
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+function cleanApiKey(val: string | undefined | null): string | null {
+  if (!val) return null;
+  let cleaned = val.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  cleaned = cleaned.trim();
+  if (
+    !cleaned ||
+    cleaned === "undefined" ||
+    cleaned === "null" ||
+    cleaned === '""' ||
+    cleaned === "''"
+  ) {
+    return null;
+  }
+  return cleaned;
+}
+
 function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
   const qc = useQueryClient();
@@ -279,10 +301,11 @@ function ScannerPage() {
         );
       }
 
-      const clientApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const rawClientApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const clientApiKey = cleanApiKey(rawClientApiKey);
       let textoFinal = "";
 
-      if (clientApiKey) {
+      if (clientApiKey && clientApiKey.startsWith("AIzaSy")) {
         console.log("🚀 A iniciar scan direto de IA no Frontend (Capacitor compatível)...");
         try {
           const parts = dataUrl.split(",");

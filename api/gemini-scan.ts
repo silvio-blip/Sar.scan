@@ -5,6 +5,28 @@ import { loadEnv } from "../src/lib/env-loader.server.js";
 // Garantir que as variáveis do .env estão carregadas
 loadEnv();
 
+function cleanApiKey(val: string | undefined | null): string | null {
+  if (!val) return null;
+  let cleaned = val.trim();
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  cleaned = cleaned.trim();
+  if (
+    !cleaned ||
+    cleaned === "undefined" ||
+    cleaned === "null" ||
+    cleaned === '""' ||
+    cleaned === "''"
+  ) {
+    return null;
+  }
+  return cleaned;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
@@ -26,9 +48,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { base64Data: rawBase64Data } = req.body;
     const candidateKeys = [process.env.GEMINI_API_KEY, process.env.VITE_GEMINI_API_KEY];
-    const apiKey = candidateKeys
-      .map((k) => (typeof k === "string" ? k.trim() : ""))
-      .find((k) => k && k !== "undefined" && k !== "null");
+    const rawApiKey = candidateKeys.find((k) => k && k !== "undefined" && k !== "null");
+    const apiKey = cleanApiKey(rawApiKey);
 
     if (!apiKey) {
       throw new Error(
