@@ -1277,7 +1277,7 @@ function ChatPage() {
 
         /* Message insert removed to prevent duplication (handled by edge function) */
 
-        const response = await fetch("/api/edge", {
+        const response = await fetch(getApiUrl("/api/edge"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
