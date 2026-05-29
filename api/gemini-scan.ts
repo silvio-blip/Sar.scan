@@ -1,5 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { loadEnv } from "../src/lib/env-loader.server.js";
+
+// Garantir que as variáveis do .env estão carregadas
+loadEnv();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
@@ -21,10 +25,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { base64Data: rawBase64Data } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    const candidateKeys = [process.env.GEMINI_API_KEY, process.env.VITE_GEMINI_API_KEY];
+    const apiKey = candidateKeys
+      .map((k) => (typeof k === "string" ? k.trim() : ""))
+      .find((k) => k && k !== "undefined" && k !== "null");
+
     if (!apiKey) {
       throw new Error(
-        "GEMINI_API_KEY is not configured (checked process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar a variável no painel de controle da Vercel.",
+        "GEMINI_API_KEY is not configured (checked process.env.GEMINI_API_KEY and VITE_GEMINI_API_KEY). Certifique-se de configurar a variável no painel de controle ou no arquivo .env.",
       );
     }
 

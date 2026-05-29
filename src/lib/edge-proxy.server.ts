@@ -2,6 +2,10 @@ import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 import nodemailer from "nodemailer";
 
 import { getAppSettings } from "./settings.server.js";
+import { loadEnv } from "./env-loader.server.js";
+
+// Garantir que as variáveis do .env estão carregadas
+loadEnv();
 
 type Body = Record<string, unknown> | undefined;
 
@@ -21,14 +25,19 @@ async function getGeminiKey() {
   const settings = await getAppSettings();
   console.log("[Edge] Settings object keys:", Object.keys(settings));
 
-  const key =
-    settings.gemini_api_key ||
-    settings.GEMINI_API_KEY ||
-    settings.gemini_key ||
-    settings.GEMINI_KEY ||
-    settings.GoogleGeminiApiKey ||
-    process.env.GEMINI_API_KEY ||
-    process.env.VITE_GEMINI_API_KEY;
+  const candidateKeys = [
+    settings.gemini_api_key,
+    settings.GEMINI_API_KEY,
+    settings.gemini_key,
+    settings.GEMINI_KEY,
+    settings.GoogleGeminiApiKey,
+    process.env.GEMINI_API_KEY,
+    process.env.VITE_GEMINI_API_KEY,
+  ];
+
+  const key = candidateKeys
+    .map((k) => (typeof k === "string" ? k.trim() : ""))
+    .find((k) => k && k !== "undefined" && k !== "null");
 
   if (key) {
     _cachedKey = key;
@@ -39,8 +48,17 @@ async function getGeminiKey() {
     return key;
   }
 
-  console.error("[Edge] Gemini key NOT found! Settings found:", Object.keys(settings), "Env has GEMINI_API_KEY:", !!process.env.GEMINI_API_KEY);
-  throw new Error("Chave Gemini não configurada (não encontrada em app_settings nem environment)");
+  console.error(
+    "[Edge] Gemini key NOT found! Settings found:",
+    Object.keys(settings),
+    "Env has GEMINI_API_KEY:",
+    !!process.env.GEMINI_API_KEY,
+    "Env has VITE_GEMINI_API_KEY:",
+    !!process.env.VITE_GEMINI_API_KEY,
+  );
+  throw new Error(
+    "Chave Gemini não configurada. Defina GEMINI_API_KEY ou VITE_GEMINI_API_KEY no arquivo .env ou nas configurações do ambiente.",
+  );
 }
 
 async function getGeminiModel() {

@@ -32,11 +32,11 @@ export function BuscarPage() {
         .limit(100);
       if (cached && cached.length >= 50)
         return cached.map((c) => ({ ...c, porcao: "1 porção" })) as Food[];
-      
-      const response = await fetch('/api/edge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: "search-food-ai", body: { mode: "popular" } })
+
+      const response = await fetch("/api/edge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "search-food-ai", body: { mode: "popular" } }),
       });
       const data = await response.json();
       if (!response.ok || data.error) throw new Error(data.error ?? "Erro ao carregar alimentos");
@@ -70,14 +70,17 @@ export function BuscarPage() {
     if (!q.trim()) return;
     setAiBusy(true);
     try {
-      const response = await fetch('/api/edge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: "search-food-ai", body: { query: q, mode: "variants", user_id: user?.id } })
+      const response = await fetch("/api/edge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "search-food-ai",
+          body: { query: q, mode: "variants", user_id: user?.id },
+        }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok || data.error) throw new Error(data.error || "Erro ao realizar busca");
 
       const alimentos = (data.alimentos ?? []) as Food[];

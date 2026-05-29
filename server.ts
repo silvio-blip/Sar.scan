@@ -5,35 +5,7 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 
-// Função para ler variáveis de ambiente do arquivo .env manualmente
-function loadEnv() {
-  try {
-    const envPath = path.join(process.cwd(), ".env");
-    if (fs.existsSync(envPath)) {
-      const content = fs.readFileSync(envPath, "utf-8");
-      content.split("\n").forEach((line) => {
-        const trimmed = line.trim();
-        if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
-          const firstEquals = trimmed.indexOf("=");
-          const key = trimmed.substring(0, firstEquals).trim();
-          let value = trimmed.substring(firstEquals + 1).trim();
-          if (
-            (value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))
-          ) {
-            value = value.substring(1, value.length - 1);
-          }
-          if (key) {
-            process.env[key] = value;
-          }
-        }
-      });
-      console.log("[Server] Sincronização automática: Variáveis carregadas de .env!");
-    }
-  } catch (err) {
-    console.warn("[Server] Erro ao tentar ler o arquivo .env:", err);
-  }
-}
+import { loadEnv } from "./src/lib/env-loader.server";
 loadEnv();
 
 import { invokeEdgeInternal } from "./src/lib/edge-proxy.server";

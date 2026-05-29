@@ -17,14 +17,14 @@ function cleanEnvValue(val: string | undefined): string | undefined {
 function createSupabaseClient() {
   const SUPABASE_URL = cleanEnvValue(
     import.meta.env.VITE_SUPABASE_URL ||
-    import.meta.env.SUPABASE_URL ||
-    (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined)
+      import.meta.env.SUPABASE_URL ||
+      (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined),
   );
 
   const SUPABASE_PUBLISHABLE_KEY = cleanEnvValue(
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
-    (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined)
+      import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
+      (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined),
   );
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
