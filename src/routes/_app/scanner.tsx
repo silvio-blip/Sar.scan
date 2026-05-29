@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { isInstalledApp, getFoodEmoji } from "@/lib/utils";
+import { isInstalledApp, getFoodEmoji, getApiUrl } from "@/lib/utils";
 import { useCamera } from "@/lib/CameraContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -306,7 +306,7 @@ function ScannerPage() {
 
       const callServerProxy = async (imageStr: string) => {
         console.log("🔌 A usar proxy de servidor...");
-        const response = await fetch("/api/gemini-scan", {
+        const response = await fetch(getApiUrl("/api/gemini-scan"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ base64Data: imageStr }),
