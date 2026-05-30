@@ -16,6 +16,7 @@ import {
   Activity,
   Lock,
   LogOut,
+  Trash2,
   ChevronRight,
   Search,
   History,
@@ -280,6 +281,24 @@ function PerfilPage() {
             </div>
           </div>
           <ChevronRight className="size-4 text-muted-foreground" />
+        </Card>
+      </Link>
+
+      <Link
+        to="/perfil/configuracoes/excluir-conta"
+        className="block transform transition hover:scale-[1.02] active:scale-95 mb-4"
+      >
+        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-red-200/20 shadow-sm">
+          <div className="size-12 rounded-2xl bg-red-500/10 flex items-center justify-center">
+            <Trash2 className="size-5 text-red-500" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-red-500">Excluir Conta</div>
+            <div className="text-[11px] text-red-500/70 font-semibold">
+              Remover todos os dados permanentemente
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-red-500/50" />
         </Card>
       </Link>
 
