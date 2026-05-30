@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { AlertCircle, Trash2, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { AlertCircle, Trash2, X, Eye, EyeOff } from "lucide-react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
@@ -11,17 +13,36 @@ export const Route = createFileRoute("/_app/perfil/excluir-conta")({
 });
 
 export default function ExcluirContaPage() {
-  const { profile, refresh, signOut } = useAuth();
+  const { user, profile, refresh } = useAuth();
   const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const deletionRequestedAt = profile?.deletion_requested_at;
   const isPendingDeletion = !!deletionRequestedAt;
 
   const handleRequestDeletion = async () => {
-    if (!profile) return;
+    if (!profile || !user?.email) return;
+
+    if (password !== confirmPassword) {
+      toast.error("As senhas não coincidem.");
+      return;
+    }
+
     setLoading(true);
     try {
+      // Re-authenticate user to verify password
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: password,
+      });
+
+      if (verifyError) {
+        toast.error("Senha incorreta.");
+        return;
+      }
+
       const { error } = await supabase
         .from("profiles")
         .update({ deletion_requested_at: new Date().toISOString() })
@@ -80,6 +101,35 @@ export default function ExcluirContaPage() {
           <p className="text-muted-foreground text-sm">
             Tem certeza de que deseja excluir sua conta? Esta ação removerá todos os seus dados permanentemente após 3 dias.
           </p>
+          
+          <div className="space-y-2">
+            <Label>Senha</Label>
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Insira sua senha"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+              >
+                 {showPassword ? <EyeOff className="size-4"/> : <Eye className="size-4"/>}
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Confirmar Senha</Label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirme sua senha"
+            />
+          </div>
+
           <Button onClick={handleRequestDeletion} disabled={loading} variant="destructive" className="w-full">
             <Trash2 className="size-4 mr-2" />
             Solicitar Exclusão
