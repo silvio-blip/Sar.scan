@@ -153,7 +153,7 @@ function PremiumPage() {
       toast.success("Teste grátis de 7 dias ativado!");
       if (refresh) await refresh();
       
-      const likelyPlan = PLANS.find((p) => p.id === "monthly") || PLANS[1];
+      const likelyPlan = { ...(PLANS.find((p) => p.id === "monthly")! || PLANS[1]), scans: 30 };
       setPurchasedPlan(likelyPlan);
       setShowSuccessModal(true);
     } catch (e: any) {
@@ -655,16 +655,8 @@ function PremiumPage() {
                   SEUS NOVOS PODERES:
                 </div>
                 {[
-                  { icon: Zap, text: `${purchasedPlan?.scans} créditos iniciais adicionados` },
-                  {
-                    icon: Bot,
-                    text: purchasedPlan?.aiAgent
-                      ? "Agente IA Nutricional Full"
-                      : "Nutricionista IA Básico",
-                  },
-                  { icon: Sparkles, text: "Identificação ultra detalhada" },
-                  { icon: Target, text: "Definição de metas avançadas" },
-                  { icon: Gift, text: "Acesso a bónus exclusivos" },
+                  { icon: Sparkles, text: `${purchasedPlan?.scans} créditos para o scanner de alimentos` },
+                  { icon: Bot, text: "Acesso ao scanner por 7 dias" },
                 ].map((item, i) => (
                   <motion.div
                     key={item.text}
