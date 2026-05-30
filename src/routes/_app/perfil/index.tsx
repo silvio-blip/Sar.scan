@@ -285,7 +285,7 @@ function PerfilPage() {
       </Link>
 
       <Link
-        to="/perfil/configuracoes/excluir-conta"
+        to="/perfil/excluir-conta"
         className="block transform transition hover:scale-[1.02] active:scale-95 mb-4"
       >
         <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-red-200/20 shadow-sm">

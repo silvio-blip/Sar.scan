@@ -3,8 +3,12 @@ import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Trash2, X } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
+
+export const Route = createFileRoute("/_app/perfil/excluir-conta")({
+  component: ExcluirContaPage,
+});
 
 export default function ExcluirContaPage() {
   const { profile, refresh, signOut } = useAuth();
