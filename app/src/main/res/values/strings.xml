@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sar.scan</string>
+    <string name="app_subtitle">Nutrição Inteligente com IA</string>
+
+    <!-- Navigation tabs -->
+    <string name="nav_scanner">Scanner</string>
+    <string name="nav_diario">Diário</string>
+    <string name="nav_buscar">Buscar</string>
+    <string name="nav_chat">Assistente</string>
+    <string name="nav_perfil">Perfil</string>
+
+    <!-- Scanner -->
+    <string name="scanner_title">Escanear Alimento</string>
+    <string name="scanner_subtitle">Aponte a câmera para sua refeição ou envie uma foto</string>
+    <string name="scan_action">Escanear Agora</string>
+    <string name="take_photo">Tirar Foto</string>
+    <string name="choose_gallery">Galeria</string>
+    <string name="scanning_food">Analisando imagem com IA…</string>
+    <string name="detecting_macros">Calculando calorias e macronutrientes…</string>
+
+    <!-- Diário -->
+    <string name="diario_title">Diário Calórico</string>
+    <string name="calories_consumed">Consumidas</string>
+    <string name="calories_goal">Meta</string>
+    <string name="calories_remaining">Restantes</string>
+    <string name="macros_breakdown">Distribuição de Macros</string>
+    <string name="carbs">Carboidratos</string>
+    <string name="protein">Proteínas</string>
+    <string name="fat">Gorduras</string>
+    <string name="no_entries_today">Nenhum alimento registrado hoje.</string>
+    <string name="add_first_food">Escaneie um prato ou busque no catálogo!</string>
+
+    <!-- Water Tracker -->
+    <string name="water_tracker_title">Consumo de Água</string>
+    <string name="water_goal_label">Meta de hidratação</string>
+    <string name="add_water_150">+150 ml</string>
+    <string name="add_water_250">+250 ml</string>
+    <string name="add_water_500">+500 ml</string>
+
+    <!-- Buscar -->
+    <string name="search_hint">Buscar alimentos (ex: arroz, frango, aveia)…</string>
+    <string name="add_to_diary">Adicionar ao Diário</string>
+    <string name="portion">Porção</string>
+
+    <!-- Chat -->
+    <string name="chat_title">Nutricionista IA</string>
+    <string name="chat_welcome">Olá! Sou seu assistente nutricional com IA. Como posso ajudar na sua alimentação hoje?</string>
+    <string name="chat_input_hint">Faça uma pergunta sobre sua dieta…</string>
+
+    <!-- Profile -->
+    <string name="profile_title">Meu Perfil</string>
+    <string name="personal_data">Dados Físicos</string>
+    <string name="weight_kg">Peso (kg)</string>
+    <string name="height_cm">Altura (cm)</string>
+    <string name="age_years">Idade (anos)</string>
+    <string name="goal">Objetivo</string>
+    <string name="save_changes">Salvar Alterações</string>
+</resources>

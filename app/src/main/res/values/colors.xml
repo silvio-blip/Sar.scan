@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Organic Moss & Cream Palette from original design -->
+    <color name="moss_primary">#2E4A3B</color>
+    <color name="moss_primary_soft">#1A2E4A3B</color>
+    <color name="linen_background">#FAF7F2</color>
+    <color name="card_white">#FFFFFF</color>
+    <color name="forest_dark">#1C2E24</color>
+    <color name="almond_secondary">#F0ECE3</color>
+    <color name="sage_muted">#738A7E</color>
+    <color name="apricot_accent">#E28C6A</color>
+    <color name="water_blue">#4C9EEB</color>
+    <color name="water_blue_soft">#204C9EEB</color>
+    <color name="border_subtle">#1A1C2E24</color>
+</resources>

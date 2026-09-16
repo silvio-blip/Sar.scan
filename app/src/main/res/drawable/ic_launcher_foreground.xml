@@ -1,0 +1,31 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="18"
+        android:translateY="18">
+        <!-- Scanner Frame Corners -->
+        <path
+            android:fillColor="#E28C6A"
+            android:pathData="M12,18 L12,12 L18,12 C19.1,12 20,11.1 20,10 C20,8.9 19.1,8 18,8 L10,8 C7.8,8 6,9.8 6,12 L6,20 C6,21.1 6.9,22 8,22 C9.1,22 10,21.1 10,20 L10,18 Z" />
+        <path
+            android:fillColor="#E28C6A"
+            android:pathData="M60,18 L60,20 C60,21.1 60.9,22 62,22 C63.1,22 64,21.1 64,20 L64,12 C64,9.8 62.2,8 60,8 L52,8 C50.9,8 50,8.9 50,10 C50,11.1 50.9,12 52,12 L58,12 L58,18 Z" />
+        <path
+            android:fillColor="#E28C6A"
+            android:pathData="M12,54 L10,54 C8.9,54 8,54.9 8,56 C8,57.1 8.9,58 10,58 L18,58 C20.2,58 22,56.2 22,54 L22,46 C22,44.9 21.1,44 20,44 C18.9,44 18,44.9 18,46 L18,52 L12,52 Z" />
+        <path
+            android:fillColor="#E28C6A"
+            android:pathData="M60,54 L58,54 L58,46 C58,44.9 57.1,44 56,44 C54.9,44 54,44.9 54,46 L54,54 C54,56.2 55.8,58 58,58 L66,58 C67.1,58 68,57.1 68,56 C68,54.9 67.1,54 66,54 L60,54 Z" />
+
+        <!-- Nutrition Organic Leaf & Apple Silhouette -->
+        <path
+            android:fillColor="#FAF7F2"
+            android:pathData="M36,18 C26.1,18 18,26.1 18,36 C18,45.9 26.1,54 36,54 C45.9,54 54,45.9 54,36 C54,26.1 45.9,18 36,18 Z M36,49 C28.8,49 23,43.2 23,36 C23,28.8 28.8,23 36,23 C43.2,23 49,28.8 49,36 C49,43.2 43.2,49 36,49 Z" />
+        <path
+            android:fillColor="#22C55E"
+            android:pathData="M36,27 C31,27 27,31 27,36 C27,41 31,45 36,45 C41,45 45,41 45,36 C45,31 41,27 36,27 Z M34,39 L30,35 L31.4,33.6 L34,36.2 L40.6,29.6 L42,31 L34,39 Z" />
+    </group>
+</vector>
