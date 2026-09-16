@@ -1,0 +1,265 @@
+import Stripe from "stripe";
+import { supabaseAdmin } from "../integrations/supabase/client.server.js";
+
+import { getAppSettings } from "./settings.server.js";
+
+let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = null;
+
+async function loadKeys() {
+  const settings = await getAppSettings();
+  const secret = settings.stripe_secret_key || process.env.STRIPE_SECRET_KEY || "";
+  if (!secret) throw new Error("stripe_secret_key not set in app_settings or environment");
+  return {
+    secret,
+    webhookSecret: settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET || "",
+  };
+}
+
+export async function getStripe() {
+  if (_cached) return _cached;
+  const { secret, webhookSecret } = await loadKeys();
+  const stripe = new Stripe(secret, { apiVersion: "2024-12-18.acacia" as any });
+  _cached = { stripe, secret, webhookSecret };
+  return _cached;
+}
+
+export const PLANS_DEF = [
+  {
+    id: "weekly",
+    label: "sar.scan Semanal",
+    amount: 499,
+    interval: "week",
+    scans: 30,
+    trial_days: 7,
+  },
+  {
+    id: "monthly",
+    label: "sar.scan Mensal",
+    amount: 1999,
+    interval: "month",
+    scans: 150,
+    trial_days: 7,
+  },
+  {
+    id: "yearly",
+    label: "sar.scan Anual",
+    amount: 9999,
+    interval: "year",
+    scans: 1200,
+    trial_days: 7,
+  },
+] as const;
+export type PlanId = (typeof PLANS_DEF)[number]["id"];
+
+export async function syncStripePlansInternal(data: { token: string }) {
+  const user = await authUser(data.token);
+  const { data: roles } = await (supabaseAdmin as any)
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id);
+  const isAdmin = !!(roles as { role: string }[] | null)?.some((r) => r.role === "admin");
+  if (!isAdmin) throw new Error("Apenas admin pode sincronizar planos");
+
+  const { stripe } = await getStripe();
+  const results: { plan: string; productId: string; priceId: string }[] = [];
+  for (const plan of PLANS_DEF) {
+    const { data: existing } = await (supabaseAdmin as any)
+      .from("stripe_products")
+      .select("*")
+      .eq("plan", plan.id)
+      .maybeSingle();
+
+    const existingTyped = existing as {
+      product_id?: string;
+      price_id?: string;
+      amount?: number;
+    } | null;
+    let productId = existingTyped?.product_id;
+    let priceId = existingTyped?.price_id;
+
+    if (!productId) {
+      const product = await stripe.products.create({
+        name: plan.label,
+        metadata: { plan: plan.id, scans: String(plan.scans) },
+      });
+      productId = product.id;
+    }
+    if (!priceId || existingTyped?.amount !== plan.amount) {
+      const price = await stripe.prices.create({
+        product: productId!,
+        unit_amount: plan.amount,
+        currency: "eur",
+        recurring: { interval: plan.interval as any },
+      });
+      priceId = price.id;
+    }
+    await (supabaseAdmin as any).from("stripe_products").upsert({
+      plan: plan.id,
+      product_id: productId,
+      price_id: priceId,
+      amount: plan.amount,
+      currency: "eur",
+      interval: plan.interval,
+      updated_at: new Date().toISOString(),
+    });
+    results.push({ plan: plan.id, productId: productId!, priceId: priceId! });
+  }
+  return { ok: true, results };
+}
+
+export async function createStripeCheckoutInternal(data: {
+  token: string;
+  plan: PlanId;
+  trial?: boolean;
+  origin?: string;
+}) {
+  const user = await authUser(data.token);
+  const { stripe } = await getStripe();
+
+  const { data: prod, error } = await (supabaseAdmin as any)
+    .from("stripe_products")
+    .select("*")
+    .eq("plan", data.plan)
+    .maybeSingle();
+
+  let prodTyped = prod as { price_id: string } | null;
+  if (error || !prodTyped) {
+    console.log(`[Stripe] Plan ${data.plan} not found in database. Attempting automatic sync...`);
+    try {
+      const plan = PLANS_DEF.find((p) => p.id === data.plan);
+      if (!plan) throw new Error("Plano inválido");
+
+      const product = await stripe.products.create({
+        name: plan.label,
+        metadata: { plan: plan.id, scans: String(plan.scans) },
+      });
+      const productId = product.id;
+
+      const price = await stripe.prices.create({
+        product: productId!,
+        unit_amount: plan.amount,
+        currency: "eur",
+        recurring: { interval: plan.interval as any },
+      });
+      const priceId = price.id;
+
+      const { data: inserted } = await (supabaseAdmin as any)
+        .from("stripe_products")
+        .upsert({
+          plan: plan.id,
+          product_id: productId,
+          price_id: priceId,
+          amount: plan.amount,
+          currency: "eur",
+          interval: plan.interval,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      prodTyped = inserted as { price_id: string } | null;
+    } catch (syncErr: any) {
+      console.error("[Stripe] Automatic plan sync failed:", syncErr);
+      throw new Error(
+        "Plano ainda não sincronizado. Vá para a página de administração para sincronizar planos ou verifique sua chave do Stripe no banco de dados.",
+      );
+    }
+  }
+
+  const { data: sub } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .select("stripe_customer_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const subTyped = sub as { stripe_customer_id: string } | null;
+  let customerId = subTyped?.stripe_customer_id;
+  if (!customerId) {
+    const cust = await stripe.customers.create({
+      email: user.email,
+      metadata: { user_id: user.id },
+    });
+    customerId = cust.id;
+    await (supabaseAdmin as any).from("subscriptions").upsert(
+      {
+        user_id: user.id,
+        stripe_customer_id: customerId,
+        status: "free",
+        scans_credits: 0,
+      },
+      { onConflict: "user_id" },
+    );
+  }
+
+  const baseUrl =
+    data.origin ||
+    process.env.PUBLIC_APP_URL ||
+    "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
+
+  console.log(
+    "[Stripe] Creating checkout session. User:",
+    user.id,
+    "Plan:",
+    data.plan,
+    "Trial:",
+    data.trial,
+  );
+  const planDef = PLANS_DEF.find((p) => p.id === data.plan);
+
+  try {
+    const subscriptionData: any = {
+      metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
+    };
+
+    if (data.trial && (planDef?.trial_days ?? 7) > 0) {
+      subscriptionData.trial_period_days = planDef?.trial_days ?? 7;
+    }
+
+    const sessionOptions: any = {
+      mode: "subscription",
+      customer: customerId,
+      line_items: [{ price: prodTyped.price_id, quantity: 1 }],
+      subscription_data: subscriptionData,
+      billing_address_collection: "auto",
+      success_url: `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`,
+      cancel_url: `${baseUrl}/premium?canceled=1`,
+      metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
+    };
+
+    // Nota: Métodos como MB WAY, Multibanco, PIX e BLIK não suportam 'subscription' no Stripe Checkout.
+    // Se incluirmos esses métodos, a Stripe recusa a criação da sessão.
+    // Usamos apenas os métodos que garantidamente suportam o modo assinatura em EUR.
+    const checkoutMethods = [
+      "card",
+      "paypal",
+      "klarna",
+      "sepa_debit",
+      "bancontact",
+      "ideal",
+      "revolut_pay",
+      "link",
+    ];
+
+    console.log("[Stripe] Creating checkout session with stable subscription methods...");
+    const session = await stripe.checkout.sessions.create({
+      ...sessionOptions,
+      payment_method_types: checkoutMethods as any,
+    });
+
+    console.log("[Stripe] Session created successfully:", session.id);
+    return { url: session.url };
+  } catch (stripeErr: any) {
+    console.error("[Stripe] Critical failure creating session:", stripeErr);
+    if (stripeErr.raw) {
+      console.error("[Stripe] Raw error details:", JSON.stringify(stripeErr.raw, null, 2));
+    }
+    throw new Error(stripeErr.message || "Erro na Stripe ao criar sessão");
+  }
+}
+
+async function authUser(token: string) {
+  if (!token) throw new Error("Unauthorized");
+  const { data, error } = await (supabaseAdmin as any).auth.getUser(token);
+  if (error || !data?.user) throw new Error("Unauthorized");
+  return data.user as { id: string; email?: string };
+}
