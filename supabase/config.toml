@@ -1,9 +1,0 @@
-project_id = "tywmdiltkvtvcbaddpsz"
-[functions.food-image]
-verify_jwt = false
-
-[functions.backfill-food-images]
-verify_jwt = false
-
-[functions.food-lookup]
-verify_jwt = false
