@@ -73,8 +73,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const reachabilityTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const offlineAudioCtxRef = useRef<AudioContext | null>(null);
+  const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
   const dialingAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -105,76 +104,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     onlineUsersRef.current = onlineUsers;
   }, [onlineUsers]);
-
-  const stopOfflineSound = useCallback(() => {
-    if (offlineAudioCtxRef.current) {
-      try {
-        offlineAudioCtxRef.current.close();
-      } catch (err) {
-        void err;
-      }
-      offlineAudioCtxRef.current = null;
-    }
-  }, []);
-
-  // Som diferenciado / esquisito quando utilizador está offline (Special Information Tone ITU-T telecom reorder)
-  const playOfflineWeirdSound = useCallback(
-    (volumeMultiplier = 1.0) => {
-      stopOfflineSound();
-      try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) return;
-        const ctx = new AudioContextClass();
-        offlineAudioCtxRef.current = ctx;
-
-        const playTone = (
-          f1: number,
-          f2: number,
-          start: number,
-          dur: number,
-          type: OscillatorType = "sine",
-          gainVal = 0.25,
-        ) => {
-          const o1 = ctx.createOscillator();
-          const o2 = ctx.createOscillator();
-          const g = ctx.createGain();
-
-          o1.type = type;
-          o2.type = type;
-          o1.frequency.setValueAtTime(f1, start);
-          o2.frequency.setValueAtTime(f2, start);
-
-          const effectiveGain = Math.min(0.4, gainVal * volumeMultiplier);
-          g.gain.setValueAtTime(effectiveGain, start);
-          g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-
-          o1.connect(g);
-          o2.connect(g);
-          g.connect(ctx.destination);
-
-          o1.start(start);
-          o2.start(start);
-          o1.stop(start + dur);
-          o2.stop(start + dur);
-        };
-
-        const now = ctx.currentTime;
-        // Três tons dissonantes característicos de número sem rede / indisponível (SIT)
-        playTone(950, 914, now, 0.28, "sawtooth", 0.16);
-        playTone(1400, 1370, now + 0.32, 0.28, "sawtooth", 0.16);
-        playTone(1800, 1776, now + 0.64, 0.35, "sawtooth", 0.16);
-
-        // Sequência rápida de batimentos estranhos (tu-tu-tu-tu)
-        playTone(480, 620, now + 1.1, 0.18, "sine", 0.2);
-        playTone(480, 620, now + 1.35, 0.18, "sine", 0.2);
-        playTone(480, 620, now + 1.6, 0.18, "sine", 0.2);
-        playTone(480, 620, now + 1.85, 0.28, "sine", 0.2);
-      } catch (err) {
-        console.warn("Could not play offline sound:", err);
-      }
-    },
-    [stopOfflineSound],
-  );
 
   const toggleSpeaker = useCallback(() => {
     setIsSpeakerOn((prev) => {
@@ -319,11 +248,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetCall = useCallback(async () => {
     console.log("[Call] Executing resetCall");
-    if (reachabilityTimerRef.current) {
-      clearTimeout(reachabilityTimerRef.current);
-      reachabilityTimerRef.current = null;
+    if (callTimeoutRef.current) {
+      clearTimeout(callTimeoutRef.current);
+      callTimeoutRef.current = null;
     }
-    stopOfflineSound();
 
     activeCallRef.current?.close();
     incomingCallRef.current?.close();
@@ -361,7 +289,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setOtherUser(null);
     setIsMuted(false);
     setIsMinimized(false);
-  }, [stopOfflineSound, stopVibration, user?.id]);
+  }, [stopVibration, user?.id]);
 
   const resetCallRef = useRef(resetCall);
   useEffect(() => {
@@ -574,11 +502,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      if (reachabilityTimerRef.current) {
-        clearTimeout(reachabilityTimerRef.current);
-        reachabilityTimerRef.current = null;
+      if (callTimeoutRef.current) {
+        clearTimeout(callTimeoutRef.current);
+        callTimeoutRef.current = null;
       }
-      stopOfflineSound();
 
       try {
         // Pedir permissão e obter áudio do microfone
@@ -603,7 +530,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Buscar dados do outro utilizador
         const cleanTargetId = targetId.includes("_") ? targetId.split("_")[0] : targetId;
-        const targetProfile = await fetchOtherUserProfile(targetId);
+        await fetchOtherUserProfile(targetId);
 
         setStatus({ type: "calling" });
         setIsMinimized(false);
@@ -657,64 +584,40 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await sendCallSignalRef.current(targetId, "CALL_REQUEST", {
           peerId: myPeerId,
         });
-        await sendCallSignalRef.current(targetId, "PING");
 
-        // Sistema de deteção se o utilizador está online com conexão à internet:
-        const isTargetInPresence = onlineUsersRef.current.has(cleanTargetId);
-        const hasFcmToken = !!targetProfile?.fcm_token;
+        // Timeout padrão de chamada (45 segundos): aguarda o destinatário atender ou acordar o telemóvel
+        callTimeoutRef.current = setTimeout(() => {
+          if (statusRef.current.type === "calling") {
+            console.log(`[Call] Timeout de chamada (sem resposta de ${cleanTargetId})`);
+            dialingAudioRef.current?.pause();
+            stopVibration();
 
-        // Se o utilizador não está presente no Supabase e não tem token FCM,
-        // ele não possui qualquer dispositivo com internet ativo!
-        // Detecta offline rapidamente (1.8s para feedback visual suave) e toca o som esquisito.
-        // Se possui FCM, aguarda até 4.5s pela resposta PING/PONG do dispositivo conectado à internet.
-        if (!isTargetInPresence) {
-          const probeMs = !hasFcmToken ? 1800 : 4500;
-          reachabilityTimerRef.current = setTimeout(() => {
-            if (statusRef.current.type === "calling") {
-              console.log(`[Call] Reachability timeout: ${cleanTargetId} is offline.`);
-              dialingAudioRef.current?.pause();
-              stopVibration();
+            setStatus({ type: "missed" });
+            toast.info("O utilizador não atendeu a chamada.");
 
-              setStatus({
-                type: "offline",
-                offlineReason:
-                  "O utilizador não tem ligação à internet no momento ou está indisponível.",
-              });
-              playOfflineWeirdSound(isSpeakerOnRef.current ? 1.0 : 0.3);
-              toast.error("O utilizador não tem ligação à internet no momento.");
-
-              if (user?.id) {
-                saveCallLog(cleanTargetId, 0, "missed");
-              }
-
-              supabase
-                .from("active_calls")
-                .delete()
-                .or(`caller_id.eq.${user.id},receiver_id.eq.${user.id}`);
-
-              setTimeout(() => {
-                if (statusRef.current.type === "offline") {
-                  resetCallRef.current();
-                }
-              }, 4500);
+            if (user?.id) {
+              saveCallLog(cleanTargetId, 0, "missed");
             }
-          }, probeMs);
-        }
+
+            supabase
+              .from("active_calls")
+              .delete()
+              .or(`caller_id.eq.${user.id},receiver_id.eq.${user.id}`);
+
+            setTimeout(() => {
+              if (statusRef.current.type === "missed") {
+                resetCallRef.current();
+              }
+            }, 2500);
+          }
+        }, 45000);
       } catch (err) {
         console.error("Erro ao iniciar chamada:", err);
         toast.error("Não foi possível iniciar a chamada.");
         resetCallRef.current();
       }
     },
-    [
-      user?.id,
-      user?.user_metadata?.nome,
-      fetchOtherUserProfile,
-      playOfflineWeirdSound,
-      stopOfflineSound,
-      stopVibration,
-      saveCallLog,
-    ],
+    [user?.id, user?.user_metadata?.nome, fetchOtherUserProfile, stopVibration, saveCallLog],
   );
 
   const answerCall = useCallback(async () => {
@@ -960,10 +863,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           sendCallSignalRef.current(from, "PONG");
         } else if (type === "PONG") {
           console.log("[Call] Received PONG from:", from, "- recipient is online!");
-          if (reachabilityTimerRef.current) {
-            clearTimeout(reachabilityTimerRef.current);
-            reachabilityTimerRef.current = null;
-          }
         } else if (type === "CALL_REQUEST") {
           if (statusRef.current.type !== "idle" && statusRef.current.type !== "ringing") {
             console.log("[Call] Busy, rejecting incoming request from:", from);
@@ -988,9 +887,9 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           }
         } else if (type === "CALL_RESPONSE") {
-          if (reachabilityTimerRef.current) {
-            clearTimeout(reachabilityTimerRef.current);
-            reachabilityTimerRef.current = null;
+          if (callTimeoutRef.current) {
+            clearTimeout(callTimeoutRef.current);
+            callTimeoutRef.current = null;
           }
 
           if (
@@ -1030,6 +929,10 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         } else if (type === "CALL_ACCEPTED") {
           console.log("[Call] Remote user accepted call:", from);
+          if (callTimeoutRef.current) {
+            clearTimeout(callTimeoutRef.current);
+            callTimeoutRef.current = null;
+          }
           dialingAudioRef.current?.pause();
           setStatus({ type: "connected" });
 
