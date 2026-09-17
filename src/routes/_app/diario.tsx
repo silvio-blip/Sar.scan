@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Trash2, Camera, Loader2 } from "lucide-react";
+import { Trash2, Camera, Image as ImageIcon, Loader2 } from "lucide-react";
 import { FoodImage } from "@/components/food-image";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
@@ -37,6 +37,7 @@ function DiarioPage() {
   const [open, setOpen] = useState<Entry | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
   const { data: entries } = useQuery({
     queryKey: ["entries", user?.id, today()],
@@ -165,6 +166,60 @@ function DiarioPage() {
       toast.error("Falha ao salvar foto");
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  const handleTakeLivePhoto = async () => {
+    if (isInstalledApp()) {
+      try {
+        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        try {
+          const check = await Camera.checkPermissions();
+          if (check.camera !== "granted") {
+            await Camera.requestPermissions({ permissions: ["camera"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Camera,
+        });
+
+        if (photo.dataUrl && open && user) {
+          setUploadingPhoto(true);
+          try {
+            const file = await dataURLtoFile(photo.dataUrl, `edited-live-${Date.now()}.jpg`);
+            const url = await uploadFoodPhoto(file, user.id, "edit");
+            const { error } = await supabase
+              .from("food_entries")
+              .update({ foto_url: url })
+              .eq("id", open.id);
+            if (error) throw error;
+            setOpen({ ...open, foto_url: url });
+            qc.invalidateQueries({ queryKey: ["entries"] });
+            toast.success("Foto atualizada com sucesso");
+          } catch (uploadErr) {
+            console.error("Upload error of capacitor file:", uploadErr);
+            toast.error("Falha ao salvar foto");
+          } finally {
+            setUploadingPhoto(false);
+          }
+        }
+      } catch (err: any) {
+        console.error("Capacitor camera error:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          cameraRef.current?.click();
+        }
+      }
+    } else {
+      cameraRef.current?.click();
     }
   };
 
@@ -458,24 +513,48 @@ function DiarioPage() {
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
+                  accept=".png,.jpg,.jpeg,.webp,.heic,.heif,image/*"
                   className="sr-only absolute pointer-events-none w-0 h-0"
                   onChange={trocarFoto}
                 />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="absolute bottom-3 right-3 rounded-2xl bg-white/90 text-zinc-900 border border-zinc-200 shadow-sm gap-2 font-black text-[10px] uppercase tracking-widest h-9 px-4 active:scale-95 transition-all hover:bg-white"
-                  onClick={handleSelectPhoto}
-                  disabled={uploadingPhoto}
-                >
-                  {uploadingPhoto ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Camera className="size-4" />
-                  )}
-                  {open.foto_url ? "Mudar foto" : "Adicionar foto"}
-                </Button>
+                <input
+                  ref={cameraRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="sr-only absolute pointer-events-none w-0 h-0"
+                  onChange={trocarFoto}
+                />
+                <div className="absolute bottom-3 right-3 flex items-center gap-2 z-10">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-2xl bg-white/95 text-zinc-900 border border-zinc-200 shadow-sm gap-1.5 font-black text-[10px] uppercase tracking-widest h-9 px-3 active:scale-95 transition-all hover:bg-white"
+                    onClick={handleTakeLivePhoto}
+                    disabled={uploadingPhoto}
+                    title="Tirar foto em tempo real agora"
+                  >
+                    {uploadingPhoto ? (
+                      <Loader2 className="size-3.5 animate-spin text-zinc-900" />
+                    ) : (
+                      <Camera className="size-3.5 text-emerald-600" />
+                    )}
+                    <span>Tirar Foto</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-2xl bg-white/95 text-zinc-900 border border-zinc-200 shadow-sm gap-1.5 font-black text-[10px] uppercase tracking-widest h-9 px-3 active:scale-95 transition-all hover:bg-white"
+                    onClick={handleSelectPhoto}
+                    disabled={uploadingPhoto}
+                    title="Escolher foto da galeria"
+                  >
+                    <ImageIcon className="size-3.5 text-sky-600" />
+                    <span>Galeria</span>
+                  </Button>
+                </div>
               </div>
 
               <div className="flex items-center gap-2 px-1">

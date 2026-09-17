@@ -145,18 +145,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        loadUserData(s.user.id).finally(() => setLoading(false));
-      } else {
+    supabase.auth
+      .getSession()
+      .then(({ data: { session: s } }) => {
+        setSession(s);
+        setUser(s?.user ?? null);
+        if (s?.user) {
+          loadUserData(s.user.id).finally(() => setLoading(false));
+        } else {
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        console.error("[Auth] Get session error:", err);
         setLoading(false);
-      }
-    }).catch((err) => {
-      console.error("[Auth] Get session error:", err);
-      setLoading(false);
-    });
+      });
 
     return () => sub.unsubscribe();
   }, []);

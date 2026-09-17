@@ -13,11 +13,14 @@ type Props = {
 function isUsableUrl(value?: string | null) {
   if (!value) return false;
   const lower = value.toLowerCase().trim();
+  if (lower.startsWith("data:image/") || lower.startsWith("blob:")) return true;
   if (!lower.startsWith("http")) return false;
-  // Only the user's own scanner snapshots (uploaded to scan-photos) should
+  // Only the user's own scanner snapshots (uploaded to scan-photos) or Supabase storage photos should
   // ever render. Every other source (web product images, AI-resolved photos,
   // legacy foto_url values) is intentionally hidden — cards show the icon.
-  return lower.includes("/scan-photos/");
+  return (
+    lower.includes("/scan-photos/") || lower.includes("supabase.co") || lower.includes("storage")
+  );
 }
 
 export function FoodImage({

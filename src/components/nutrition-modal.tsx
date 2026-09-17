@@ -1,6 +1,17 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, Flame, Wheat, Beef, Droplet, Camera, X, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Minus,
+  Flame,
+  Wheat,
+  Beef,
+  Droplet,
+  Camera,
+  Image as ImageIcon,
+  X,
+  Loader2,
+} from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { FoodImage } from "@/components/food-image";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
@@ -36,7 +47,8 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
   const [busy, setBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (food) {
@@ -66,7 +78,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
         !mimeType.includes("html") &&
         !mimeType.includes("xml"));
 
-    if (!hasValidExtension || !hasValidMime) {
+    if (!hasValidExtension && !hasValidMime) {
       toast.error(
         "Por favor, envie um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
       );
@@ -77,6 +89,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     try {
       const url = await uploadFoodPhoto(file, user.id, "manual");
       setPhotoUrl(url);
+      toast.success("Foto carregada com sucesso!");
     } catch {
       toast.error("Falha ao enviar foto");
     } finally {
@@ -84,20 +97,76 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     }
   };
 
-  const handleSelectCapacitorPhoto = async () => {
+  const handleTakeLivePhoto = async () => {
     if (isInstalledApp()) {
       try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
+        const {
+          Camera: CapCamera,
+          CameraResultType,
+          CameraSource,
+        } = await import("@capacitor/camera");
         try {
-          const check = await Camera.checkPermissions();
-          if (check.photos !== "granted") {
-            await Camera.requestPermissions({ permissions: ["photos"] });
+          const check = await CapCamera.checkPermissions();
+          if (check.camera !== "granted") {
+            await CapCamera.requestPermissions({ permissions: ["camera"] });
           }
         } catch (permErr) {
           console.warn("[Capacitor Permissions Error]", permErr);
         }
 
-        const photo = await Camera.getPhoto({
+        const photo = await CapCamera.getPhoto({
+          quality: 85,
+          allowEditing: false,
+          resultType: CameraResultType.DataUrl,
+          source: CameraSource.Camera,
+        });
+
+        if (photo.dataUrl && user) {
+          setUploading(true);
+          try {
+            const file = await dataURLtoFile(photo.dataUrl, `camera-photo-${Date.now()}.jpg`);
+            const url = await uploadFoodPhoto(file, user.id, "manual");
+            setPhotoUrl(url);
+            toast.success("Foto em tempo real capturada!");
+          } catch (uploadErr) {
+            console.error("Capacitor camera upload error in dialog:", uploadErr);
+            toast.error("Falha ao salvar foto");
+          } finally {
+            setUploading(false);
+          }
+        }
+      } catch (err: any) {
+        console.error("Capacitor camera error in modal:", err);
+        if (
+          err?.message !== "User cancelled photos app" &&
+          err?.message?.indexOf("cancelled") === -1
+        ) {
+          cameraInputRef.current?.click();
+        }
+      }
+    } else {
+      cameraInputRef.current?.click();
+    }
+  };
+
+  const handleSelectGalleryPhoto = async () => {
+    if (isInstalledApp()) {
+      try {
+        const {
+          Camera: CapCamera,
+          CameraResultType,
+          CameraSource,
+        } = await import("@capacitor/camera");
+        try {
+          const check = await CapCamera.checkPermissions();
+          if (check.photos !== "granted") {
+            await CapCamera.requestPermissions({ permissions: ["photos"] });
+          }
+        } catch (permErr) {
+          console.warn("[Capacitor Permissions Error]", permErr);
+        }
+
+        const photo = await CapCamera.getPhoto({
           quality: 85,
           allowEditing: false,
           resultType: CameraResultType.DataUrl,
@@ -107,27 +176,28 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
         if (photo.dataUrl && user) {
           setUploading(true);
           try {
-            const file = await dataURLtoFile(photo.dataUrl, `manual-photo-${Date.now()}.jpg`);
+            const file = await dataURLtoFile(photo.dataUrl, `gallery-photo-${Date.now()}.jpg`);
             const url = await uploadFoodPhoto(file, user.id, "manual");
             setPhotoUrl(url);
+            toast.success("Foto selecionada da galeria!");
           } catch (uploadErr) {
-            console.error("Capacitor upload error in dialog:", uploadErr);
+            console.error("Capacitor gallery upload error in dialog:", uploadErr);
             toast.error("Falha ao salvar foto");
           } finally {
             setUploading(false);
           }
         }
       } catch (err: any) {
-        console.error("Capacitor picker error in modal:", err);
+        console.error("Capacitor gallery picker error in modal:", err);
         if (
           err?.message !== "User cancelled photos app" &&
           err?.message?.indexOf("cancelled") === -1
         ) {
-          fileRef.current?.click();
+          galleryInputRef.current?.click();
         }
       }
     } else {
-      fileRef.current?.click();
+      galleryInputRef.current?.click();
     }
   };
 
@@ -148,7 +218,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
         <DialogDescription className="sr-only">Ajuste a porção e adicione</DialogDescription>
         {food && (
           <div className="space-y-0 relative">
-            <div className="relative h-60 w-full overflow-hidden">
+            <div className="relative h-64 w-full overflow-hidden bg-black/40">
               <FoodImage
                 src={photoUrl ?? food.foto_url}
                 alt={food.nome}
@@ -156,43 +226,79 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                 className="h-full w-full object-cover"
                 roundedPlaceholder={false}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".png,.jpg,.jpeg,.webp,.heic,.heif"
-                className="sr-only absolute pointer-events-none w-0 h-0"
-                onChange={handleFile}
-              />
-              <div className="absolute bottom-4 right-4 flex gap-2">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
+
+              {/* Status se foto foi personalizada */}
+              {photoUrl && (
+                <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-600/90 text-white text-[10px] font-black uppercase tracking-wider shadow-md backdrop-blur-sm">
+                  <span className="size-1.5 rounded-full bg-white animate-pulse" />
+                  Foto pronta para salvar
+                </div>
+              )}
+
+              {/* Action Buttons: Tirar Foto & Galeria */}
+              <div className="absolute bottom-4 right-3 left-3 z-20 flex items-center justify-end gap-2">
                 {photoUrl && (
                   <Button
+                    type="button"
                     size="icon"
                     variant="secondary"
-                    className="size-10 rounded-full bg-white/90 text-zinc-900 border border-zinc-200 hover:bg-white shadow-md"
+                    className="size-9 rounded-full bg-zinc-900/80 text-white hover:bg-zinc-900 border border-white/20 shadow-md active:scale-95 transition-transform shrink-0"
                     onClick={() => setPhotoUrl(null)}
                     disabled={uploading}
+                    title="Remover foto personalizada"
                   >
                     <X className="size-4" />
                   </Button>
                 )}
+
                 <Button
+                  type="button"
                   size="sm"
                   variant="secondary"
-                  className="rounded-full h-10 bg-white/90 text-zinc-900 border border-zinc-200 hover:bg-white shadow-md gap-2 px-4"
-                  onClick={handleSelectCapacitorPhoto}
+                  className="rounded-full h-9 bg-white/95 text-zinc-900 hover:bg-white border border-zinc-200 shadow-md gap-1.5 px-3.5 active:scale-95 transition-all text-xs font-bold"
+                  onClick={handleTakeLivePhoto}
                   disabled={uploading}
+                  title="Tirar foto em tempo real agora"
                 >
                   {uploading ? (
-                    <Loader2 className="size-4 animate-spin text-zinc-900" />
+                    <Loader2 className="size-3.5 animate-spin text-zinc-900" />
                   ) : (
-                    <Camera className="size-4 text-zinc-900" />
+                    <Camera className="size-3.5 text-emerald-600" />
                   )}
-                  <span className="text-xs font-bold uppercase tracking-widest text-zinc-900">
-                    {photoUrl ? "Trocar" : "Adicionar foto"}
-                  </span>
+                  <span>Tirar Foto</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="rounded-full h-9 bg-white/95 text-zinc-900 hover:bg-white border border-zinc-200 shadow-md gap-1.5 px-3.5 active:scale-95 transition-all text-xs font-bold"
+                  onClick={handleSelectGalleryPhoto}
+                  disabled={uploading}
+                  title="Escolher foto da galeria"
+                >
+                  <ImageIcon className="size-3.5 text-sky-600" />
+                  <span>Galeria</span>
                 </Button>
               </div>
+
+              {/* Hidden file inputs para Câmera ao vivo e Galeria */}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only absolute pointer-events-none w-0 h-0"
+                onChange={handleFile}
+              />
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,.heic,.heif,image/*"
+                className="sr-only absolute pointer-events-none w-0 h-0"
+                onChange={handleFile}
+              />
             </div>
 
             <div className="space-y-6 p-6 -mt-6 relative z-10">

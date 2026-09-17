@@ -27,10 +27,20 @@ export async function uploadFoodPhoto(
 ): Promise<string> {
   const blob = await compressImage(file);
   const path = `${userId}/${prefix}-${Date.now()}.jpg`;
-  const { error } = await supabase.storage
-    .from("scan-photos")
-    .upload(path, blob, { contentType: "image/jpeg", upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from("scan-photos").getPublicUrl(path);
-  return data.publicUrl;
+  try {
+    const { error } = await supabase.storage
+      .from("scan-photos")
+      .upload(path, blob, { contentType: "image/jpeg", upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from("scan-photos").getPublicUrl(path);
+    return data.publicUrl;
+  } catch (err) {
+    console.warn("Falha no upload para scan-photos, usando fallback Data URL:", err);
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
 }

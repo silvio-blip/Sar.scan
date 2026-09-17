@@ -49,9 +49,10 @@ export function BuscarPage() {
 
   // Geração de imagens automáticas desativada nesta configuração.
 
-  const adicionar = async (food: NutritionFood, p: number) => {
+  const adicionar = async (food: NutritionFood, p: number, fotoUrl?: string | null) => {
     if (!user) return;
-    await supabase.from("food_entries").insert({
+    const finalPhoto = fotoUrl !== undefined ? fotoUrl : (food.foto_url ?? null);
+    const { error } = await supabase.from("food_entries").insert({
       user_id: user.id,
       nome: food.nome,
       porcoes: p,
@@ -59,10 +60,16 @@ export function BuscarPage() {
       carbs: Number(food.carb) * p,
       prot: Number(food.prot) * p,
       gord: Number(food.gord) * p,
-      foto_url: food.foto_url ?? null,
+      foto_url: finalPhoto,
     });
+    if (error) {
+      console.error("Erro ao salvar alimento no diário:", error);
+      toast.error("Erro ao salvar alimento no diário");
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ["entries"] });
     qc.invalidateQueries();
-    toast.success("Adicionado ao diário");
+    toast.success("Adicionado ao diário!");
     setSelected(null);
   };
 

@@ -138,7 +138,7 @@ function PremiumPage() {
     try {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 7);
-      
+
       const { error } = await supabase.from("subscriptions").upsert({
         user_id: user.id,
         status: "trialing",
@@ -147,12 +147,12 @@ function PremiumPage() {
         ai_agent_enabled: true,
         scans_credits: 30,
       });
-      
+
       if (error) throw error;
-      
+
       toast.success("Teste grátis de 7 dias ativado!");
       if (refresh) await refresh();
-      
+
       const likelyPlan = { ...(PLANS.find((p) => p.id === "monthly")! || PLANS[1]), scans: 30 };
       setPurchasedPlan(likelyPlan);
       setShowSuccessModal(true);
@@ -655,7 +655,10 @@ function PremiumPage() {
                   SEUS NOVOS PODERES:
                 </div>
                 {[
-                  { icon: Sparkles, text: `${purchasedPlan?.scans} créditos para o scanner de alimentos` },
+                  {
+                    icon: Sparkles,
+                    text: `${purchasedPlan?.scans} créditos para o scanner de alimentos`,
+                  },
                   { icon: Bot, text: "Acesso ao scanner por 7 dias" },
                 ].map((item, i) => (
                   <motion.div
