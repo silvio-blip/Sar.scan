@@ -275,85 +275,130 @@ O formato deve ser exatamente:
       const settings = await getAppSettings();
       const serverKey =
         settings.fcm_server_key || process.env.FCM_SERVER_KEY || process.env.VITE_FCM_SERVER_KEY;
-      let fcmResultLog = null;
+      let fcmResultLog: any = null;
+      let diagnosis = "";
 
       if (!serverKey) {
         console.warn("[Push] FCM_SERVER_KEY não configurada no servidor.");
-      } else {
-        const isCallNotification =
-          fcmPayloadData?.type === "INCOMING_CALL" ||
-          fcmPayloadData?.type === "incoming_call" ||
-          (typeof title === "string" && title.toLowerCase().includes("chamada"));
-
-        const callChannelId = "incoming_calls";
-        const generalChannelId = "default_channel";
-        const channelId = isCallNotification ? callChannelId : generalChannelId;
-
-        // Montar payload com registration_ids (e 'to' se único) com parâmetros de alta prioridade para o Android
-        const fcmBody: any = {
-          priority: "high",
-          content_available: true,
-          notification: {
-            title,
-            body,
-            android_channel_id: channelId,
-            channel_id: channelId,
-            sound: isCallNotification ? "ringtone" : "default",
-            badge: 1,
-            priority: "high",
-            click_action: "FLUTTER_NOTIFICATION_CLICK",
-          },
-          data: {
-            ...fcmPayloadData,
-            type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
-            roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId,
-            channelId,
-            title,
-            body,
-          },
-          android: {
-            priority: "high",
-            ttl: isCallNotification ? "60s" : "86400s",
-            notification: {
-              sound: isCallNotification ? "ringtone" : "default",
-              channel_id: channelId,
-              android_channel_id: channelId,
-              priority: "max",
-              visibility: "public",
-            },
-          },
-        };
-
-        if (tokens.length === 1) {
-          fcmBody.to = tokens[0];
-        } else {
-          fcmBody.registration_ids = tokens;
-        }
-
-        const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
-          method: "POST",
-          headers: {
-            Authorization: `key=${serverKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(fcmBody),
+        return res.json({
+          success: false,
+          error: "FCM_SERVER_KEY_NOT_CONFIGURED",
+          diagnosis:
+            "A chave FCM_SERVER_KEY não está configurada no servidor (.env ou app_settings). O Google FCM não pode autenticar o envio.",
+          tokensCount: tokens.length,
         });
-
-        if (!fcmResponse.ok) {
-          const errorText = await fcmResponse.text();
-          console.error("[Push] Erro ao disparar FCM:", errorText);
-          throw new Error(`FCM API responded with status ${fcmResponse.status}: ${errorText}`);
-        }
-
-        const fcmResult = await fcmResponse.json();
-        console.log(
-          `[Push] Notificação disparada com sucesso para ${tokens.length} dispositivo(s):`,
-          fcmResult,
-        );
-        fcmResultLog = fcmResult;
       }
 
-      res.json({ success: true, fcmResult: fcmResultLog });
+      const isCallNotification =
+        fcmPayloadData?.type === "INCOMING_CALL" ||
+        fcmPayloadData?.type === "incoming_call" ||
+        (typeof title === "string" && title.toLowerCase().includes("chamada"));
+
+      const callChannelId = "incoming_calls";
+      const generalChannelId = "default_channel";
+      const channelId = isCallNotification ? callChannelId : generalChannelId;
+
+      // Montar payload com registration_ids (e 'to' se único) com parâmetros de alta prioridade para o Android
+      const fcmBody: any = {
+        priority: "high",
+        content_available: true,
+        notification: {
+          title,
+          body,
+          android_channel_id: channelId,
+          channel_id: channelId,
+          sound: isCallNotification ? "ringtone" : "default",
+          badge: 1,
+          priority: "high",
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+        data: {
+          ...fcmPayloadData,
+          type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
+          roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId,
+          channelId,
+          title,
+          body,
+        },
+        android: {
+          priority: "high",
+          ttl: isCallNotification ? "60s" : "86400s",
+          notification: {
+            sound: isCallNotification ? "ringtone" : "default",
+            channel_id: channelId,
+            android_channel_id: channelId,
+            priority: "max",
+            visibility: "public",
+          },
+        },
+      };
+
+      if (tokens.length === 1) {
+        fcmBody.to = tokens[0];
+      } else {
+        fcmBody.registration_ids = tokens;
+      }
+
+      const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
+        method: "POST",
+        headers: {
+          Authorization: `key=${serverKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(fcmBody),
+      });
+
+      if (!fcmResponse.ok) {
+        const errorText = await fcmResponse.text();
+        console.error("[Push] Erro retornado pela API do FCM:", fcmResponse.status, errorText);
+        return res.status(502).json({
+          success: false,
+          error: "FCM_API_ERROR",
+          httpStatus: fcmResponse.status,
+          fcmResponse: errorText,
+          diagnosis: `O Google FCM rejeitou a chave do servidor com status HTTP ${fcmResponse.status}. Verifique se a FCM_SERVER_KEY (Server Key Legada) está correta no Firebase Console.`,
+        });
+      }
+
+      const fcmResult = await fcmResponse.json();
+      fcmResultLog = fcmResult;
+      console.log(
+        `[Push] Resposta do Google FCM para ${tokens.length} dispositivo(s):`,
+        JSON.stringify(fcmResult),
+      );
+
+      // Avaliar os erros retornados pelo Google FCM
+      const errorsList: string[] = [];
+      if (Array.isArray(fcmResult?.results)) {
+        fcmResult.results.forEach((r: any) => {
+          if (r.error) errorsList.push(r.error);
+        });
+      } else if (fcmResult?.error) {
+        errorsList.push(fcmResult.error);
+      }
+
+      if (errorsList.length > 0) {
+        if (errorsList.includes("InvalidRegistration") || errorsList.includes("MismatchSenderId")) {
+          diagnosis =
+            "O Token FCM salvo na base de dados é INVÁLIDO ou foi gerado por outro projeto Firebase (MismatchSenderId / InvalidRegistration). O telemóvel precisa de abrir a app para renovar o token!";
+        } else if (errorsList.includes("NotRegistered")) {
+          diagnosis =
+            "O Token FCM expirou ou a aplicação foi desinstalada/reinstalada no telemóvel (NotRegistered). Abra a app no telemóvel para registrar um novo token.";
+        } else {
+          diagnosis = `O Google FCM retornou erro no token: ${errorsList.join(", ")}`;
+        }
+      } else if (fcmResult?.success > 0 || fcmResult?.message_id) {
+        diagnosis = `Notificação entregue com SUCESSO aos servidores do Google FCM! (Dispositivos alcançados: ${fcmResult.success || 1})`;
+      }
+
+      res.json({
+        success: errorsList.length === 0,
+        fcmResult: fcmResultLog,
+        tokensCount: tokens.length,
+        maskedTokens: tokens.map((t) => `${t.slice(0, 8)}...${t.slice(-6)}`),
+        errors: errorsList,
+        diagnosis,
+      });
     } catch (error: unknown) {
       console.error("[Push] Erro crítico no envio da notificação:", error);
       const msg = error instanceof Error ? error.message : "Erro desconhecido";

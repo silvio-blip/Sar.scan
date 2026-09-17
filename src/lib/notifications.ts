@@ -28,12 +28,22 @@ export const initNotifications = async () => {
 
     // 2. Registar o Token FCM no perfil do utilizador logado no Supabase
     PushNotifications.addListener("registration", async (token) => {
-      console.log("Token FCM do dispositivo:", token.value);
+      if (!token?.value) {
+        console.error(
+          "[CALL_DIAGNOSTIC] ATENÇÃO: O FCM Token deste dispositivo está NULO ou VAZIO!",
+        );
+      } else {
+        console.log(`[CALL_DIAGNOSTIC] FCM Token gerado no dispositivo local: ${token.value}`);
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) {
+      if (user && token?.value) {
         await supabase.from("profiles").update({ fcm_token: token.value }).eq("id", user.id);
+        console.log(
+          `[CALL_DIAGNOSTIC] FCM Token salvo com sucesso no perfil do Supabase (User ID: ${user.id})`,
+        );
       }
     });
 

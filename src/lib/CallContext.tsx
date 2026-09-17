@@ -477,26 +477,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      // Barramento de chamada na Web:
-      // Conforme o fluxo nativo (Estilo WhatsApp), chamadas com notificações de alta prioridade
-      // exigem a aplicação Android (APK) instalada nativamente. Na web o acesso é barrado.
-      if (!isNativePlatform()) {
-        setShowWebBlockedDialog(true);
-        try {
-          if (typeof window !== "undefined") {
-            window.alert(
-              "Para fazer ou receber chamadas com notificações em tempo real, descarrega a nossa aplicação!",
-            );
-          }
-        } catch (alertErr) {
-          void alertErr;
-        }
-        toast.warning(
-          "Para fazer ou receber chamadas com notificações em tempo real, descarrega a nossa aplicação!",
-        );
-        return;
-      }
-
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         toast.error("Sem ligação à internet. Verifique a sua conexão.");
         return;
@@ -557,40 +537,70 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         // Enviar notificação FCM de alta prioridade para acordar o telemóvel do destinatário
-        console.log(
-          `[Call] Disparando requisição HTTP POST para /api/notifications/send (FCM) para o utilizador ${cleanTargetId}...`,
-        );
-        try {
-          fetch(getApiUrl("/api/notifications/send"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              targetUserId: cleanTargetId,
-              title: "Chamada Recebida",
-              body: "A receber chamada...",
-              data: {
-                type: "INCOMING_CALL",
-                roomId: user.id,
-                callId: user.id,
-                callerId: user.id,
-                callerName: user.user_metadata?.nome || "Amigo",
-                callerAvatar: user.user_metadata?.avatar_url || "",
-                channelId: "incoming_calls",
-              },
-            }),
-          })
-            .then((res) => {
-              if (res.ok) {
-                console.log(
-                  "[Call] Notificação de chamada enviada com sucesso para /api/notifications/send!",
-                );
-              } else {
-                console.warn("[Call] Resposta não-200 da API de notificações:", res.status);
-              }
+        console.log("=== [CALL_DIAGNOSTIC] INICIANDO PROCESSO DE NOTIFICAÇÃO DE CHAMADA ===");
+        console.log(`[CALL_DIAGNOSTIC] Destinatário (targetUserId): ${cleanTargetId}`);
+        console.log(`[CALL_DIAGNOSTIC] ID da Sala (roomId): ${user.id}`);
+
+        if (!cleanTargetId) {
+          console.error(
+            "[CALL_DIAGNOSTIC] ERRO CRÍTICO: targetUserId está VAZIO! O backend vai rejeitar.",
+          );
+        } else {
+          const callNotificationPayload = {
+            targetUserId: cleanTargetId,
+            title: "Chamada Recebida",
+            body: "A receber chamada...",
+            data: {
+              type: "INCOMING_CALL",
+              roomId: user.id,
+              callId: user.id,
+              callerId: user.id,
+              callerName: user.user_metadata?.nome || "Amigo",
+              callerAvatar: user.user_metadata?.avatar_url || "",
+              channelId: "incoming_calls",
+            },
+          };
+
+          console.log("[CALL_DIAGNOSTIC] Payload montado:", callNotificationPayload);
+
+          try {
+            console.log(
+              "[CALL_DIAGNOSTIC] Enviando requisição POST para /api/notifications/send...",
+            );
+            fetch(getApiUrl("/api/notifications/send"), {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(callNotificationPayload),
             })
-            .catch((pushErr) => console.warn("[Call] Push dispatch warning:", pushErr));
-        } catch (e) {
-          console.warn("[Call] Push dispatch error:", e);
+              .then(async (res) => {
+                if (res.ok) {
+                  const resData = await res.json().catch(() => ({}));
+                  console.log(
+                    `[CALL_DIAGNOSTIC] SUCESSO: Backend recebeu a requisição! Código HTTP: ${res.status}`,
+                    resData,
+                  );
+                  if (resData?.success === false) {
+                    toast.warning(
+                      `[Push Alerta] ${resData?.message || "Destinatário sem fcm_token"}`,
+                    );
+                  } else {
+                    toast.success("Notificação Push FCM enviada ao destinatário!");
+                  }
+                } else {
+                  const errorText = await res.text().catch(() => "");
+                  console.error(
+                    `[CALL_DIAGNOSTIC] FALHA NO BACKEND: Código HTTP ${res.status} | Resposta: ${errorText}`,
+                  );
+                  toast.error(`Falha ao disparar push: HTTP ${res.status}`);
+                }
+              })
+              .catch((pushErr) => {
+                console.error("[CALL_DIAGNOSTIC] ERRO DE REDE/CONEXÃO ao chamar a API:", pushErr);
+                toast.error("Erro de conexão ao disparar notificação.");
+              });
+          } catch (e) {
+            console.error("[CALL_DIAGNOSTIC] Exceção ao disparar push de chamada:", e);
+          }
         }
 
         const myPeerId = peerIdRef.current || peerRef.current?.id;

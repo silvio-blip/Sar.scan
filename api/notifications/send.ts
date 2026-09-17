@@ -88,9 +88,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const serverKey =
       settings.fcm_server_key || process.env.FCM_SERVER_KEY || process.env.VITE_FCM_SERVER_KEY;
     let fcmResultLog = null;
+    let diagnosis = "";
 
     if (!serverKey) {
       console.warn("[Push] FCM_SERVER_KEY não configurada no servidor.");
+      return res.json({
+        success: false,
+        error: "FCM_SERVER_KEY_NOT_CONFIGURED",
+        diagnosis:
+          "A chave FCM_SERVER_KEY não está configurada no servidor (.env ou app_settings). O Google FCM não pode autenticar o envio.",
+        tokensCount: tokens.length,
+      });
     } else {
       const isCallNotification =
         fcmPayloadData?.type === "INCOMING_CALL" ||
@@ -154,15 +162,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!fcmResponse.ok) {
         const errorText = await fcmResponse.text();
         console.error("[Push] Erro ao disparar FCM:", errorText);
-        throw new Error(`FCM API responded with status ${fcmResponse.status}: ${errorText}`);
+        return res.status(502).json({
+          success: false,
+          error: "FCM_API_ERROR",
+          httpStatus: fcmResponse.status,
+          fcmResponse: errorText,
+          diagnosis: `O Google FCM rejeitou a requisição com HTTP ${fcmResponse.status}. Verifique se a FCM_SERVER_KEY está correta.`,
+        });
       }
 
       const fcmResult = await fcmResponse.json();
       console.log("[Push] Notificação disparada com sucesso via FCM:", fcmResult);
       fcmResultLog = fcmResult;
-    }
 
-    res.json({ success: true, fcmResult: fcmResultLog });
+      const errorsList: string[] = [];
+      if (Array.isArray(fcmResult?.results)) {
+        fcmResult.results.forEach((r: any) => {
+          if (r.error) errorsList.push(r.error);
+        });
+      } else if (fcmResult?.error) {
+        errorsList.push(fcmResult.error);
+      }
+
+      if (errorsList.length > 0) {
+        if (errorsList.includes("InvalidRegistration") || errorsList.includes("MismatchSenderId")) {
+          diagnosis =
+            "O Token FCM salvo na base de dados é INVÁLIDO ou foi gerado por outro projeto Firebase (MismatchSenderId / InvalidRegistration). Abra a app no telemóvel para renovar o token!";
+        } else if (errorsList.includes("NotRegistered")) {
+          diagnosis =
+            "O Token FCM expirou ou a aplicação foi reinstalada no telemóvel (NotRegistered). Abra a app no telemóvel para registrar um novo token.";
+        } else {
+          diagnosis = `O Google FCM retornou erro no token: ${errorsList.join(", ")}`;
+        }
+      } else if (fcmResult?.success > 0 || fcmResult?.message_id) {
+        diagnosis = `Notificação entregue com SUCESSO aos servidores do Google FCM! (Dispositivos alcançados: ${fcmResult.success || 1})`;
+      }
+
+      return res.json({
+        success: errorsList.length === 0,
+        fcmResult: fcmResultLog,
+        tokensCount: tokens.length,
+        maskedTokens: tokens.map((t: string) => `${t.slice(0, 8)}...${t.slice(-6)}`),
+        errors: errorsList,
+        diagnosis,
+      });
+    }
   } catch (error: any) {
     console.error("[Push] Erro crítico no envio da notificação:", error);
     res.status(500).json({ error: error.message || "Erro interno" });
