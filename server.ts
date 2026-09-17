@@ -12,7 +12,19 @@ import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
 import { verifyGooglePlayPurchaseInternal } from "./src/lib/google-play.server";
 import { supabaseAdmin } from "./src/integrations/supabase/client.server";
-import { getAppSettings } from "./src/lib/settings.server";
+import {
+  getAppSettings,
+  invalidateSettingsCache,
+  saveAppSetting,
+  SQL_APP_SETTINGS_MIGRATION,
+} from "./src/lib/settings.server";
+import {
+  sendFcmV1Notification,
+  getFcmV1AccessToken,
+  getFcmServiceAccount,
+  DEFAULT_SERVICE_ACCOUNT,
+  invalidateFcmTokenCache,
+} from "./src/lib/fcm-v1.server";
 
 // Logic from edge-proxy and stripe functions
 // Since we want to keep it simple, we'll import the logic directly if possible or copy it.
@@ -208,192 +220,150 @@ O formato deve ser exatamente:
   // Proxy for FCM notification delivery
   app.post("/api/notifications/send", async (req, res) => {
     try {
-      const { targetUserId, title, body, data, customData } = req.body;
+      const { targetUserId, fcmToken, token, title, body, data, customData } = req.body;
       const fcmPayloadData = data || customData || {};
-      if (!targetUserId) {
-        return res.status(400).json({ error: "O campo targetUserId é obrigatório." });
+      const target = targetUserId || fcmToken || token;
+
+      if (!target) {
+        return res.status(400).json({ error: "O campo targetUserId ou fcmToken é obrigatório." });
       }
 
-      console.log(
-        `[Push] Tentando enviar notificação para usuário ${targetUserId}: ${title} - ${body}`,
-      );
+      console.log(`[Push] Tentando enviar notificação para ${target}: ${title} - ${body}`);
 
-      const admin = supabaseAdmin;
-      if (!admin) {
-        return res.status(500).json({ error: "Supabase Admin não disponível." });
-      }
+      let tokens: string[] = [];
 
-      // Query the user's FCM token from profiles
-      const { data: recipientProfile, error: profileError } = await (admin as any)
-        .from("profiles")
-        .select("fcm_token, nome")
-        .eq("id", targetUserId)
-        .maybeSingle();
+      // Determinar se o target é um Token FCM direto ou um User ID (UUID)
+      const targetStr = String(target).trim();
+      const isUUID =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          targetStr,
+        );
+      const isDirectFcmToken =
+        Boolean(fcmToken || token) || !isUUID || targetStr.includes(":") || targetStr.length > 40;
 
-      if (profileError || !recipientProfile) {
-        console.error("[Push] Erro ao buscar perfil do destinatário:", profileError);
-        return res.status(404).json({ error: "Perfil do destinatário não encontrado." });
-      }
-
-      const rawFcmToken = recipientProfile.fcm_token;
-      // Suporte Multi-Dispositivo: Extrair todos os tokens (telemóveis) registados para este utilizador
-      const extractTokens = (raw: string | null | undefined): string[] => {
-        if (!raw || typeof raw !== "string") return [];
-        const trimmed = raw.trim();
-        if (!trimmed) return [];
-        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (Array.isArray(parsed)) {
-              return parsed
-                .map((t) => String(t).trim())
-                .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
-            }
-          } catch {
-            // fallback
-          }
+      if (isDirectFcmToken && !isUUID) {
+        console.log("[Push] Identificado token FCM direto fornecido na requisição.");
+        tokens = [targetStr];
+      } else {
+        const admin = supabaseAdmin;
+        if (!admin) {
+          return res.status(500).json({ error: "Supabase Admin não disponível." });
         }
-        return trimmed
-          .split(",")
-          .map((t) => t.trim())
-          .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
-      };
 
-      const tokens = extractTokens(rawFcmToken);
+        // Query the user's FCM token from profiles by user ID
+        const { data: recipientProfile, error: profileError } = await (admin as any)
+          .from("profiles")
+          .select("fcm_token, nome")
+          .eq("id", targetStr)
+          .maybeSingle();
+
+        if (profileError || !recipientProfile) {
+          console.warn(`[Push] Perfil não encontrado por ID (${targetStr}). Tentando fallback...`);
+          // Se não encontrou por ID, mas parece um token longo, usa-o diretamente
+          if (targetStr.length > 25) {
+            tokens = [targetStr];
+          } else {
+            return res.status(404).json({
+              error: "Perfil do destinatário não encontrado.",
+              diagnosis: `Não foi encontrado nenhum utilizador com o ID '${targetStr}' na tabela profiles do Supabase. Certifique-se de passar o User ID (UUID) do destinatário ou o Token FCM direto.`,
+            });
+          }
+        } else {
+          const rawFcmToken = recipientProfile.fcm_token;
+          const extractTokens = (raw: string | null | undefined): string[] => {
+            if (!raw || typeof raw !== "string") return [];
+            const trimmed = raw.trim();
+            if (!trimmed) return [];
+            if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+              try {
+                const parsed = JSON.parse(trimmed);
+                if (Array.isArray(parsed)) {
+                  return parsed
+                    .map((t) => String(t).trim())
+                    .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
+                }
+              } catch {
+                // fallback
+              }
+            }
+            return trimmed
+              .split(",")
+              .map((t) => t.trim())
+              .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
+          };
+
+          tokens = extractTokens(rawFcmToken);
+        }
+      }
+
       if (tokens.length === 0) {
-        console.warn(`[Push] Usuário ${targetUserId} não tem FCM token válido cadastrado.`);
+        console.warn(`[Push] Destinatário ${target} não tem FCM token válido cadastrado.`);
         return res.json({
           success: false,
           message: "Destinatário não tem fcm_token registrado no perfil.",
+          diagnosis: "O utilizador existe no Supabase, mas a coluna 'fcm_token' está vazia.",
         });
       }
 
       console.log(
-        `[Push] Disparando notificação para ${tokens.length} dispositivo(s)/telemóvel(is) do usuário ${targetUserId}...`,
+        `[Push] Disparando notificação v1 para ${tokens.length} dispositivo(s)/telemóvel(is)...`,
       );
 
-      const settings = await getAppSettings();
-      const serverKey =
-        settings.fcm_server_key || process.env.FCM_SERVER_KEY || process.env.VITE_FCM_SERVER_KEY;
-      let fcmResultLog: any = null;
-      let diagnosis = "";
-
-      if (!serverKey) {
-        console.warn("[Push] FCM_SERVER_KEY não configurada no servidor.");
-        return res.json({
-          success: false,
-          error: "FCM_SERVER_KEY_NOT_CONFIGURED",
-          diagnosis:
-            "A chave FCM_SERVER_KEY não está configurada no servidor (.env ou app_settings). O Google FCM não pode autenticar o envio.",
-          tokensCount: tokens.length,
-        });
-      }
-
-      const isCallNotification =
-        fcmPayloadData?.type === "INCOMING_CALL" ||
-        fcmPayloadData?.type === "incoming_call" ||
-        (typeof title === "string" && title.toLowerCase().includes("chamada"));
-
-      const callChannelId = "incoming_calls";
-      const generalChannelId = "default_channel";
-      const channelId = isCallNotification ? callChannelId : generalChannelId;
-
-      // Montar payload com registration_ids (e 'to' se único) com parâmetros de alta prioridade para o Android
-      const fcmBody: any = {
-        priority: "high",
-        content_available: true,
-        notification: {
-          title,
-          body,
-          android_channel_id: channelId,
-          channel_id: channelId,
-          sound: isCallNotification ? "ringtone" : "default",
-          badge: 1,
-          priority: "high",
-          click_action: "FLUTTER_NOTIFICATION_CLICK",
-        },
-        data: {
-          ...fcmPayloadData,
-          type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
-          roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId,
-          channelId,
-          title,
-          body,
-        },
-        android: {
-          priority: "high",
-          ttl: isCallNotification ? "60s" : "86400s",
-          notification: {
-            sound: isCallNotification ? "ringtone" : "default",
-            channel_id: channelId,
-            android_channel_id: channelId,
-            priority: "max",
-            visibility: "public",
-          },
-        },
-      };
-
-      if (tokens.length === 1) {
-        fcmBody.to = tokens[0];
-      } else {
-        fcmBody.registration_ids = tokens;
-      }
-
-      const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
-        method: "POST",
-        headers: {
-          Authorization: `key=${serverKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(fcmBody),
-      });
-
-      if (!fcmResponse.ok) {
-        const errorText = await fcmResponse.text();
-        console.error("[Push] Erro retornado pela API do FCM:", fcmResponse.status, errorText);
-        return res.status(502).json({
-          success: false,
-          error: "FCM_API_ERROR",
-          httpStatus: fcmResponse.status,
-          fcmResponse: errorText,
-          diagnosis: `O Google FCM rejeitou a chave do servidor com status HTTP ${fcmResponse.status}. Verifique se a FCM_SERVER_KEY (Server Key Legada) está correta no Firebase Console.`,
-        });
-      }
-
-      const fcmResult = await fcmResponse.json();
-      fcmResultLog = fcmResult;
-      console.log(
-        `[Push] Resposta do Google FCM para ${tokens.length} dispositivo(s):`,
-        JSON.stringify(fcmResult),
-      );
-
-      // Avaliar os erros retornados pelo Google FCM
+      // Usar Google Service Account (FCM HTTP v1 API)
+      const fcmResults: any[] = [];
       const errorsList: string[] = [];
-      if (Array.isArray(fcmResult?.results)) {
-        fcmResult.results.forEach((r: any) => {
-          if (r.error) errorsList.push(r.error);
-        });
-      } else if (fcmResult?.error) {
-        errorsList.push(fcmResult.error);
+
+      for (const t of tokens) {
+        try {
+          const resV1 = await sendFcmV1Notification({
+            token: t,
+            title,
+            body,
+            data: {
+              ...fcmPayloadData,
+              type: fcmPayloadData?.type || "general",
+              roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId || "",
+              title,
+              body,
+            },
+            priority: "high",
+          });
+
+          fcmResults.push(resV1);
+          if (!resV1.success) {
+            errorsList.push(resV1.error || "UNKNOWN_FCM_ERROR");
+          }
+        } catch (fcmErr: any) {
+          console.error("[Push] Erro ao enviar FCM v1 para token:", t, fcmErr);
+          errorsList.push(fcmErr.message || "FCM_V1_FAILED");
+        }
       }
 
+      let diagnosis = "";
       if (errorsList.length > 0) {
-        if (errorsList.includes("InvalidRegistration") || errorsList.includes("MismatchSenderId")) {
+        if (
+          errorsList.some(
+            (e) => e.includes("UNREGISTERED") || e.includes("NotRegistered") || e.includes("404"),
+          )
+        ) {
           diagnosis =
-            "O Token FCM salvo na base de dados é INVÁLIDO ou foi gerado por outro projeto Firebase (MismatchSenderId / InvalidRegistration). O telemóvel precisa de abrir a app para renovar o token!";
-        } else if (errorsList.includes("NotRegistered")) {
+            "O Token FCM do telemóvel expirou ou a aplicação foi reinstalada (UNREGISTERED/404). Abra a app no telemóvel para registrar um novo token.";
+        } else if (errorsList.some((e) => e.includes("INVALID_ARGUMENT"))) {
           diagnosis =
-            "O Token FCM expirou ou a aplicação foi desinstalada/reinstalada no telemóvel (NotRegistered). Abra a app no telemóvel para registrar um novo token.";
+            "Token FCM com formato inválido ou pertencente a outro projeto. Abra a app para gerar token atualizado.";
         } else {
-          diagnosis = `O Google FCM retornou erro no token: ${errorsList.join(", ")}`;
+          diagnosis = `O Google FCM v1 retornou: ${errorsList.join(", ")}`;
         }
-      } else if (fcmResult?.success > 0 || fcmResult?.message_id) {
-        diagnosis = `Notificação entregue com SUCESSO aos servidores do Google FCM! (Dispositivos alcançados: ${fcmResult.success || 1})`;
+      } else {
+        diagnosis = `Notificação entregue com SUCESSO via Google FCM HTTP v1 (Service Account) para ${tokens.length} dispositivo(s)!`;
       }
+
+      console.log("[Push] Resultado do envio FCM v1:", { errorsList, count: tokens.length });
 
       res.json({
         success: errorsList.length === 0,
-        fcmResult: fcmResultLog,
+        api: "FCM_HTTP_V1",
+        fcmResult: fcmResults,
         tokensCount: tokens.length,
         maskedTokens: tokens.map((t) => `${t.slice(0, 8)}...${t.slice(-6)}`),
         errors: errorsList,
@@ -403,6 +373,108 @@ O formato deve ser exatamente:
       console.error("[Push] Erro crítico no envio da notificação:", error);
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
       res.status(500).json({ error: msg });
+    }
+  });
+
+  // Consultar e validar configuração FCM atual (Service Account v1 e chaves)
+  app.get("/api/notifications/config", async (req, res) => {
+    try {
+      const settings = await getAppSettings();
+      const serviceAccountInfo = await getFcmServiceAccount();
+      let accessTokenValid = false;
+      let accessTokenError = null;
+
+      try {
+        const tokenRes = await getFcmV1AccessToken();
+        accessTokenValid = Boolean(tokenRes.accessToken);
+      } catch (err: any) {
+        accessTokenError = err.message;
+      }
+
+      // Quantos perfis têm fcm_token cadastrado no Supabase
+      let profilesWithTokenCount = 0;
+      if (supabaseAdmin) {
+        const { count } = await (supabaseAdmin as any)
+          .from("profiles")
+          .select("id", { count: "exact", head: true })
+          .not("fcm_token", "is", null);
+        profilesWithTokenCount = count || 0;
+      }
+
+      res.json({
+        serviceAccountConfigured: Boolean(serviceAccountInfo.credentials.private_key),
+        projectId: serviceAccountInfo.credentials.project_id,
+        clientEmail: serviceAccountInfo.credentials.client_email,
+        serviceAccountSource: serviceAccountInfo.source,
+        accessTokenValid,
+        accessTokenError,
+        loadedSettingsKeys: Object.keys(settings || {}),
+        profilesWithTokenCount,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Erro ao consultar configuração FCM" });
+    }
+  });
+
+  // Salvar ou atualizar Google Service Account JSON diretamente na tabela app_settings
+  app.post("/api/notifications/config", async (req, res) => {
+    try {
+      const { service_account_json } = req.body;
+      let lastSaveResult: any = null;
+
+      if (service_account_json) {
+        let cleanJsonStr =
+          typeof service_account_json === "string"
+            ? service_account_json.trim()
+            : JSON.stringify(service_account_json);
+
+        // Remover formatação de markdown se houver (ex: ```json ... ```)
+        if (cleanJsonStr.startsWith("```")) {
+          cleanJsonStr = cleanJsonStr
+            .replace(/^```(json)?/, "")
+            .replace(/```$/, "")
+            .trim();
+        }
+
+        // Validar se é JSON válido
+        try {
+          const parsed = JSON.parse(cleanJsonStr);
+          if (!parsed || typeof parsed !== "object") {
+            return res.status(400).json({ error: "O JSON fornecido deve ser um objeto válido." });
+          }
+        } catch (jsonErr: any) {
+          return res.status(400).json({ error: `O texto fornecido não é um JSON válido: ${jsonErr.message}` });
+        }
+
+        const saveRes = await saveAppSetting("firebase_service_account", cleanJsonStr);
+        lastSaveResult = saveRes;
+
+        if (!saveRes.success) {
+          return res.status(500).json({
+            error: saveRes.error,
+            diagnosis: saveRes.diagnosis,
+            sqlFix: saveRes.sqlFix,
+            source: saveRes.source,
+          });
+        }
+      }
+
+      invalidateSettingsCache();
+      invalidateFcmTokenCache();
+      const updatedSettings = await getAppSettings();
+
+      return res.json({
+        success: true,
+        message: "Configuração da Conta de Serviço salva com sucesso no Supabase!",
+        source: lastSaveResult?.source || "Supabase Database (app_settings)",
+        loadedSettingsKeys: Object.keys(updatedSettings || {}),
+      });
+    } catch (error: any) {
+      console.error("[Settings] Erro ao atualizar configurações FCM:", error);
+      res.status(500).json({
+        error: error.message || "Erro interno ao salvar configurações",
+        sqlFix: SQL_APP_SETTINGS_MIGRATION,
+      });
     }
   });
 

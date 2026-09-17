@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   XCircle,
   Key,
+  ShieldCheck,
+  Save,
+  Server,
 } from "lucide-react";
 import { diagnosticLogger, DiagnosticLog } from "@/lib/diagnostic-logger";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,7 +31,7 @@ export function CallDiagnosticTerminal() {
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
   const [copied, setCopied] = useState(false);
   const [filter, setFilter] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<"logs" | "tester">("logs");
+  const [activeTab, setActiveTab] = useState<"logs" | "tester" | "config">("logs");
 
   // Tester state
   const [targetUserIdInput, setTargetUserIdInput] = useState("");
@@ -36,6 +39,21 @@ export function CallDiagnosticTerminal() {
   const [testResult, setTestResult] = useState<any>(null);
   const [myToken, setMyToken] = useState<string | null>(null);
   const [isLoadingToken, setIsLoadingToken] = useState(false);
+
+  // Server Config state
+  const [serverConfig, setServerConfig] = useState<{
+    serviceAccountConfigured: boolean;
+    projectId: string | null;
+    clientEmail: string | null;
+    serviceAccountSource: string | null;
+    accessTokenValid: boolean;
+    accessTokenError: string | null;
+    loadedSettingsKeys: string[];
+    profilesWithTokenCount: number;
+  } | null>(null);
+  const [isLoadingConfig, setIsLoadingConfig] = useState(false);
+  const [serviceAccountInput, setServiceAccountInput] = useState("");
+  const [isSavingKey, setIsSavingKey] = useState(false);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +69,94 @@ export function CallDiagnosticTerminal() {
       logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [logs, isOpen, activeTab, isMinimized]);
+
+  const loadServerConfig = async () => {
+    setIsLoadingConfig(true);
+    try {
+      const res = await fetch(getApiUrl("/api/notifications/config"));
+      if (res.ok) {
+        const data = await res.json();
+        setServerConfig(data);
+        diagnosticLogger.addLog(
+          data.accessTokenValid ? "success" : "warning",
+          "GOOGLE_AUTH",
+          data.accessTokenValid
+            ? `Google Service Account ATIVA! Project: ${data.projectId} (${data.clientEmail})`
+            : `Conta de Serviço com erro: ${data.accessTokenError || "Token inválido"}`,
+          data,
+        );
+      }
+    } catch (e: any) {
+      console.warn("Falha ao consultar config FCM:", e);
+    } finally {
+      setIsLoadingConfig(false);
+    }
+  };
+
+  const [sqlScriptToCopy, setSqlScriptToCopy] = useState<string | null>(null);
+
+  const copySqlScript = (sqlText?: string) => {
+    const text =
+      sqlText ||
+      `-- Execute no Supabase SQL Editor:
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key TEXT NOT NULL UNIQUE,
+  value TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS app_settings_key_idx ON public.app_settings (key);
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow service role full access" ON public.app_settings;
+CREATE POLICY "Allow service role full access" ON public.app_settings
+  FOR ALL USING (true) WITH CHECK (true);`;
+    navigator.clipboard.writeText(text);
+    toast.success("Script SQL copiado para a área de transferência!");
+  };
+
+  const handleSaveServiceAccount = async () => {
+    if (!serviceAccountInput.trim()) {
+      toast.error("Cole o conteúdo do arquivo JSON da Conta de Serviço.");
+      return;
+    }
+    setIsSavingKey(true);
+    setSqlScriptToCopy(null);
+    try {
+      const res = await fetch(getApiUrl("/api/notifications/config"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service_account_json: serviceAccountInput.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(`Conta de Serviço salva com sucesso! (Origem: ${data.source || "Supabase"})`);
+        diagnosticLogger.addLog(
+          "success",
+          "CONFIG",
+          `Conta de Serviço Google salva com sucesso! Origem ativa: ${data.source}`,
+          data,
+        );
+        setServiceAccountInput("");
+        await loadServerConfig();
+      } else {
+        if (data.sqlFix) {
+          setSqlScriptToCopy(data.sqlFix);
+        }
+        toast.error(data.error || "Erro ao salvar a Conta de Serviço no Supabase.");
+        diagnosticLogger.addLog(
+          "error",
+          "CONFIG",
+          `Falha ao salvar Service Account: ${data.error || "Erro desconhecido"}`,
+          data,
+        );
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Erro de conexão ao salvar");
+    } finally {
+      setIsSavingKey(false);
+    }
+  };
 
   const loadMyFcmToken = async () => {
     if (!user) return;
@@ -72,6 +178,7 @@ export function CallDiagnosticTerminal() {
         "SUPABASE",
         `Token do usuário atual (${user.id}): ${data?.fcm_token ? data.fcm_token.slice(0, 20) + "..." : "NENHUM TOKEN ENCONTRADO"}`,
       );
+      await loadServerConfig();
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -86,12 +193,16 @@ export function CallDiagnosticTerminal() {
       return;
     }
 
+    const isUUID =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetId);
+    const isDirectToken = !isUUID && (targetId.includes(":") || targetId.length > 30);
+
     setIsTesting(true);
     setTestResult(null);
     diagnosticLogger.addLog(
       "info",
       "PUSH",
-      `[TESTE] Disparando notificação de teste para targetUserId: ${targetId}...`,
+      `[TESTE] Disparando notificação de teste para ${isDirectToken ? "Token FCM Direto" : "targetUserId"}: ${targetId.slice(0, 15)}...`,
     );
 
     try {
@@ -99,7 +210,9 @@ export function CallDiagnosticTerminal() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          targetUserId: targetId,
+          targetUserId: isDirectToken ? undefined : targetId,
+          fcmToken: isDirectToken ? targetId : undefined,
+          token: isDirectToken ? targetId : undefined,
           title: "Chamada de Teste (Terminal)",
           body: "Teste de notificação de alta prioridade disparado pelo terminal!",
           data: {
@@ -258,6 +371,25 @@ export function CallDiagnosticTerminal() {
               >
                 🔍 Testador Push & Token
               </button>
+              <button
+                onClick={() => {
+                  setActiveTab("config");
+                  loadServerConfig();
+                }}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors flex items-center gap-1 ${
+                  activeTab === "config"
+                    ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                }`}
+              >
+                <Key className="size-3" />
+                <span>Google Service Account (v1)</span>
+                {serverConfig?.accessTokenValid ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"></span>
+                ) : (
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 inline-block animate-pulse"></span>
+                )}
+              </button>
             </div>
 
             {activeTab === "logs" && (
@@ -373,16 +505,16 @@ export function CallDiagnosticTerminal() {
                     <span>Disparar Notificação de Teste (FCM)</span>
                   </div>
                   <p className="text-[10px] text-slate-400 mb-2">
-                    Insira o ID do utilizador destinatário (ou deixe em branco para testar no seu
-                    próprio telemóvel):
+                    Cole o <strong className="text-emerald-400">User ID (UUID)</strong> OU o{" "}
+                    <strong className="text-emerald-400">Token FCM Direto</strong> do destinatário:
                   </p>
-                  <div className="flex gap-2 mb-3">
+                  <div className="flex gap-2 mb-2">
                     <input
                       type="text"
-                      placeholder={user?.id || "ID do destinatário..."}
+                      placeholder={user?.id || "ID do utilizador ou Token FCM..."}
                       value={targetUserIdInput}
                       onChange={(e) => setTargetUserIdInput(e.target.value)}
-                      className="flex-1 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                      className="flex-1 px-2.5 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
                     />
                     <button
                       onClick={runPushTest}
@@ -396,6 +528,34 @@ export function CallDiagnosticTerminal() {
                       )}
                       Testar
                     </button>
+                  </div>
+
+                  {/* Quick Shortcut Buttons */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (user?.id) {
+                          setTargetUserIdInput(user.id);
+                          toast.info("User ID selecionado para o teste!");
+                        }
+                      }}
+                      className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] text-slate-300 flex items-center gap-1"
+                    >
+                      👤 Usar Meu User ID ({user?.id ? user.id.slice(0, 8) + "..." : "N/A"})
+                    </button>
+                    {myToken && myToken.length > 30 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetUserIdInput(myToken);
+                          toast.info("Token FCM direto selecionado para o teste!");
+                        }}
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] text-emerald-400 flex items-center gap-1"
+                      >
+                        ⚡ Usar Meu Token FCM Direto
+                      </button>
+                    )}
                   </div>
 
                   {testResult && (
@@ -449,12 +609,163 @@ export function CallDiagnosticTerminal() {
                       2. Erro &apos;MismatchSenderId&apos; ou &apos;InvalidRegistration&apos;:
                     </strong>{" "}
                     O `google-services.json` do APK pertence a um projeto Firebase diferente da
-                    `FCM_SERVER_KEY` configurada no servidor.
+                    Conta de Serviço configurada no servidor.
                   </p>
                   <p>
                     <strong className="text-slate-300">3. Erro &apos;NotRegistered&apos;:</strong> A
                     app foi reinstalada. Abre a app no telemóvel para registrar o novo token no
                     Supabase.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: Google Service Account FCM v1 Config */}
+            {activeTab === "config" && (
+              <div className="p-4 space-y-4">
+                {/* Status Box */}
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="size-4 text-emerald-400" />
+                      <span className="font-bold text-slate-200">
+                        Google Service Account (FCM HTTP v1)
+                      </span>
+                    </div>
+                    <button
+                      onClick={loadServerConfig}
+                      disabled={isLoadingConfig}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300"
+                    >
+                      <RefreshCw
+                        className={`size-3 ${isLoadingConfig ? "animate-spin text-emerald-400" : ""}`}
+                      />
+                      Recarregar
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-950 border border-slate-800/80">
+                      <span className="text-slate-400">OAuth2 Access Token:</span>
+                      {serverConfig?.accessTokenValid ? (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
+                          <CheckCircle2 className="size-3" /> AUTENTICADO COM SUCESSO
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold">
+                          <XCircle className="size-3" /> ERRO NA AUTENTICAÇÃO
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-950 border border-slate-800/80">
+                      <span className="text-slate-400">Origem das Credenciais:</span>
+                      <span className="text-sky-400 font-mono text-[11px] font-bold">
+                        {serverConfig?.serviceAccountSource || "Supabase DB (app_settings)"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-950 border border-slate-800/80">
+                      <span className="text-slate-400">Project ID Google:</span>
+                      <span className="text-emerald-400 font-mono text-[11px] font-bold">
+                        {serverConfig?.projectId || "sar-scan"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-950 border border-slate-800/80">
+                      <span className="text-slate-400">Client Email:</span>
+                      <span className="text-slate-300 font-mono text-[10px] truncate max-w-[200px]">
+                        {serverConfig?.clientEmail || "fcm-send@sar-scan.iam.gserviceaccount.com"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between p-2 rounded bg-slate-950 border border-slate-800/80">
+                      <span className="text-slate-400">Telemóveis com Token no Supabase:</span>
+                      <span className="text-slate-200 font-mono font-bold">
+                        {serverConfig?.profilesWithTokenCount ?? "..."} utilizador(es)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct Key Config / Saver */}
+                <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1.5 font-bold text-slate-200">
+                      <Key className="size-4 text-emerald-400" />
+                      <span>Salvar Conta de Serviço no Supabase</span>
+                    </div>
+                    <button
+                      onClick={() => copySqlScript()}
+                      className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20"
+                      title="Copiar comando SQL para criar a tabela app_settings se necessário"
+                    >
+                      <Copy className="size-3" />
+                      <span>Copiar SQL Supabase</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mb-2 leading-relaxed">
+                    Cole o conteúdo do seu arquivo JSON da Conta de Serviço abaixo para gravar na
+                    tabela <code className="text-emerald-400 font-mono">app_settings</code> do
+                    Supabase. O backend usará essas credenciais do banco para todas as chamadas.
+                  </p>
+
+                  <div className="space-y-2">
+                    <textarea
+                      rows={4}
+                      placeholder='{ "type": "service_account", "project_id": "sar-scan", ... }'
+                      value={serviceAccountInput}
+                      onChange={(e) => setServiceAccountInput(e.target.value)}
+                      className="w-full p-2 bg-slate-950 border border-slate-700 rounded-lg text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+
+                    {sqlScriptToCopy && (
+                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-[11px] space-y-1.5">
+                        <div className="flex items-center justify-between text-amber-300 font-bold">
+                          <span>Ação recomendada no Supabase:</span>
+                          <button
+                            onClick={() => copySqlScript(sqlScriptToCopy)}
+                            className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 rounded flex items-center gap-1 text-[10px]"
+                          >
+                            <Copy className="size-3" /> Copiar Script
+                          </button>
+                        </div>
+                        <p className="text-slate-400">
+                          Execute o script SQL no painel do Supabase (<strong>SQL Editor</strong>)
+                          para criar a tabela <code>app_settings</code> com as permissões corretas.
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleSaveServiceAccount}
+                      disabled={isSavingKey || !serviceAccountInput.trim()}
+                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-lg flex items-center justify-center gap-1.5 text-xs shadow-lg shadow-emerald-500/20"
+                    >
+                      {isSavingKey ? (
+                        <RefreshCw className="size-3.5 animate-spin" />
+                      ) : (
+                        <Save className="size-3.5" />
+                      )}
+                      <span>Gravar Conta de Serviço no Supabase</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Explanatory distinction */}
+                <div className="p-3 bg-slate-900/50 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                  <div className="flex items-center gap-1.5 font-bold text-sky-400">
+                    <CheckCircle2 className="size-4" />
+                    <span>Vantagens do FCM v1 (Service Account):</span>
+                  </div>
+                  <p>
+                    • <strong className="text-slate-300">Sem Chave Legada</strong>: Não precisa
+                    ativar ou depender da API legada obsoleta do Firebase.
+                  </p>
+                  <p>
+                    • <strong className="text-slate-300">Autenticação OAuth2 Segura</strong>: O
+                    servidor gera tokens de curta duração automaticamente usando as chaves privadas
+                    RSA do Google.
                   </p>
                 </div>
               </div>
