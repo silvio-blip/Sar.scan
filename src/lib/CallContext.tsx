@@ -556,37 +556,41 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error("Erro ao registrar active_calls:", dbErr);
         }
 
-        // Enviar notificação FCM de alta prioridade apenas se o utilizador NÃO estiver online no app
-        const isTargetOnline = onlineUsersRef.current.has(cleanTargetId);
-        if (!isTargetOnline) {
-          console.log(
-            `[Call] Destinatário ${cleanTargetId} está com o app fechado/offline. Disparando notificação Push FCM...`,
-          );
-          try {
-            fetch(getApiUrl("/api/notifications/send"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                targetUserId: cleanTargetId,
-                title: `Chamada de ${user.user_metadata?.nome || "Amigo"}`,
-                body: "Chamada de voz a entrar... Toque para atender.",
-                data: {
-                  type: "INCOMING_CALL",
-                  callerId: user.id,
-                  callerName: user.user_metadata?.nome || "Amigo",
-                  callerAvatar: user.user_metadata?.avatar_url || "",
-                  roomId: user.id,
-                  callId: user.id,
-                },
-              }),
-            }).catch((pushErr) => console.warn("[Call] Push dispatch warning:", pushErr));
-          } catch (e) {
-            console.warn("[Call] Push dispatch error:", e);
-          }
-        } else {
-          console.log(
-            `[Call] Destinatário ${cleanTargetId} está online com a aplicação aberta. Chamada entregue em tempo real sem Push FCM desnecessário.`,
-          );
+        // Enviar notificação FCM de alta prioridade para acordar o telemóvel do destinatário
+        console.log(
+          `[Call] Disparando requisição HTTP POST para /api/notifications/send (FCM) para o utilizador ${cleanTargetId}...`,
+        );
+        try {
+          fetch(getApiUrl("/api/notifications/send"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              targetUserId: cleanTargetId,
+              title: "Chamada Recebida",
+              body: "A receber chamada...",
+              data: {
+                type: "INCOMING_CALL",
+                roomId: user.id,
+                callId: user.id,
+                callerId: user.id,
+                callerName: user.user_metadata?.nome || "Amigo",
+                callerAvatar: user.user_metadata?.avatar_url || "",
+                channelId: "incoming_calls",
+              },
+            }),
+          })
+            .then((res) => {
+              if (res.ok) {
+                console.log(
+                  "[Call] Notificação de chamada enviada com sucesso para /api/notifications/send!",
+                );
+              } else {
+                console.warn("[Call] Resposta não-200 da API de notificações:", res.status);
+              }
+            })
+            .catch((pushErr) => console.warn("[Call] Push dispatch warning:", pushErr));
+        } catch (e) {
+          console.warn("[Call] Push dispatch error:", e);
         }
 
         const myPeerId = peerIdRef.current || peerRef.current?.id;
