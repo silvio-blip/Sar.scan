@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { SarLogo } from "@/components/sar-logo";
 import { IntroAnimation } from "@/components/intro-animation";
 import { App } from "@capacitor/app";
+import GlassSurface from "@/components/GlassSurface";
 
 export const Route = createFileRoute("/_app")({ component: AppLayout });
 
@@ -412,25 +413,32 @@ function AppLayout() {
         }}
         className="fixed left-1/2 -translate-x-1/2 z-40 w-[min(94vw,440px)] px-4 transition-all duration-300"
       >
-        <div className="glass-strong rounded-[44px] px-2 py-2 flex items-center justify-around shadow-[0_16px_40px_rgba(46,74,59,0.08)] border border-border">
-          {tabs.map(({ to, Icon, label }) => {
-            const active = loc.pathname.startsWith(to);
-            return (
-              <Link
-                key={to}
-                to={to}
-                aria-label={label}
-                className={`relative flex items-center justify-center size-13 rounded-[28px] transition-all duration-300 ${
-                  active
-                    ? "bg-primary text-primary-foreground shadow-[0_8px_20px_rgba(46,74,59,0.25)] scale-105 font-bold"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
-                }`}
-              >
-                <Icon className="size-5.5" strokeWidth={active ? 2.5 : 2} />
-              </Link>
-            );
-          })}
-        </div>
+        <GlassSurface
+          width="100%"
+          height="auto"
+          borderRadius={44}
+          className="shadow-[0_16px_40px_rgba(46,74,59,0.08)] border border-border"
+        >
+          <div className="w-full flex items-center justify-around">
+            {tabs.map(({ to, Icon, label }) => {
+              const active = loc.pathname.startsWith(to);
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  aria-label={label}
+                  className={`relative flex items-center justify-center size-13 rounded-[28px] transition-all duration-300 ${
+                    active
+                      ? "bg-primary text-primary-foreground shadow-[0_8px_20px_rgba(46,74,59,0.25)] scale-105 font-bold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/40"
+                  }`}
+                >
+                  <Icon className="size-5.5" strokeWidth={active ? 2.5 : 2} />
+                </Link>
+              );
+            })}
+          </div>
+        </GlassSurface>
       </nav>
     </div>
   );

@@ -69,7 +69,8 @@ function cleanApiKey(val: string | undefined | null): string | null {
 function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
   const qc = useQueryClient();
-  const { stream, streamOn, startCamera, stopCamera, facingMode, toggleCamera } = useCamera();
+  const { stream, streamOn, startCamera, stopCamera, facingMode, toggleCamera, isSwitching } =
+    useCamera();
   useSubscriptionRealtime(user?.id);
   useRewardsRealtime(user?.id);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -593,10 +594,17 @@ function ScannerPage() {
               <button
                 type="button"
                 onClick={toggleCamera}
-                className="absolute top-4 right-4 z-30 p-3 bg-zinc-950/75 hover:bg-zinc-950 backdrop-blur-md rounded-full border border-white/20 text-white transition-all active:scale-90 duration-200 cursor-pointer shadow-lg flex items-center justify-center group/btn"
-                title="Alternar câmera frontal/traseira"
+                disabled={isSwitching}
+                className="absolute top-4 right-4 z-30 p-3 bg-zinc-950/75 hover:bg-zinc-950 disabled:opacity-75 disabled:cursor-wait backdrop-blur-md rounded-full border border-white/20 text-white transition-all active:scale-90 duration-200 cursor-pointer shadow-lg flex items-center justify-center group/btn"
+                title={isSwitching ? "Virando câmera..." : "Alternar câmera frontal/traseira"}
               >
-                <RefreshCw className="size-5 transition-transform duration-500 group-hover/btn:rotate-180" />
+                <RefreshCw
+                  className={`size-5 transition-transform ${
+                    isSwitching
+                      ? "animate-spin text-primary"
+                      : "group-hover/btn:rotate-180 duration-500"
+                  }`}
+                />
               </button>
             )}
 
@@ -640,7 +648,7 @@ function ScannerPage() {
 
             {!streamOn && (
               <div
-                onClick={startCamera}
+                onClick={() => startCamera()}
                 className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/85 backdrop-blur-sm z-10 cursor-pointer active:bg-zinc-950 transition-all duration-300 group"
                 title="Clique para tentar ativar a câmera"
               >
