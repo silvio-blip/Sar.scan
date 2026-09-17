@@ -235,42 +235,14 @@ O formato deve ser exatamente:
         return res.status(404).json({ error: "Perfil do destinatário não encontrado." });
       }
 
-      const rawFcmToken = recipientProfile.fcm_token;
-      // Suporte Multi-Dispositivo: Extrair todos os tokens (telemóveis) registados para este utilizador
-      const extractTokens = (raw: string | null | undefined): string[] => {
-        if (!raw || typeof raw !== "string") return [];
-        const trimmed = raw.trim();
-        if (!trimmed) return [];
-        if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-          try {
-            const parsed = JSON.parse(trimmed);
-            if (Array.isArray(parsed)) {
-              return parsed
-                .map((t) => String(t).trim())
-                .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
-            }
-          } catch {
-            // fallback
-          }
-        }
-        return trimmed
-          .split(",")
-          .map((t) => t.trim())
-          .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
-      };
-
-      const tokens = extractTokens(rawFcmToken);
-      if (tokens.length === 0) {
-        console.warn(`[Push] Usuário ${targetUserId} não tem FCM token válido cadastrado.`);
+      const fcmToken = recipientProfile.fcm_token;
+      if (!fcmToken) {
+        console.warn(`[Push] Usuário ${targetUserId} não tem FCM token cadastrado.`);
         return res.json({
           success: false,
           message: "Destinatário não tem fcm_token registrado no perfil.",
         });
       }
-
-      console.log(
-        `[Push] Disparando notificação para ${tokens.length} dispositivo(s)/telemóvel(is) do usuário ${targetUserId}...`,
-      );
 
       const settings = await getAppSettings();
       const serverKey =
@@ -280,63 +252,23 @@ O formato deve ser exatamente:
       if (!serverKey) {
         console.warn("[Push] FCM_SERVER_KEY não configurada no servidor.");
       } else {
-        const isCallNotification =
-          fcmPayloadData?.type === "INCOMING_CALL" ||
-          fcmPayloadData?.type === "incoming_call" ||
-          (typeof title === "string" && title.toLowerCase().includes("chamada"));
-
-        const callChannelId = "incoming_calls";
-        const generalChannelId = "default_channel";
-        const channelId = isCallNotification ? callChannelId : generalChannelId;
-
-        // Montar payload com registration_ids (e 'to' se único) com parâmetros de alta prioridade para o Android
-        const fcmBody: any = {
-          priority: "high",
-          content_available: true,
-          notification: {
-            title,
-            body,
-            android_channel_id: channelId,
-            channel_id: channelId,
-            sound: isCallNotification ? "ringtone" : "default",
-            badge: 1,
-            priority: "high",
-            click_action: "FLUTTER_NOTIFICATION_CLICK",
-          },
-          data: {
-            ...fcmPayloadData,
-            type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
-            roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId,
-            channelId,
-            title,
-            body,
-          },
-          android: {
-            priority: "high",
-            ttl: isCallNotification ? "60s" : "86400s",
-            notification: {
-              sound: isCallNotification ? "ringtone" : "default",
-              channel_id: channelId,
-              android_channel_id: channelId,
-              priority: "max",
-              visibility: "public",
-            },
-          },
-        };
-
-        if (tokens.length === 1) {
-          fcmBody.to = tokens[0];
-        } else {
-          fcmBody.registration_ids = tokens;
-        }
-
+        // Dispatch push notification via FCM legacy endpoint
         const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
           method: "POST",
           headers: {
             Authorization: `key=${serverKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(fcmBody),
+          body: JSON.stringify({
+            to: fcmToken,
+            notification: {
+              title,
+              body,
+              sound: "default",
+              badge: 1,
+            },
+            data: fcmPayloadData,
+          }),
         });
 
         if (!fcmResponse.ok) {
@@ -346,10 +278,7 @@ O formato deve ser exatamente:
         }
 
         const fcmResult = await fcmResponse.json();
-        console.log(
-          `[Push] Notificação disparada com sucesso para ${tokens.length} dispositivo(s):`,
-          fcmResult,
-        );
+        console.log("[Push] Notificação disparada com sucesso via FCM:", fcmResult);
         fcmResultLog = fcmResult;
       }
 

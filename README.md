@@ -23,7 +23,7 @@
 
 4. **Catálogo Nutricional & Busca de Alimentos**
    - Banco de dados local baseado na Tabela TACO brasileira de composição de alimentos.
-   - Filtros por categorias: _Proteínas_, _Carboidratos_, _Frutas_, _Laticínios_, _Gorduras Saudáveis_.
+   - Filtros por categorias: *Proteínas*, *Carboidratos*, *Frutas*, *Laticínios*, *Gorduras Saudáveis*.
    - Seletor de porção em gramas com recálculo instantâneo de macros e calorias antes de registrar no diário.
 
 5. **Nutri IA (Assistente Conversacional)**
@@ -31,9 +31,9 @@
    - Histórico de mensagens persistido localmente via Room.
 
 6. **Perfil & Metas Personalizadas**
-   - Configuração de metas com base no objetivo (_Perder peso_, _Manter peso_, _Ganhar massa_).
+   - Configuração de metas com base no objetivo (*Perder peso*, *Manter peso*, *Ganhar massa*).
    - Cálculo e sugestão automática de ingestão de calorias e divisão de macronutrientes.
-   - Contador de ofensiva (_streaks_) e estatísticas de escaneamentos realizados.
+   - Contador de ofensiva (*streaks*) e estatísticas de escaneamentos realizados.
 
 ---
 

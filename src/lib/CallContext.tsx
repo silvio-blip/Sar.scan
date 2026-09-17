@@ -1,51 +1,40 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import { motion } from "motion/react";
 import { useAuth } from "./auth-context";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { isInstalledApp } from "@/lib/utils";
 import Peer, { MediaConnection } from "peerjs";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CallOverlay } from "@/components/CallOverlay";
-import { isNativePlatform, getApiUrl } from "@/lib/utils";
-import { Smartphone, BellRing, PhoneIncoming, Download } from "lucide-react";
+import { Phone, PhoneOff, X } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-export interface CallStatus {
-  type: "idle" | "calling" | "ringing" | "connected" | "ended" | "missed" | "rejected" | "offline";
+interface CallStatus {
+  type: "idle" | "calling" | "ringing" | "connected" | "ended" | "missed" | "rejected";
   startTime?: number;
-  offlineReason?: string;
 }
 
-export interface UserProfile {
+interface UserProfile {
   id: string;
   nome: string | null;
   avatar_url: string | null;
   email?: string;
-  fcm_token?: string | null;
 }
 
-export interface CallContextType {
+interface CallContextType {
   peer: Peer | null;
   activeCall: MediaConnection | null;
   incomingCall: MediaConnection | null;
   isCalling: boolean;
   status: CallStatus;
   callDuration: number;
-  otherUser: UserProfile | null;
-  isMuted: boolean;
-  isSpeakerOn: boolean;
-  isMinimized: boolean;
-  toggleMute: () => void;
-  toggleSpeaker: () => void;
-  toggleMinimize: () => void;
   startCall: (targetId: string) => Promise<void>;
   answerCall: () => Promise<void>;
   rejectCall: () => void;
   endCall: () => void;
-  remoteAudioRef: React.RefObject<HTMLAudioElement | null>;
-  onlineUsers: Set<string>;
-  isUserOnline: (userId: string) => boolean;
-  isNativeApp: boolean;
+  remoteAudioRef: React.RefObject<HTMLAudioElement>;
   triggerVoicePermissionDialog?: () => void;
   triggerBrowserCallBlockDialog?: () => void;
 }
@@ -62,19 +51,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeCall, setActiveCall] = useState<MediaConnection | null>(null);
   const [incomingCall, setIncomingCall] = useState<MediaConnection | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [status, setStatus] = useState<CallStatus>({ type: "idle" });
   const [callDuration, setCallDuration] = useState(0);
   const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [showWebBlockedDialog, setShowWebBlockedDialog] = useState(false);
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const callTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const ringingAudioRef = useRef<HTMLAudioElement | null>(null);
   const dialingAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -86,112 +69,13 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const peerRef = useRef<Peer | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const otherUserRef = useRef<UserProfile | null>(null);
-  const isMutedRef = useRef(isMuted);
-  const isSpeakerOnRef = useRef(isSpeakerOn);
-  const onlineUsersRef = useRef(onlineUsers);
   const [showVoicePermissionDialog, setShowVoicePermissionDialog] = useState(false);
+  const [showBrowserCallBlockDialog, setShowBrowserCallBlockDialog] = useState(false);
   const activeNotificationRef = useRef<Notification | null>(null);
-
-  const [, setPeerId] = useState<string | null>(null);
-  const peerIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    isMutedRef.current = isMuted;
-  }, [isMuted]);
-  useEffect(() => {
-    isSpeakerOnRef.current = isSpeakerOn;
-  }, [isSpeakerOn]);
-  useEffect(() => {
-    onlineUsersRef.current = onlineUsers;
-  }, [onlineUsers]);
-
-  const toggleSpeaker = useCallback(() => {
-    setIsSpeakerOn((prev) => {
-      const next = !prev;
-      const vol = next ? 1.0 : 0.25;
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.volume = vol;
-      }
-      if (dialingAudioRef.current) {
-        dialingAudioRef.current.volume = vol;
-      }
-      if (ringingAudioRef.current) {
-        ringingAudioRef.current.volume = vol;
-      }
-      return next;
-    });
-  }, []);
-
-  const isUserOnline = useCallback(
-    (userId: string) => {
-      if (!userId) return false;
-      const cleanId = userId.includes("_") ? userId.split("_")[0] : userId;
-      return onlineUsers.has(cleanId);
-    },
-    [onlineUsers],
-  );
-
-  // Monitorização de presença global no Supabase
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const presenceChannel = supabase.channel("global_presence", {
-      config: {
-        presence: {
-          key: user.id,
-        },
-      },
-    });
-
-    presenceChannel
-      .on("presence", { event: "sync" }, () => {
-        const state = presenceChannel.presenceState();
-        const ids = new Set<string>();
-        Object.keys(state).forEach((key) => {
-          ids.add(key);
-          const entries = state[key] as any[];
-          if (Array.isArray(entries)) {
-            entries.forEach((item) => {
-              if (item?.user_id) ids.add(item.user_id);
-            });
-          }
-        });
-        setOnlineUsers(ids);
-      })
-      .on("presence", { event: "join" }, ({ key, newPresences }) => {
-        setOnlineUsers((prev) => {
-          const next = new Set(prev);
-          next.add(key);
-          newPresences?.forEach((p: any) => {
-            if (p?.user_id) next.add(p.user_id);
-          });
-          return next;
-        });
-      })
-      .on("presence", { event: "leave" }, ({ key }) => {
-        setOnlineUsers((prev) => {
-          const next = new Set(prev);
-          next.delete(key);
-          return next;
-        });
-      })
-      .subscribe(async (subStatus) => {
-        if (subStatus === "SUBSCRIBED") {
-          await presenceChannel.track({
-            user_id: user.id,
-            online_at: new Date().toISOString(),
-          });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(presenceChannel);
-    };
-  }, [user?.id]);
 
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
+      Notification.requestPermission();
     }
   }, []);
 
@@ -233,7 +117,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [stopVibration]);
 
-  // Sons de chamada
+  // Initialize sounds
   useEffect(() => {
     ringingAudioRef.current = new Audio(RINGING_SOUND_URL);
     ringingAudioRef.current.loop = true;
@@ -247,12 +131,8 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const resetCall = useCallback(async () => {
-    console.log("[Call] Executing resetCall");
-    if (callTimeoutRef.current) {
-      clearTimeout(callTimeoutRef.current);
-      callTimeoutRef.current = null;
-    }
-
+    console.log("resetCall executed");
+    // Stop all media and close connections
     activeCallRef.current?.close();
     incomingCallRef.current?.close();
 
@@ -269,6 +149,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       activeNotificationRef.current = null;
     }
 
+    // Remove from active_calls table if any
     if (user?.id) {
       try {
         await supabase
@@ -287,39 +168,29 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStatus({ type: "idle" });
     setCallDuration(0);
     setOtherUser(null);
-    setIsMuted(false);
-    setIsMinimized(false);
   }, [stopVibration, user?.id]);
 
-  const resetCallRef = useRef(resetCall);
-  useEffect(() => {
-    resetCallRef.current = resetCall;
-  }, [resetCall]);
+  const [peerId, setPeerId] = useState<string | null>(null);
+  const peerIdRef = useRef<string | null>(null);
 
   const sendCallSignal = useCallback(
     async (
       targetId: string,
-      type:
-        | "REJECTED"
-        | "ENDED"
-        | "CALL_REQUEST"
-        | "CALL_RESPONSE"
-        | "CALL_ACCEPTED"
-        | "PING"
-        | "PONG",
-      additionalPayload: Record<string, unknown> = {},
+      type: "REJECTED" | "ENDED" | "CALL_REQUEST" | "CALL_RESPONSE",
+      additionalPayload: any = {},
     ) => {
       if (!user?.id) return;
-      console.log(`[Call] Sending signal ${type} to ${targetId}`, additionalPayload);
+      console.log(`Sending signal ${type} to ${targetId}`, additionalPayload);
       const channel = supabase.channel(`call_signals_${targetId}`);
       try {
-        await channel.subscribe(async (chStatus) => {
-          if (chStatus === "SUBSCRIBED") {
+        await channel.subscribe(async (status) => {
+          if (status === "SUBSCRIBED") {
             await channel.send({
               type: "broadcast",
               event: "call-signal",
               payload: { type, from: user.id, ...additionalPayload },
             });
+            // Don't remove immediately to ensure broadcast delivery
             setTimeout(() => {
               supabase.removeChannel(channel);
             }, 1000);
@@ -331,11 +202,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     [user?.id],
   );
-
-  const sendCallSignalRef = useRef(sendCallSignal);
-  useEffect(() => {
-    sendCallSignalRef.current = sendCallSignal;
-  }, [sendCallSignal]);
 
   const saveCallLog = useCallback(
     async (receiverId: string, duration: number, type: "missed" | "rejected" | "ended") => {
@@ -353,25 +219,22 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         content = "Chamada recusada";
       }
 
-      try {
-        await supabase.from("direct_messages").insert({
-          sender_id: user.id,
-          receiver_id: receiverId,
-          content,
-          type: "call_log",
-        });
+      await supabase.from("direct_messages").insert({
+        sender_id: user.id,
+        receiver_id: receiverId,
+        content,
+        type: "call_log",
+      });
 
-        qc.invalidateQueries({ queryKey: ["dm"] });
-        qc.invalidateQueries({ queryKey: ["recent_chats"] });
-      } catch (err) {
-        console.error("Error saving call log:", err);
-      }
+      qc.invalidateQueries({ queryKey: ["dm"] });
+      qc.invalidateQueries({ queryKey: ["recent_chats"] });
     },
     [user, qc],
   );
 
   const handleCallEnd = useCallback(
     (otherId: string, skipSignal = false, signalType?: "REJECTED" | "ENDED") => {
+      // Normalize otherId in case it's a PeerJS ID with random suffix
       const normalizedId = otherId.includes("_") ? otherId.split("_")[0] : otherId;
 
       const currentStatus = statusRef.current;
@@ -379,6 +242,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const finalDuration = durationRef.current;
 
+      // Determine the log type
       let finalType: "missed" | "rejected" | "ended" = "ended";
       if (finalDuration > 0) {
         finalType = "ended";
@@ -388,8 +252,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         finalType = "missed";
       }
 
-      console.log("[Call] handleCallEnd for:", normalizedId, "finalType:", finalType);
+      console.log(
+        "handleCallEnd called for:",
+        normalizedId,
+        "finalType:",
+        finalType,
+        "skipSignal:",
+        skipSignal,
+      );
 
+      // Close PeerJS connections immediately
       activeCallRef.current?.close();
       incomingCallRef.current?.close();
 
@@ -397,61 +269,140 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       dialingAudioRef.current?.pause();
       stopVibration();
 
+      // Send signal to other peer if needed
       if (!skipSignal && normalizedId) {
-        sendCallSignalRef.current(normalizedId, finalDuration > 0 ? "ENDED" : "REJECTED");
+        sendCallSignal(normalizedId, finalDuration > 0 ? "ENDED" : "REJECTED");
       }
 
+      // Update UI Status
       if (finalDuration > 0 || signalType === "ENDED") {
         setStatus({ type: "ended" });
-        setTimeout(() => resetCallRef.current(), 2500);
+        setTimeout(() => resetCall(), 3000);
       } else if (signalType === "REJECTED" || finalType === "rejected") {
         setStatus({ type: "rejected" });
-        setTimeout(() => resetCallRef.current(), 2000);
+        setTimeout(() => resetCall(), 2000);
       } else {
-        resetCallRef.current();
+        resetCall();
       }
 
       if (user?.id && normalizedId) {
         saveCallLog(normalizedId, finalDuration, finalType);
       }
     },
-    [saveCallLog, stopVibration, user?.id],
+    [resetCall, saveCallLog, stopVibration, user?.id, sendCallSignal],
   );
 
   const fetchOtherUserProfile = useCallback(async (id: string | undefined) => {
-    if (!id) return null;
-    const cleanId = id.includes("_") ? id.split("_")[0] : id;
     const { data } = await supabase
       .from("profiles")
-      .select("id, nome, avatar_url, email, fcm_token")
-      .eq("id", cleanId)
-      .maybeSingle();
+      .select("id, nome, avatar_url, email")
+      .eq("id", id)
+      .single();
     if (data) {
       setOtherUser(data as UserProfile);
-      return data as UserProfile;
     }
-    return null;
   }, []);
 
-  const showNotification = useCallback(async (callerId: string) => {
-    if (document.visibilityState === "visible") {
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const startCall = useCallback(async (targetId: string) => {
+    console.log("Chamadas de voz desativadas:", targetId);
+    toast.info("As chamadas de voz foram desativadas.");
+  }, []);
+
+  const answerCall = useCallback(async () => {
+    if (!incomingCallRef.current) {
+      if (status.type === "ringing" && otherUser) {
+        sendCallSignal(otherUser.id, "CALL_REQUEST");
+      }
       return;
     }
+    try {
+      ringingAudioRef.current?.pause();
+      stopVibration();
+
+      // Persistence update
+      if (user?.id && otherUser?.id) {
+        await supabase
+          .from("active_calls")
+          .update({ status: "connected" })
+          .match({ caller_id: otherUser.id, receiver_id: user.id });
+      }
+
+      // Tentar obter acesso ao microfone no atendimento
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      setLocalStream(stream);
+      setStatus({ type: "connected" });
+
+      const currentIncoming = incomingCallRef.current;
+      setIncomingCall(null);
+      setActiveCall(currentIncoming);
+
+      currentIncoming.answer(stream);
+      currentIncoming.on("stream", (remote) => {
+        console.log("Remote stream received in answerCall");
+        setRemoteStream(remote);
+        if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remote;
+      });
+
+      currentIncoming.on("close", () => {
+        console.log("Call connection closed in answerCall");
+        handleCallEnd(currentIncoming.peer, true);
+      });
+    } catch (err) {
+      console.error("Error in answerCall:", err);
+      toast.error("Erro ao atender chamada. Verifique o microfone.");
+      setShowVoicePermissionDialog(true);
+      resetCall();
+    }
+  }, [user?.id, otherUser, stopVibration, resetCall, handleCallEnd, sendCallSignal, status.type]);
+
+  const rejectCall = useCallback(() => {
+    if (incomingCallRef.current) {
+      const otherId = incomingCallRef.current.peer;
+      console.log("Rejecting call from:", otherId);
+      sendCallSignal(otherId, "REJECTED");
+      incomingCallRef.current.close();
+      saveCallLog(otherId, 0, "rejected");
+    }
+    resetCall();
+  }, [sendCallSignal, saveCallLog, resetCall]);
+
+  const endCall = useCallback(() => {
+    handleCallEnd(otherUser?.id || "");
+  }, [handleCallEnd, otherUser?.id]);
+
+  const showNotification = useCallback(async (callerId: string) => {
+    // Se o aplicativo estiver aberto e visível (foreground), NÃO mostre a Notificação Web superior
+    // para evitar de exibir dois modais ao mesmo tempo. O modal interativo do React já cuida disso!
+    if (document.visibilityState === "visible") {
+      console.log(
+        "[Notification] App visível em primeiro plano. Omitindo notificação web de som duplicada.",
+      );
+      return;
+    }
+
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
-      const cleanId = callerId.includes("_") ? callerId.split("_")[0] : callerId;
       const { data: profile } = await supabase
         .from("profiles")
         .select("nome, avatar_url")
-        .eq("id", cleanId)
+        .eq("id", callerId)
         .maybeSingle();
       const name = profile?.nome || "Utilizador";
-      const icon = profile?.avatar_url || "/favicon.ico";
+      const icon = profile?.avatar_url || "/apple-touch-icon.png";
       const n = new Notification(`Chamada de ${name}`, {
         body: "Está a receber uma chamada de voz! Toque para atender.",
         icon,
         requireInteraction: true,
         tag: "incoming-voice-call",
+        vibrate: [200, 100, 200, 100, 200],
       });
       n.onclick = () => {
         window.focus();
@@ -464,276 +415,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.error("[Notification] Error creating notification:", e);
     }
-  }, []);
-
-  const startCall = useCallback(
-    async (targetId: string) => {
-      if (!user?.id) {
-        toast.error("Inicie sessão para fazer chamadas.");
-        return;
-      }
-      if (user.id === targetId) {
-        toast.error("Não pode ligar para si mesmo.");
-        return;
-      }
-
-      if (typeof navigator !== "undefined" && !navigator.onLine) {
-        toast.error("Sem ligação à internet. Verifique a sua conexão.");
-        return;
-      }
-
-      if (callTimeoutRef.current) {
-        clearTimeout(callTimeoutRef.current);
-        callTimeoutRef.current = null;
-      }
-
-      try {
-        // Pedir permissão e obter áudio do microfone
-        let stream: MediaStream;
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        } catch (mediaErr) {
-          console.error("Erro no microfone:", mediaErr);
-          setShowVoicePermissionDialog(true);
-          return;
-        }
-
-        // Se o utilizador já mutou o microfone, aplicar ao stream
-        if (isMutedRef.current) {
-          stream.getAudioTracks().forEach((t) => {
-            t.enabled = false;
-          });
-        }
-
-        setLocalStream(stream);
-        localStreamRef.current = stream;
-
-        // Buscar dados do outro utilizador
-        const cleanTargetId = targetId.includes("_") ? targetId.split("_")[0] : targetId;
-        await fetchOtherUserProfile(targetId);
-
-        setStatus({ type: "calling" });
-        setIsMinimized(false);
-
-        if (dialingAudioRef.current) {
-          dialingAudioRef.current.volume = isSpeakerOnRef.current ? 1.0 : 0.25;
-          dialingAudioRef.current.play().catch((e) => console.warn("Dialing sound error:", e));
-        }
-
-        // Registrar em active_calls (dispara notificações Google/FCM e listeners em tempo real)
-        try {
-          await supabase
-            .from("active_calls")
-            .delete()
-            .or(`caller_id.eq.${user.id},receiver_id.eq.${user.id}`);
-
-          await supabase.from("active_calls").insert({
-            caller_id: user.id,
-            receiver_id: targetId,
-            status: "ringing",
-          });
-        } catch (dbErr) {
-          console.error("Erro ao registrar active_calls:", dbErr);
-        }
-
-        // Enviar notificação FCM de alta prioridade para acordar o telemóvel do destinatário
-        console.log("=== [CALL_DIAGNOSTIC] INICIANDO PROCESSO DE NOTIFICAÇÃO DE CHAMADA ===");
-        console.log(`[CALL_DIAGNOSTIC] Destinatário (targetUserId): ${cleanTargetId}`);
-        console.log(`[CALL_DIAGNOSTIC] ID da Sala (roomId): ${user.id}`);
-
-        if (!cleanTargetId) {
-          console.error(
-            "[CALL_DIAGNOSTIC] ERRO CRÍTICO: targetUserId está VAZIO! O backend vai rejeitar.",
-          );
-        } else {
-          const callNotificationPayload = {
-            targetUserId: cleanTargetId,
-            title: "Chamada Recebida",
-            body: "A receber chamada...",
-            data: {
-              type: "INCOMING_CALL",
-              roomId: user.id,
-              callId: user.id,
-              callerId: user.id,
-              callerName: user.user_metadata?.nome || "Amigo",
-              callerAvatar: user.user_metadata?.avatar_url || "",
-              channelId: "incoming_calls",
-            },
-          };
-
-          console.log("[CALL_DIAGNOSTIC] Payload montado:", callNotificationPayload);
-
-          try {
-            console.log(
-              "[CALL_DIAGNOSTIC] Enviando requisição POST para /api/notifications/send...",
-            );
-            fetch(getApiUrl("/api/notifications/send"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(callNotificationPayload),
-            })
-              .then(async (res) => {
-                if (res.ok) {
-                  const resData = await res.json().catch(() => ({}));
-                  console.log(
-                    `[CALL_DIAGNOSTIC] SUCESSO: Backend recebeu a requisição! Código HTTP: ${res.status}`,
-                    resData,
-                  );
-                } else {
-                  const errorText = await res.text().catch(() => "");
-                  console.error(
-                    `[CALL_DIAGNOSTIC] FALHA NO BACKEND: Código HTTP ${res.status} | Resposta: ${errorText}`,
-                  );
-                }
-              })
-              .catch((pushErr) =>
-                console.error("[CALL_DIAGNOSTIC] ERRO DE REDE/CONEXÃO ao chamar a API:", pushErr),
-              );
-          } catch (e) {
-            console.error("[CALL_DIAGNOSTIC] Exceção ao disparar push de chamada:", e);
-          }
-        }
-
-        const myPeerId = peerIdRef.current || peerRef.current?.id;
-        console.log(`[Call] Enviando CALL_REQUEST para ${targetId} com PeerID: ${myPeerId}`);
-        await sendCallSignalRef.current(targetId, "CALL_REQUEST", {
-          peerId: myPeerId,
-        });
-
-        // Timeout padrão de chamada (45 segundos): aguarda o destinatário atender ou acordar o telemóvel
-        callTimeoutRef.current = setTimeout(() => {
-          if (statusRef.current.type === "calling") {
-            console.log(`[Call] Timeout de chamada (sem resposta de ${cleanTargetId})`);
-            dialingAudioRef.current?.pause();
-            stopVibration();
-
-            setStatus({ type: "missed" });
-            toast.info("O utilizador não atendeu a chamada.");
-
-            if (user?.id) {
-              saveCallLog(cleanTargetId, 0, "missed");
-            }
-
-            supabase
-              .from("active_calls")
-              .delete()
-              .or(`caller_id.eq.${user.id},receiver_id.eq.${user.id}`);
-
-            setTimeout(() => {
-              if (statusRef.current.type === "missed") {
-                resetCallRef.current();
-              }
-            }, 2500);
-          }
-        }, 45000);
-      } catch (err) {
-        console.error("Erro ao iniciar chamada:", err);
-        toast.error("Não foi possível iniciar a chamada.");
-        resetCallRef.current();
-      }
-    },
-    [user?.id, user?.user_metadata?.nome, fetchOtherUserProfile, stopVibration, saveCallLog],
-  );
-
-  const answerCall = useCallback(async () => {
-    try {
-      ringingAudioRef.current?.pause();
-      stopVibration();
-
-      let stream = localStreamRef.current;
-      if (!stream) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          setLocalStream(stream);
-          localStreamRef.current = stream;
-        } catch (mediaErr) {
-          console.error("Erro no microfone ao atender:", mediaErr);
-          setShowVoicePermissionDialog(true);
-          resetCallRef.current();
-          return;
-        }
-      }
-
-      if (user?.id && otherUser?.id) {
-        try {
-          await supabase
-            .from("active_calls")
-            .update({ status: "connected" })
-            .match({ caller_id: otherUser.id, receiver_id: user.id });
-        } catch (err) {
-          console.error("Erro ao atualizar active_calls status:", err);
-        }
-      }
-
-      setStatus({ type: "connected" });
-      setIsMinimized(false);
-
-      if (incomingCallRef.current) {
-        const currentIncoming = incomingCallRef.current;
-        setIncomingCall(null);
-        setActiveCall(currentIncoming);
-        activeCallRef.current = currentIncoming;
-
-        currentIncoming.answer(stream);
-        currentIncoming.on("stream", (remote) => {
-          console.log("[Call] Remote stream received on receiver side");
-          setRemoteStream(remote);
-          if (remoteAudioRef.current) {
-            remoteAudioRef.current.srcObject = remote;
-            remoteAudioRef.current.play().catch((e) => console.warn("Remote audio play error:", e));
-          }
-        });
-
-        currentIncoming.on("close", () => {
-          console.log("[Call] Connection closed on receiver side");
-          handleCallEnd(currentIncoming.peer, true);
-        });
-
-        currentIncoming.on("error", (err) => {
-          console.warn("[Call] Error on receiver side:", err);
-          handleCallEnd(currentIncoming.peer, true);
-        });
-      } else if (otherUser?.id) {
-        sendCallSignalRef.current(otherUser.id, "CALL_ACCEPTED", {
-          peerId: peerIdRef.current,
-        });
-      }
-    } catch (err) {
-      console.error("Error in answerCall:", err);
-      toast.error("Erro ao atender chamada.");
-      resetCallRef.current();
-    }
-  }, [user?.id, otherUser, stopVibration, handleCallEnd]);
-
-  const rejectCall = useCallback(() => {
-    const otherId = otherUserRef.current?.id || incomingCallRef.current?.peer;
-    if (otherId) {
-      const cleanId = otherId.includes("_") ? otherId.split("_")[0] : otherId;
-      sendCallSignalRef.current(cleanId, "REJECTED");
-      saveCallLog(cleanId, 0, "rejected");
-    }
-    resetCallRef.current();
-  }, [saveCallLog]);
-
-  const endCall = useCallback(() => {
-    handleCallEnd(otherUserRef.current?.id || "");
-  }, [handleCallEnd]);
-
-  const toggleMute = useCallback(() => {
-    setIsMuted((prev) => {
-      const next = !prev;
-      if (localStreamRef.current) {
-        const tracks = localStreamRef.current.getAudioTracks();
-        tracks.forEach((t) => {
-          t.enabled = !next;
-        });
-      }
-      return next;
-    });
-  }, []);
-
-  const toggleMinimize = useCallback(() => {
-    setIsMinimized((prev) => !prev);
   }, []);
 
   const fetchOtherUserProfileRef = useRef(fetchOtherUserProfile);
@@ -759,12 +440,12 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     answerCall,
   ]);
 
-  // Recuperar chamada ativa na montagem
+  // Restore active calls on mount or when user changes
   useEffect(() => {
     if (!user?.id) return;
 
     const restoreCall = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("active_calls")
         .select("*")
         .or(`caller_id.eq.${user.id},receiver_id.eq.${user.id}`)
@@ -780,15 +461,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setStatus({ type: "calling" });
             dialingAudioRef.current
               ?.play()
-              .catch((err) => console.warn("Dialing audio blocked:", err));
+              .catch((err) => console.warn("Autoplay audio blocked:", err));
           } else {
             setStatus({ type: "ringing" });
             ringingAudioRef.current
               ?.play()
-              .catch((err) => console.warn("Ringing audio blocked:", err));
+              .catch((err) => console.warn("Autoplay audio blocked:", err));
             startVibrationRef.current();
           }
         } else if (data.status === "connected") {
+          // If was connected, we show "ended" because PeerJS connection is lost
           setStatus({ type: "idle" });
           await supabase.from("active_calls").delete().eq("id", data.id);
         }
@@ -798,7 +480,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     restoreCall();
   }, [user?.id]);
 
-  // Ouvir mudanças na tabela active_calls via Supabase Realtime
+  // Listen for active_calls database changes to synchronize call statuses in real-time across devices
   useEffect(() => {
     if (!user?.id) return;
 
@@ -815,18 +497,18 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const currentStatus = statusRef.current;
 
           if (payload.eventType === "INSERT") {
-            const newRow = payload.new as any;
+            const newRow = payload.new;
             if (newRow.receiver_id === user.id && currentStatus.type === "idle") {
               fetchOtherUserProfileRef.current(newRow.caller_id);
               setStatus({ type: "ringing" });
               ringingAudioRef.current
                 ?.play()
-                .catch((err) => console.warn("Ringing audio blocked:", err));
+                .catch((err) => console.warn("Autoplay audio blocked:", err));
               startVibrationRef.current();
               showNotificationRef.current(newRow.caller_id);
             }
           } else if (payload.eventType === "UPDATE") {
-            const nextRow = payload.new as any;
+            const nextRow = payload.new;
             if (
               nextRow.receiver_id === user.id &&
               nextRow.status === "connected" &&
@@ -838,9 +520,11 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 activeNotificationRef.current.close();
                 activeNotificationRef.current = null;
               }
+              setStatus({ type: "idle" });
+              setIncomingCall(null);
             }
           } else if (payload.eventType === "DELETE") {
-            const oldRow = payload.old as any;
+            const oldRow = payload.old;
             const targetId = otherUserRef.current?.id;
             if (
               targetId &&
@@ -857,117 +541,58 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       supabase.removeChannel(activeCallsChannel);
     };
-  }, [user?.id, stopVibration]);
+  }, [user?.id]);
 
-  // Ouvir sinais de broadcast via Supabase Realtime
+  // Listen for Supabase Signals
   useEffect(() => {
     if (!user?.id) return;
 
     const channel = supabase.channel(`call_signals_${user.id}`);
-    console.log(`[Call] Subscribed to broadcast: call_signals_${user.id}`);
+    console.log(`Subscribed to signal channel: call_signals_${user.id}`);
 
     channel
       .on("broadcast", { event: "call-signal" }, ({ payload }) => {
-        console.log("[Call] Broadcast signal received:", payload);
+        console.log("Received call signal:", payload);
         const { type, from, peerId: senderPeerId } = payload;
-
+        // If we receive a rejection or end signal, clean up
         if (type === "REJECTED" || type === "ENDED") {
-          handleCallEndRef.current(from, true, type);
-        } else if (type === "PING") {
-          console.log("[Call] Received PING from:", from, "- replying PONG");
-          sendCallSignalRef.current(from, "PONG");
-        } else if (type === "PONG") {
-          console.log("[Call] Received PONG from:", from, "- recipient is online!");
+          handleCallEndRef.current(from, true, type); // true = skip sending signal back
         } else if (type === "CALL_REQUEST") {
-          if (statusRef.current.type !== "idle" && statusRef.current.type !== "ringing") {
-            console.log("[Call] Busy, rejecting incoming request from:", from);
-            sendCallSignalRef.current(from, "REJECTED");
-            return;
-          }
-
-          fetchOtherUserProfileRef.current(from);
-          setStatus({ type: "ringing" });
-          setIsMinimized(false);
-          ringingAudioRef.current
-            ?.play()
-            .catch((err) => console.warn("Ringing audio blocked:", err));
-          startVibrationRef.current();
-          showNotificationRef.current(from);
-
-          // Enviar resposta com o nosso PeerID para o chamador conseguir ligar
-          const myPeerId = peerIdRef.current || peerRef.current?.id;
-          if (myPeerId) {
-            sendCallSignalRef.current(from, "CALL_RESPONSE", {
-              peerId: myPeerId,
-            });
-          }
+          console.log("Blocking incoming CALL_REQUEST because calling is fully disabled");
+          sendCallSignal(from, "REJECTED");
+          return;
         } else if (type === "CALL_RESPONSE") {
-          if (callTimeoutRef.current) {
-            clearTimeout(callTimeoutRef.current);
-            callTimeoutRef.current = null;
-          }
-
+          // Caller receives target's Peer ID and initiates the call
           if (
             statusRef.current.type === "calling" &&
             from === otherUserRef.current?.id &&
             senderPeerId
           ) {
-            console.log("[Call] Received CALL_RESPONSE with peerId:", senderPeerId);
+            console.log("Received CALL_RESPONSE with peerId:", senderPeerId);
             const currentPeer = peerRef.current;
             const stream = localStreamRef.current;
 
             if (currentPeer && stream) {
               const call = currentPeer.call(senderPeerId, stream);
               setActiveCall(call);
-              activeCallRef.current = call;
 
               call.on("stream", (remote) => {
                 dialingAudioRef.current?.pause();
                 setStatus({ type: "connected" });
                 setRemoteStream(remote);
-                if (remoteAudioRef.current) {
-                  remoteAudioRef.current.srcObject = remote;
-                  remoteAudioRef.current.play().catch((e) => console.warn("Audio play error:", e));
-                }
+                if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remote;
               });
 
               call.on("close", () => {
-                console.log("[Call] Active call closed (caller)");
+                console.log("Call connection closed in active call (caller side)");
                 handleCallEndRef.current(from, true);
               });
 
               call.on("error", (err) => {
-                console.warn("[Call] Error in active call (caller):", err);
+                console.warn("Call error in active call (caller side):", err);
                 handleCallEndRef.current(from, true);
               });
             }
-          }
-        } else if (type === "CALL_ACCEPTED") {
-          console.log("[Call] Remote user accepted call:", from);
-          if (callTimeoutRef.current) {
-            clearTimeout(callTimeoutRef.current);
-            callTimeoutRef.current = null;
-          }
-          dialingAudioRef.current?.pause();
-          setStatus({ type: "connected" });
-
-          if (senderPeerId && peerRef.current && localStreamRef.current && !activeCallRef.current) {
-            const call = peerRef.current.call(senderPeerId, localStreamRef.current);
-            setActiveCall(call);
-            activeCallRef.current = call;
-
-            call.on("stream", (remote) => {
-              setRemoteStream(remote);
-              if (remoteAudioRef.current) {
-                remoteAudioRef.current.srcObject = remote;
-                remoteAudioRef.current
-                  .play()
-                  .catch((e) => console.warn("Remote audio play error:", e));
-              }
-            });
-
-            call.on("close", () => handleCallEndRef.current(from, true));
-            call.on("error", () => handleCallEndRef.current(from, true));
           }
         }
       })
@@ -978,9 +603,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user?.id]);
 
-  // Inicializar PeerJS para qualquer utilizador autenticado
+  // Initialize Peer - Strictly dependent on user.id to prevent recreation during calls
   useEffect(() => {
     if (!user?.id) return;
+
+    // Do not initialize PeerJS on a standard web browser because call features are blocked/disabled there
+    if (!isInstalledApp()) {
+      console.log(
+        "[PeerJS] Skipping PeerJS initialization since we are not running inside the installed native app.",
+      );
+      return;
+    }
 
     let isDestroyed = false;
     let peerInstance: Peer | null = null;
@@ -989,13 +622,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initPeer = (id: string, attempt = 0) => {
       if (isDestroyed) return;
 
+      // Always randomize the PeerJS ID to avoid collisions on refresh
+      // The handshake via CALL_REQUEST/CALL_RESPONSE will handle finding this ID
       const finalId = `${id}_${Math.random().toString(36).substring(2, 6)}`;
+
       console.log(
-        `[PeerJS] Initializing for user ${id} with PeerID: ${finalId} (attempt ${attempt + 1})`,
+        `[PeerJS] Initializing for user ${id} with random PeerId: ${finalId} (attempt ${attempt + 1})`,
       );
 
       const newPeer = new Peer(finalId, {
-        debug: 0,
+        debug: 0, // Disable internal logging to prevent PeerJS console.error from triggering UI overlays
       });
 
       peerInstance = newPeer;
@@ -1005,32 +641,32 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
       peerIdRef.current = finalId;
 
       newPeer.on("open", (pId) => {
-        console.log("[PeerJS] Peer open with ID:", pId);
+        console.log("Peer successfully open with ID:", pId);
         setPeerId(pId);
         peerIdRef.current = pId;
+        // Se cair e voltar, forçamos um status idle se não estiver em chamada real
         if (statusRef.current.type === "ended") {
-          resetCallRef.current();
+          resetCall();
         }
       });
 
       newPeer.on("call", (incoming) => {
-        console.log("[PeerJS] Incoming call from peer:", incoming.peer);
+        console.log("Incoming PeerJS call from:", incoming.peer);
 
         if (
           statusRef.current.type !== "idle" &&
           statusRef.current.type !== "ringing" &&
           statusRef.current.type !== "calling"
         ) {
-          console.log("[PeerJS] Busy, rejecting call");
+          console.log("Busy, rejecting call. Current status:", statusRef.current.type);
           incoming.close();
           return;
         }
 
         setIncomingCall(incoming);
-        incomingCallRef.current = incoming;
         setStatus({ type: "ringing" });
-        setIsMinimized(false);
-
+        // The sender's ID in PeerJS might be randomized, so we rely on the Supabase signal
+        // to have already fetched the profile. Or we can try to parse the peer ID if it follows our pattern.
         const otherSupabaseId = incoming.peer.includes("_")
           ? incoming.peer.split("_")[0]
           : incoming.peer;
@@ -1038,24 +674,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
         showNotificationRef.current(otherSupabaseId);
 
         incoming.on("stream", (remote) => {
-          console.log("[PeerJS] Stream received on incoming listener");
-          setRemoteStream(remote);
-          if (remoteAudioRef.current) {
-            remoteAudioRef.current.srcObject = remote;
-            remoteAudioRef.current.play().catch((e) => console.warn("Remote audio play error:", e));
-          }
+          // This is useful if the caller already established the stream
+          console.log("Stream received on incoming call listener");
         });
 
         incoming.on("close", () => {
-          console.log("[PeerJS] Incoming call closed automatically");
+          console.log("Incoming call connection closed automatically");
           handleCallEndRef.current(otherSupabaseId, true);
         });
 
         incoming.on("error", (err) => {
-          console.warn("[PeerJS] Incoming call error:", err);
+          console.warn("Incoming call error:", err);
           handleCallEndRef.current(otherSupabaseId, true);
         });
 
+        // Receiver hears the ringing sound
         ringingAudioRef.current
           ?.play()
           .catch((err) => console.warn("Autoplay audio blocked:", err));
@@ -1064,22 +697,32 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       newPeer.on("error", (err) => {
         const errorType = (err as { type: string }).type;
-        console.warn("[PeerJS] Root error:", errorType, err?.message || err);
+        console.warn("Peer root error:", errorType, err?.message || err);
 
         if (errorType === "unavailable-id") {
+          console.warn("Peer ID already taken, trying with randomized suffix...");
           if (attempt < 5 && !isDestroyed) {
             newPeer.destroy();
-            const delay = 500 + attempt * 500;
+            const delay = 500 + attempt * 500; // shorter wait if we are randomizing anyway
             retryTimeout = setTimeout(() => {
               if (!isDestroyed) initPeer(id, attempt + 1);
             }, delay);
+          } else {
+            toast.error("Erro de conexão persistente. Tente recarregar a página.");
           }
+        } else if (errorType === "peer-unavailable") {
+          // This happens if the handshake target went offline
+          console.log("Target peer unavailable");
         } else if (errorType === "disconnected" || errorType === "network") {
+          console.log("Peer disconnected, attempting to reconnect...");
           if (!newPeer.destroyed) {
             try {
               if (newPeer.disconnected) {
                 newPeer.reconnect();
               } else {
+                // Se recebemos erro de rede mas o PeerJS ainda acha que está conectado,
+                // forçamos uma desconexão controlada antes de tentar reconectar
+                // para evitar o erro "cannot reconnect because it is not disconnected".
                 newPeer.disconnect();
                 setTimeout(() => {
                   if (!newPeer.destroyed) newPeer.reconnect();
@@ -1098,7 +741,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       isDestroyed = true;
       if (retryTimeout) clearTimeout(retryTimeout);
-      console.log("[PeerJS] Cleaning up Peer instance");
+      console.log("Cleaning up Peer instance");
       if (peerInstance) {
         try {
           peerInstance.destroy();
@@ -1110,7 +753,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [user?.id]);
 
-  // Tempo limite para chamadas não atendidas (45 segundos)
+  // Calling timeout
   useEffect(() => {
     if (status.type === "calling") {
       const timeout = setTimeout(() => {
@@ -1121,7 +764,7 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [status.type, otherUser?.id, handleCallEnd]);
 
-  // Contador de duração da chamada
+  // Timer logic
   useEffect(() => {
     if (status.type === "connected") {
       timerRef.current = setInterval(() => {
@@ -1144,107 +787,21 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
     isCalling,
     status,
     callDuration,
-    otherUser,
-    isMuted,
-    isSpeakerOn,
-    isMinimized,
-    isNativeApp: isNativePlatform(),
-    toggleMute,
-    toggleSpeaker,
-    toggleMinimize,
     startCall,
     answerCall,
     rejectCall,
     endCall,
     remoteAudioRef,
-    onlineUsers,
-    isUserOnline,
     triggerVoicePermissionDialog: () => setShowVoicePermissionDialog(true),
-    triggerBrowserCallBlockDialog: () => setShowWebBlockedDialog(true),
+    triggerBrowserCallBlockDialog: () => setShowBrowserCallBlockDialog(true),
   };
 
   return (
     <CallContext.Provider value={value}>
       {children}
-      <audio ref={remoteAudioRef} autoPlay playsInline />
+      <audio ref={remoteAudioRef} autoPlay />
 
-      {/* Interface Visual Completa da Chamada */}
-      <CallOverlay />
-
-      {/* Diálogo de Bloqueio da Web - Notificação Nativa Estilo WhatsApp Requer APK */}
-      <Dialog open={showWebBlockedDialog} onOpenChange={setShowWebBlockedDialog}>
-        <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-[360px] rounded-[32px] p-6 flex flex-col items-center gap-4 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-center font-black uppercase tracking-widest text-[10px] text-emerald-400 flex items-center justify-center gap-1.5">
-              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-              Notificações de Alta Prioridade (FCM)
-            </DialogTitle>
-          </DialogHeader>
-
-          <div className="text-center space-y-3">
-            <div className="mx-auto size-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-400 shadow-lg shadow-emerald-500/10">
-              <Smartphone className="size-7" />
-            </div>
-
-            <div className="space-y-1">
-              <h3 className="text-base font-black tracking-tight text-white">
-                Chamadas Nativas no Android
-              </h3>
-              <p className="text-xs text-zinc-400 leading-relaxed">
-                Para fazer ou receber chamadas com notificações em tempo real estilo WhatsApp (mesmo
-                com o ecrã bloqueado ou com a aplicação fechada), descarrega a nossa aplicação
-                oficial!
-              </p>
-            </div>
-
-            <div className="text-left text-xs text-zinc-300 space-y-2.5 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
-              <div className="flex items-start gap-2.5">
-                <span className="text-emerald-400 font-bold shrink-0">📲</span>
-                <div>
-                  <b className="text-white">Push FCM de Alta Prioridade:</b> Acorda o dispositivo do
-                  amigo mesmo com o app fechado em segundo plano.
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="text-emerald-400 font-bold shrink-0">🔔</span>
-                <div>
-                  <b className="text-white">Ecrã de Chamada a Tocar:</b> Notificação nativa com
-                  botões de Atender ou Recusar.
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5">
-                <span className="text-emerald-400 font-bold shrink-0">🎙️</span>
-                <div>
-                  <b className="text-white">Áudio WebRTC Cristalino:</b> Conecta a sala de voz
-                  imediatamente ao aceitar.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="w-full space-y-2 pt-1">
-            <Button
-              onClick={() => {
-                setShowWebBlockedDialog(false);
-                window.open("/download", "_blank");
-              }}
-              className="w-full h-11 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-black font-black uppercase tracking-wider text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
-            >
-              <Download className="size-4" />
-              Descarregar Aplicação Android
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setShowWebBlockedDialog(false)}
-              className="w-full h-9 rounded-xl text-zinc-400 hover:text-white hover:bg-white/5 font-bold text-xs"
-            >
-              Entendido
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diálogo de Ajuda com Permissões de Microfone */}
+      {/* Microphone Permission Help Dialog */}
       <Dialog open={showVoicePermissionDialog} onOpenChange={setShowVoicePermissionDialog}>
         <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-[340px] rounded-[32px] p-6 flex flex-col items-center gap-4">
           <DialogHeader>
@@ -1253,26 +810,55 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
             </DialogTitle>
           </DialogHeader>
           <div className="text-center space-y-4">
-            <div className="mx-auto size-12 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-400 font-bold text-lg">
+            <div className="mx-auto size-12 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 text-red-400 font-bold text-lg">
               🎙️
             </div>
-            <h3 className="text-base font-black">Acesso ao Microfone</h3>
-            <p className="text-xs text-zinc-400 leading-relaxed">
-              Para efetuar ou receber chamadas de voz, permita o acesso ao microfone nas definições
-              do seu navegador ou dispositivo móvel.
-            </p>
-            <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
-              <p>
-                🟢 <b>1.</b> Verifique o ícone de permissão ou cadeado na barra de navegação.
-              </p>
-              <p>
-                🟢 <b>2.</b> Localize a opção <b>Microfone</b> e escolha <b>Permitir</b>.
-              </p>
-              <p>
-                🟢 <b>3.</b> Na aplicação Android/APK, aceda a{" "}
-                <b>Definições &gt; Aplicações &gt; Permissões</b> e ative o microfone.
-              </p>
-            </div>
+            <h3 className="text-base font-black">Acesso Bloqueado</h3>
+            {isInstalledApp() ? (
+              <>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  O aplicativo não conseguiu acessar o microfone. Ative a permissão nas Definições
+                  do seu dispositivo móvel:
+                </p>
+                <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
+                  <p>
+                    🟢 <b>1.</b> Vá às <b>Definições / Ajustes</b> do seu dispositivo móvel.
+                  </p>
+                  <p>
+                    🟢 <b>2.</b> Aceda a <b>Aplicações / Gestor de Apps</b>.
+                  </p>
+                  <p>
+                    🟢 <b>3.</b> Selecione este aplicativo na lista.
+                  </p>
+                  <p>
+                    🟢 <b>4.</b> Clique em <b>Permissões</b> e ative o acesso ao <b>Microfone</b>.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  O seu navegador bloqueou o microfone. Para fazer ou receber chamadas, siga estes
+                  passos no Android/iOS:
+                </p>
+                <div className="text-left text-xs text-zinc-300 space-y-2 bg-white/5 p-4 rounded-2xl border border-white/5 font-medium leading-relaxed">
+                  <p>
+                    🟢 <b>1.</b> No topo esquerdo (junto ao link do site), clique no símbolo de{" "}
+                    <b>Definições de Site / Cadeado / Info</b>.
+                  </p>
+                  <p>
+                    🟢 <b>2.</b> Localize a opção <b>Microfone</b>.
+                  </p>
+                  <p>
+                    🟢 <b>3.</b> Altere a definição para <b>Permitir</b>.
+                  </p>
+                  <p>
+                    🟢 <b>4.</b> Se estiver na app, autorize o microfone quando solicitado pelo
+                    telemóvel.
+                  </p>
+                </div>
+              </>
+            )}
           </div>
           <Button
             onClick={() => {
@@ -1280,6 +866,37 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
               navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {});
             }}
             className="w-full h-11 rounded-2xl bg-white text-black font-black hover:bg-zinc-200"
+          >
+            Entendido
+          </Button>
+        </DialogContent>
+      </Dialog>
+
+      {/* Browser Call Block Dialog */}
+      <Dialog open={showBrowserCallBlockDialog} onOpenChange={setShowBrowserCallBlockDialog}>
+        <DialogContent className="bg-zinc-950/98 border-white/10 text-white max-w-[340px] rounded-[32px] p-6 flex flex-col items-center gap-4 text-center shadow-2xl backdrop-blur-2xl">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Funcionalidade de Chamada Bloqueada</DialogTitle>
+          </DialogHeader>
+          <div className="size-16 rounded-3xl bg-amber-500/10 border border-amber-500/10 flex items-center justify-center text-amber-500">
+            <PhoneOff className="size-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-lg font-black tracking-tight text-white">
+              Ligar só na App Instalada
+            </h3>
+            <p className="text-sm font-semibold text-rose-400">
+              A única forma de utilizador conseguir utilizar o aplicativo é só instalando.
+            </p>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              O seu navegador não suporta a receção e transmissão de chamadas fiáveis em standby de
+              forma nativa. Por favor, instale a aplicação oficial em formato APK para usufruir de
+              todas as funcionalidades de voz e chat nativos em segundo plano.
+            </p>
+          </div>
+          <Button
+            onClick={() => setShowBrowserCallBlockDialog(false)}
+            className="w-full h-11 rounded-2xl bg-white text-black font-black hover:bg-zinc-200 transition-colors uppercase tracking-wider text-xs"
           >
             Entendido
           </Button>

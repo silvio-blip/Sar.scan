@@ -12,11 +12,8 @@
     "format": "prettier --write ."
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.0",
     "@capacitor/camera": "^8.2.0",
-    "@capacitor/cli": "^8.5.2",
-    "@capacitor/core": "^8.5.2",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/push-notifications": "^8.1.1",
     "@cloudflare/vite-plugin": "^1.25.5",

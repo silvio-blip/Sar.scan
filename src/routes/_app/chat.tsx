@@ -372,37 +372,23 @@ function MessageCard({
 
         <div className="flex flex-col gap-0.5 max-w-full">
           {m.type === "call_log" ? (
-            <div
-              onClick={(e) => {
-                e.stopPropagation();
-                if (selectedUser) startCall(selectedUser.id);
-              }}
-              className="flex items-center justify-between gap-3 py-1 cursor-pointer group"
-              title="Ligar de volta"
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className={`size-8 rounded-full flex items-center justify-center ${isMe ? "bg-white/10" : "bg-secondary"}`}
-                >
-                  <Phone
-                    className={`size-4 ${isMe ? "text-primary-foreground" : "text-primary"}`}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <span
-                    className={`text-[11px] font-black uppercase tracking-wider ${isMe ? "text-primary-foreground" : "text-foreground"}`}
-                  >
-                    Chamada
-                  </span>
-                  <span
-                    className={`text-[10px] ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}
-                  >
-                    {m.content}
-                  </span>
-                </div>
+            <div className="flex items-center gap-2 py-1">
+              <div
+                className={`size-8 rounded-full flex items-center justify-center ${isMe ? "bg-white/10" : "bg-secondary"}`}
+              >
+                <Phone className={`size-4 ${isMe ? "text-primary-foreground" : "text-primary"}`} />
               </div>
-              <div className="size-7 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Phone className="size-3.5" />
+              <div className="flex flex-col">
+                <span
+                  className={`text-[11px] font-black uppercase tracking-wider ${isMe ? "text-primary-foreground" : "text-foreground"}`}
+                >
+                  Chamada
+                </span>
+                <span
+                  className={`text-[10px] ${isMe ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                >
+                  {m.content}
+                </span>
               </div>
             </div>
           ) : m.audio_url ? (
@@ -648,8 +634,6 @@ function ChatPage() {
     remoteAudioRef,
     answerCall,
     triggerVoicePermissionDialog,
-    isUserOnline,
-    isNativeApp,
   } = useCall();
   const aiAgent = !!subscription?.ai_agent_enabled;
   const qc = useQueryClient();
@@ -765,19 +749,17 @@ function ChatPage() {
       const { error: insertError } = await supabase.from("direct_messages").insert(payload);
       if (insertError) throw insertError;
 
-      // Dispatch push notification to receiver only if they are offline/app closed
-      if (!isUserOnline(selectedUser.id)) {
-        fetch(getApiUrl("/api/notifications/send"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            targetUserId: selectedUser.id,
-            title: profile?.nome || "Nova mensagem",
-            body: "🎙️ Enviou uma mensagem de voz",
-            data: { senderId: user.id, type: "message" },
-          }),
-        }).catch((err) => console.error("[Push] Erro ao disparar push de áudio:", err));
-      }
+      // Dispatch push notification to receiver
+      fetch(getApiUrl("/api/notifications/send"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetUserId: selectedUser.id,
+          title: profile?.nome || "Nova mensagem",
+          body: "🎙️ Enviou uma mensagem de voz",
+          data: { senderId: user.id, type: "message" },
+        }),
+      }).catch((err) => console.error("[Push] Erro ao disparar push de áudio:", err));
 
       setAudioBlob(null);
       setIsPreviewing(false);
@@ -1369,19 +1351,17 @@ function ChatPage() {
           throw error;
         }
 
-        // Dispatch push notification to receiver only if they are offline/app closed
-        if (!isUserOnline(selectedUser.id)) {
-          fetch(getApiUrl("/api/notifications/send"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              targetUserId: selectedUser.id,
-              title: profile?.nome || "Nova mensagem",
-              body: text,
-              data: { senderId: user.id, type: "message" },
-            }),
-          }).catch((err) => console.error("[Push] Erro ao disparar push de mensagem:", err));
-        }
+        // Dispatch push notification to receiver
+        fetch(getApiUrl("/api/notifications/send"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUserId: selectedUser.id,
+            title: profile?.nome || "Nova mensagem",
+            body: text,
+            data: { senderId: user.id, type: "message" },
+          }),
+        }).catch((err) => console.error("[Push] Erro ao disparar push de mensagem:", err));
 
         // Trigger queries immediately
         await Promise.all([
@@ -1792,22 +1772,7 @@ function ChatPage() {
                                         </p>
                                       </div>
                                     </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="size-9 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 transition-colors"
-                                        title={`Ligar para ${chat.profile?.nome || "utilizador"}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          startCall(chat.otherId);
-                                        }}
-                                        disabled={isCalling}
-                                      >
-                                        <Phone className="size-4" />
-                                      </Button>
-                                      <ChevronRight className="size-5 text-muted-foreground/35 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-                                    </div>
+                                    <ChevronRight className="size-5 text-muted-foreground/35 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                                   </Card>
                                 );
                               })}
@@ -1849,22 +1814,7 @@ function ChatPage() {
                                         Começar nova conversa
                                       </p>
                                     </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="size-9 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 transition-colors"
-                                        title={`Ligar para ${friend.nome || "amigo"}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          startCall(friend.id);
-                                        }}
-                                        disabled={isCalling}
-                                      >
-                                        <Phone className="size-4" />
-                                      </Button>
-                                      <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
-                                    </div>
+                                    <ChevronRight className="size-4 text-muted-foreground/30 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                                   </Card>
                                 ))}
                             </div>
@@ -2277,17 +2227,6 @@ function ChatPage() {
                       Enviar Mensagem
                     </Button>
                     <Button
-                      className="w-full h-14 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-                      onClick={() => {
-                        setIsProfileModalOpen(false);
-                        if (selectedUser) startCall(selectedUser.id);
-                      }}
-                      disabled={isCalling}
-                    >
-                      <Phone className="size-4" />
-                      Ligar para {selectedUser?.nome || "Utilizador"}
-                    </Button>
-                    <Button
                       variant="destructive"
                       className="w-full h-14 rounded-2xl font-black uppercase tracking-widest text-[11px] bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border-none"
                       onClick={() => removeFriend(selectedUser!.id)}
@@ -2370,43 +2309,13 @@ function ChatPage() {
                       className="flex-1 min-w-0"
                       onClick={() => selectedUser && openProfile(selectedUser)}
                     >
-                      <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors cursor-pointer text-foreground flex items-center gap-1.5">
+                      <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors cursor-pointer text-foreground">
                         {selectedUser?.nome || "Usuário"}
-                        {selectedUser && (
-                          <span
-                            className={`size-2 rounded-full shrink-0 ${
-                              isUserOnline(selectedUser.id)
-                                ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]"
-                                : "bg-zinc-500/60"
-                            }`}
-                            title={
-                              isUserOnline(selectedUser.id) ? "Online (com ligação)" : "Offline"
-                            }
-                          />
-                        )}
                       </h2>
-                      <p className="text-[10px] font-bold uppercase tracking-tight">
-                        {selectedUser && isUserOnline(selectedUser.id) ? (
-                          <span className="text-emerald-500 font-bold">Online</span>
-                        ) : (
-                          <span className="text-muted-foreground/80 font-medium">Offline</span>
-                        )}
+                      <p className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">
+                        Social Match
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => selectedUser && startCall(selectedUser.id)}
-                      disabled={isCalling}
-                      className="size-10 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 shrink-0 transition-all ml-auto"
-                      title={
-                        isNativeApp
-                          ? "Efetuar chamada de voz nativa"
-                          : "Chamadas de voz nativas disponíveis no App Android"
-                      }
-                    >
-                      <Phone className="size-5" />
-                    </Button>
                   </>
                 )}
               </div>

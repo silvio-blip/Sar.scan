@@ -28,9 +28,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { SarLogo } from "@/components/sar-logo";
 import { IntroAnimation } from "@/components/intro-animation";
 import { App } from "@capacitor/app";
-import { PushNotifications } from "@capacitor/push-notifications";
 import GlassSurface from "@/components/GlassSurface";
-import { isNativePlatform, mergeFcmTokens, parseFcmTokens } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app")({ component: AppLayout });
 
@@ -132,27 +130,43 @@ function AppLayout() {
       const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
       const cap = isCap ? (window as any).Capacitor : null;
 
-      // 1. Solicitamos Notificações primeiro de forma segura para a plataforma
+      // 1. Solicitamos Notificações (Super Crítico!) primeiro de forma isolada
       const requestNotifications = async () => {
         if (localStorage.getItem("push_notifications_active") === "false") {
+          console.log(
+            "[Push] Ignorando permissão de notificações push automática conforme preferências do perfil do utilizador.",
+          );
           return;
         }
-
-        // Em ambiente nativo Android, o registo é gerido de forma dedicada pelo hook nativo de FCM
-        if (isNativePlatform()) {
-          return;
-        }
-
-        // Em ambiente Web (navegador), solicita permissão da Web Notification API se compatível
-        if (
-          typeof window !== "undefined" &&
-          "Notification" in window &&
-          Notification.permission === "default"
-        ) {
-          try {
-            await Notification.requestPermission();
-          } catch (err) {
-            console.warn("[Permissions] Notificações Web:", err);
+        console.log("[Permissions] Solicitando permissão de notificações...");
+        if (isCap) {
+          const { PushNotifications } = cap.Plugins || {};
+          if (PushNotifications) {
+            try {
+              const check = await PushNotifications.checkPermissions();
+              if (check?.receive !== "granted") {
+                const result = await PushNotifications.requestPermissions();
+                if (result?.receive === "granted") {
+                  console.log("[Push] Permissões nativas de notificação concedidas pelo clique.");
+                  PushNotifications.register();
+                } else {
+                  console.warn("[Push] Permissões nativas recusadas ou ignoradas.");
+                }
+              } else {
+                console.log("[Push] Permissão nativa já concedida, registrando dispositivo...");
+                PushNotifications.register();
+              }
+            } catch (err) {
+              console.error("[Push] Erro na requisição de Push nativo:", err);
+            }
+          }
+        } else {
+          if ("Notification" in window && Notification.permission === "default") {
+            try {
+              await Notification.requestPermission();
+            } catch (err) {
+              console.warn("[Permissions] Erro na notificação Web:", err);
+            }
           }
         }
       };
@@ -197,208 +211,102 @@ function AppLayout() {
     }
   }, [user, showIntro]);
 
-  // =========================================================================
-  // SISTEMA DE GERAÇÃO E SINCRONIZAÇÃO AUTOMÁTICA DE TOKEN FCM (ANDROID NATIVO)
-  // =========================================================================
   useEffect(() => {
-    if (!user?.id) return;
+    const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+    if (isCapacitor) {
+      const cap = (window as any).Capacitor;
+      const { PushNotifications } = cap.Plugins || {};
+      if (PushNotifications) {
+        console.log("[Push] Inicializando ouvintes adicionais de notificações...");
 
-    // Apenas em ambiente nativo Android (Capacitor/APK)
-    if (!isNativePlatform()) {
-      return;
-    }
-
-    if (localStorage.getItem("push_notifications_active") === "false") {
-      console.log("[Push FCM] Notificações desativadas nas configurações do usuário.");
-      return;
-    }
-
-    const cap = typeof window !== "undefined" ? (window as any).Capacitor : null;
-    const pushPlugin = PushNotifications || cap?.Plugins?.PushNotifications;
-
-    if (!pushPlugin) {
-      console.warn("[Push FCM] Plugin PushNotifications não disponível.");
-      return;
-    }
-
-    console.log("[Push FCM] Inicializando gerenciador nativo de notificações FCM...");
-
-    // 1. Criar canal de notificações de chamadas de alta prioridade no Android
-    if (typeof pushPlugin.createChannel === "function") {
-      pushPlugin
-        .createChannel({
-          id: "incoming_calls",
-          name: "Chamadas Recebidas",
-          description: "Canal de alta prioridade para alertas de chamadas em tempo real",
-          importance: 5, // IMPORTANCE_HIGH (Faz soar o alarme e exibe pop-up no ecrã)
-          visibility: 1, // VISIBILITY_PUBLIC (Aparece no ecrã de bloqueio)
-          vibration: true,
-          sound: "ringtone.wav",
-          lights: true,
-        })
-        .catch((err: any) => console.warn("[Push FCM] Aviso ao criar canal incoming_calls:", err));
-
-      pushPlugin
-        .createChannel({
-          id: "calls_channel",
-          name: "Chamadas de Voz",
-          description: "Toque e notificações de chamadas recebidas em tempo real estilo WhatsApp",
-          importance: 5,
-          visibility: 1,
-          sound: "ringtone.wav",
-          vibration: true,
-          lights: true,
-        })
-        .catch((err: any) => console.warn("[Push FCM] Aviso ao criar canal calls_channel:", err));
-    }
-
-    // 2. Ouvinte de Registro: Captura o token gerado para este telemóvel Android
-    const regHandle = pushPlugin.addListener("registration", async (token: any) => {
-      const deviceToken = token?.value;
-      if (!deviceToken) return;
-
-      console.log(`[Push FCM] Token gerado para este telemóvel: ${deviceToken.slice(0, 15)}...`);
-      localStorage.setItem("device_fcm_token", deviceToken);
-
-      // Suporte Multi-Dispositivo: Adiciona este telemóvel à lista de tokens do utilizador sem apagar os outros
-      if (user?.id) {
-        const existingTokens = parseFcmTokens(profile?.fcm_token);
-        if (!existingTokens.includes(deviceToken)) {
-          const mergedTokens = mergeFcmTokens(profile?.fcm_token, deviceToken);
-          console.log(
-            `[Push FCM] Novo telemóvel adicionado! Total de telemóveis registados para esta conta: ${mergedTokens.split(",").length}. Atualizando banco...`,
-          );
+        PushNotifications.addListener("registration", async (token: any) => {
+          console.log("[Push] Registro efetuado com sucesso. Token:", token.value);
           const { error } = await supabase
             .from("profiles")
-            .update({ fcm_token: mergedTokens })
+            .update({ fcm_token: token.value })
             .eq("id", user.id);
-
           if (error) {
-            console.error(
-              "[Push FCM] Erro ao sincronizar tokens multi-dispositivo no banco:",
-              error,
-            );
-          } else {
-            console.log("[Push FCM] Telemóvel registado com sucesso para receber chamadas!");
+            console.error("[Push] Erro ao sincronizar token com o banco:", error);
           }
-        } else {
-          console.log(
-            "[Push FCM] Este telemóvel já se encontra registado e ativo para esta conta.",
-          );
-        }
-      }
-    });
+        });
 
-    const regErrHandle = pushPlugin.addListener("registrationError", (error: any) => {
-      console.error("[Push FCM] Erro no registro de notificações no Android:", error);
-    });
+        PushNotifications.addListener("registrationError", (error: any) => {
+          console.error("[Push] Erro no registro de notificações:", error);
+        });
 
-    const notifRecvHandle = pushPlugin.addListener(
-      "pushNotificationReceived",
-      (notification: any) => {
-        console.log("[Push FCM] Notificação recebida em primeiro plano:", notification);
-        const isCallNotification =
-          notification.data?.type === "INCOMING_CALL" ||
-          notification.data?.type === "incoming_call" ||
-          notification.data?.channelId === "incoming_calls" ||
-          notification.data?.android_channel_id === "incoming_calls" ||
-          notification.title?.includes("Chamada");
+        PushNotifications.addListener("pushNotificationReceived", (notification: any) => {
+          console.log("[Push] Notificação em primeiro plano (In-App):", notification);
+          // Toque interativo do Sonner para o usuário saber de novas conversas ou ligações no foreground
+          const isCallNotification =
+            notification.data?.type === "incoming_call" || notification.title?.includes("Chamada");
 
-        if (isCallNotification) {
-          console.log("[Push FCM] Chamada recebida! Redirecionando para a chamada...");
+          if (isCallNotification) {
+            // Toast suprimido para chamadas, reliance total no listener em tempo real do CallContext!
+            console.log(
+              "[Push] Notificação de chamada recebida. Omitindo toast, CallContext lidará com isso.",
+            );
+            return;
+          } else {
+            toast.message(`💬 ${notification.title || "Nova mensagem"}`, {
+              description: notification.body || "Toque para visualizar",
+            });
+          }
+        });
+
+        PushNotifications.addListener("pushNotificationActionPerformed", (action: any) => {
+          console.log("[Push] Ação de notificação realizada (clique):", action);
+          // Redirecionar para o ecrã do chat
           try {
             router.navigate({ to: "/chat" });
-          } catch {
-            window.location.href = "/chat";
+          } catch (routeErr) {
+            console.error("[Push] Erro ao redirecionar para o chat:", routeErr);
           }
-        } else {
-          toast.message(`💬 ${notification.title || "Nova mensagem"}`, {
-            description: notification.body || "Toque para visualizar",
-          });
-        }
-      },
-    );
-
-    const notifActHandle = pushPlugin.addListener(
-      "pushNotificationActionPerformed",
-      (action: any) => {
-        console.log("[Push FCM] Notificação clicada:", action);
-        const notification = action?.notification;
-        const isCallNotification =
-          notification?.data?.type === "INCOMING_CALL" ||
-          notification?.data?.type === "incoming_call" ||
-          notification?.data?.channelId === "incoming_calls" ||
-          notification?.data?.android_channel_id === "incoming_calls" ||
-          notification?.title?.includes("Chamada");
-
-        try {
-          router.navigate({ to: "/chat" });
-        } catch (routeErr) {
-          console.error("[Push FCM] Erro ao redirecionar para o chat:", routeErr);
-        }
-      },
-    );
-
-    // 3. Função de verificação e geração de token no telemóvel
-    const verifyAndRegisterDevice = async () => {
-      try {
-        // Se já temos um token deste telemóvel em cache que ainda não consta na lista do perfil, adicionamos imediatamente
-        const cachedToken = localStorage.getItem("device_fcm_token");
-        if (cachedToken && user?.id) {
-          const currentTokens = parseFcmTokens(profile?.fcm_token);
-          if (!currentTokens.includes(cachedToken)) {
-            const mergedTokens = mergeFcmTokens(profile?.fcm_token, cachedToken);
-            console.log(`[Push FCM] Adicionando token do dispositivo em cache à lista do banco...`);
-            await supabase.from("profiles").update({ fcm_token: mergedTokens }).eq("id", user.id);
-          }
-        }
-
-        // Verificar permissões no telemóvel
-        let permStatus = await pushPlugin.checkPermissions();
-        if (permStatus.receive !== "granted") {
-          console.log("[Push FCM] Solicitando permissão para geração de token nativo...");
-          permStatus = await pushPlugin.requestPermissions();
-        }
-
-        if (permStatus.receive === "granted") {
-          console.log("[Push FCM] Registrando dispositivo para obter/verificar token FCM...");
-          await pushPlugin.register();
-        } else {
-          console.warn("[Push FCM] Permissão de notificações não concedida neste telemóvel.");
-        }
-      } catch (err) {
-        console.error("[Push FCM] Erro ao verificar registro do telemóvel:", err);
+        });
       }
-    };
-
-    // Executar verificação imediatamente na entrada do app
-    verifyAndRegisterDevice();
-
-    // Re-verificar quando o app volta do segundo plano para primeiro plano
-    let appStateListener: any = null;
-    try {
-      appStateListener = App.addListener("appStateChange", (state) => {
-        if (state.isActive) {
-          console.log("[Push FCM] App reativado em primeiro plano. Re-verificando token...");
-          verifyAndRegisterDevice();
-        }
-      });
-    } catch (e) {
-      void e;
     }
+  }, [user]);
 
-    return () => {
-      try {
-        regHandle?.remove?.();
-        regErrHandle?.remove?.();
-        notifRecvHandle?.remove?.();
-        notifActHandle?.remove?.();
-        appStateListener?.remove?.();
-      } catch (cleanErr) {
-        void cleanErr;
+  // Monitor e auto-registro para garantir que o utilizador NUNCA fique sem o token FCM real
+  useEffect(() => {
+    if (!user) return;
+    if (localStorage.getItem("push_notifications_active") === "false") {
+      console.log(
+        "[Push] Ignorando monitoramento e auto-registro FCM: usuário desativou em suas definições de perfil.",
+      );
+      return;
+    }
+    const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+    if (isCap) {
+      const cap = (window as any).Capacitor;
+      const { PushNotifications } = cap.Plugins || {};
+      if (PushNotifications) {
+        const isMockToken = profile?.fcm_token?.startsWith("fcm_mock_");
+        const hasNoToken = !profile?.fcm_token;
+
+        console.log(`[Push] Sincronização de Token FCM. Atual no banco: ${profile?.fcm_token}`);
+
+        PushNotifications.checkPermissions().then((permResult: any) => {
+          if (permResult.receive === "granted") {
+            // Sempre registramos nativamente se já tivermos permissão, para atualizar o de forma fidedigna o token real no banco (sobrescrevendo mocks!)
+            console.log(
+              "[Push] Permissão já concedida, registrando dispositivo para obter token real...",
+            );
+            PushNotifications.register();
+          } else if (hasNoToken || isMockToken) {
+            // Se as permissões não estiverem concedidas e não tivermos token válido (ou for mock simulado!), solicitamos de forma ativa
+            console.log(
+              "[Push] Token de notificações em falta ou simulado na conta, solicitando permissões nativas para registro real...",
+            );
+            PushNotifications.requestPermissions().then((reqResult: any) => {
+              if (reqResult.receive === "granted") {
+                PushNotifications.register();
+              }
+            });
+          }
+        });
       }
-    };
-  }, [user?.id, profile?.fcm_token]);
+    }
+  }, [user, profile?.fcm_token]);
 
   // Sincronização global e notificações Web para mensagens de chat recebidas no browser
   useEffect(() => {
@@ -509,13 +417,7 @@ function AppLayout() {
           width="100%"
           height="auto"
           borderRadius={44}
-          borderWidth={0.025}
-          distortionScale={-20}
-          backgroundOpacity={0.7}
-          brightness={85}
-          opacity={0.8}
-          blur={6}
-          className="border border-white/60 dark:border-white/10"
+          className="shadow-[0_16px_40px_rgba(46,74,59,0.08)] border border-border"
         >
           <div className="w-full flex items-center justify-around">
             {tabs.map(({ to, Icon, label }) => {
