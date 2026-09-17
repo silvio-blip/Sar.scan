@@ -227,6 +227,19 @@ function AppLayout() {
     if (typeof pushPlugin.createChannel === "function") {
       pushPlugin
         .createChannel({
+          id: "incoming_calls",
+          name: "Chamadas Recebidas",
+          description: "Canal de alta prioridade para alertas de chamadas em tempo real",
+          importance: 5, // IMPORTANCE_HIGH (Faz soar o alarme e exibe pop-up no ecrã)
+          visibility: 1, // VISIBILITY_PUBLIC (Aparece no ecrã de bloqueio)
+          vibration: true,
+          sound: "ringtone.wav",
+          lights: true,
+        })
+        .catch((err: any) => console.warn("[Push FCM] Aviso ao criar canal incoming_calls:", err));
+
+      pushPlugin
+        .createChannel({
           id: "calls_channel",
           name: "Chamadas de Voz",
           description: "Toque e notificações de chamadas recebidas em tempo real estilo WhatsApp",
@@ -287,6 +300,8 @@ function AppLayout() {
         const isCallNotification =
           notification.data?.type === "INCOMING_CALL" ||
           notification.data?.type === "incoming_call" ||
+          notification.data?.channelId === "incoming_calls" ||
+          notification.data?.android_channel_id === "incoming_calls" ||
           notification.title?.includes("Chamada");
 
         if (isCallNotification) {
@@ -308,6 +323,14 @@ function AppLayout() {
       "pushNotificationActionPerformed",
       (action: any) => {
         console.log("[Push FCM] Notificação clicada:", action);
+        const notification = action?.notification;
+        const isCallNotification =
+          notification?.data?.type === "INCOMING_CALL" ||
+          notification?.data?.type === "incoming_call" ||
+          notification?.data?.channelId === "incoming_calls" ||
+          notification?.data?.android_channel_id === "incoming_calls" ||
+          notification?.title?.includes("Chamada");
+
         try {
           router.navigate({ to: "/chat" });
         } catch (routeErr) {

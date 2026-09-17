@@ -285,37 +285,50 @@ O formato deve ser exatamente:
           fcmPayloadData?.type === "incoming_call" ||
           (typeof title === "string" && title.toLowerCase().includes("chamada"));
 
-        // Montar payload com registration_ids para tocar todos os telemóveis do destinatário em simultâneo
+        const callChannelId = "incoming_calls";
+        const generalChannelId = "default_channel";
+        const channelId = isCallNotification ? callChannelId : generalChannelId;
+
+        // Montar payload com registration_ids (e 'to' se único) com parâmetros de alta prioridade para o Android
         const fcmBody: any = {
-          registration_ids: tokens,
           priority: "high",
           content_available: true,
           notification: {
             title,
             body,
+            android_channel_id: channelId,
+            channel_id: channelId,
             sound: isCallNotification ? "ringtone" : "default",
             badge: 1,
             priority: "high",
-            channel_id: isCallNotification ? "calls_channel" : "default_channel",
             click_action: "FLUTTER_NOTIFICATION_CLICK",
           },
           data: {
             ...fcmPayloadData,
+            type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
+            roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId,
+            channelId,
             title,
             body,
-            type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
           },
           android: {
             priority: "high",
             ttl: isCallNotification ? "60s" : "86400s",
             notification: {
               sound: isCallNotification ? "ringtone" : "default",
-              channel_id: isCallNotification ? "calls_channel" : "default_channel",
+              channel_id: channelId,
+              android_channel_id: channelId,
               priority: "max",
               visibility: "public",
             },
           },
         };
+
+        if (tokens.length === 1) {
+          fcmBody.to = tokens[0];
+        } else {
+          fcmBody.registration_ids = tokens;
+        }
 
         const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
           method: "POST",

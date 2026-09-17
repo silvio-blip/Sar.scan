@@ -765,17 +765,19 @@ function ChatPage() {
       const { error: insertError } = await supabase.from("direct_messages").insert(payload);
       if (insertError) throw insertError;
 
-      // Dispatch push notification to receiver
-      fetch(getApiUrl("/api/notifications/send"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetUserId: selectedUser.id,
-          title: profile?.nome || "Nova mensagem",
-          body: "🎙️ Enviou uma mensagem de voz",
-          data: { senderId: user.id, type: "message" },
-        }),
-      }).catch((err) => console.error("[Push] Erro ao disparar push de áudio:", err));
+      // Dispatch push notification to receiver only if they are offline/app closed
+      if (!isUserOnline(selectedUser.id)) {
+        fetch(getApiUrl("/api/notifications/send"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetUserId: selectedUser.id,
+            title: profile?.nome || "Nova mensagem",
+            body: "🎙️ Enviou uma mensagem de voz",
+            data: { senderId: user.id, type: "message" },
+          }),
+        }).catch((err) => console.error("[Push] Erro ao disparar push de áudio:", err));
+      }
 
       setAudioBlob(null);
       setIsPreviewing(false);
@@ -1367,17 +1369,19 @@ function ChatPage() {
           throw error;
         }
 
-        // Dispatch push notification to receiver
-        fetch(getApiUrl("/api/notifications/send"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            targetUserId: selectedUser.id,
-            title: profile?.nome || "Nova mensagem",
-            body: text,
-            data: { senderId: user.id, type: "message" },
-          }),
-        }).catch((err) => console.error("[Push] Erro ao disparar push de mensagem:", err));
+        // Dispatch push notification to receiver only if they are offline/app closed
+        if (!isUserOnline(selectedUser.id)) {
+          fetch(getApiUrl("/api/notifications/send"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              targetUserId: selectedUser.id,
+              title: profile?.nome || "Nova mensagem",
+              body: text,
+              data: { senderId: user.id, type: "message" },
+            }),
+          }).catch((err) => console.error("[Push] Erro ao disparar push de mensagem:", err));
+        }
 
         // Trigger queries immediately
         await Promise.all([
