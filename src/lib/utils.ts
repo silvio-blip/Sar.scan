@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Capacitor } from "@capacitor/core";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -122,6 +123,72 @@ export function isInstalledApp(): boolean {
   );
 
   return isCapacitorNative || isCapacitorProtocol;
+}
+
+export function isNativePlatform(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (Capacitor.isNativePlatform()) return true;
+  } catch (err) {
+    void err;
+  }
+  const cap = (window as any).Capacitor;
+  if (cap && typeof cap.isNativePlatform === "function") {
+    try {
+      return cap.isNativePlatform();
+    } catch (err) {
+      void err;
+    }
+  }
+  return isInstalledApp();
+}
+
+/**
+ * Converte string de fcm_token (seja token único, lista separada por vírgulas ou JSON array)
+ * em array de tokens individuais para suporte multi-dispositivo.
+ */
+export function parseFcmTokens(raw: string | null | undefined): string[] {
+  if (!raw || typeof raw !== "string") return [];
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((t) => String(t).trim())
+          .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  return trimmed
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
+}
+
+/**
+ * Adiciona um novo token de dispositivo à lista de tokens do utilizador sem apagar os outros telemóveis.
+ */
+export function mergeFcmTokens(
+  existingRaw: string | null | undefined,
+  newDeviceToken: string,
+): string {
+  const existing = parseFcmTokens(existingRaw);
+  const cleanNew = newDeviceToken.trim();
+  if (!cleanNew) return existing.join(",");
+
+  const tokenSet = new Set(existing);
+  tokenSet.add(cleanNew);
+
+  // Mantém até 10 telemóveis/dispositivos ativos mais recentes
+  const allTokens = Array.from(tokenSet);
+  const limited = allTokens.slice(-10);
+  return limited.join(",");
 }
 
 export function getFoodEmoji(name: string): string {
