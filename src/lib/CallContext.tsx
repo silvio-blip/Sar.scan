@@ -579,25 +579,16 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     `[CALL_DIAGNOSTIC] SUCESSO: Backend recebeu a requisição! Código HTTP: ${res.status}`,
                     resData,
                   );
-                  if (resData?.success === false) {
-                    toast.warning(
-                      `[Push Alerta] ${resData?.message || "Destinatário sem fcm_token"}`,
-                    );
-                  } else {
-                    toast.success("Notificação Push FCM enviada ao destinatário!");
-                  }
                 } else {
                   const errorText = await res.text().catch(() => "");
                   console.error(
                     `[CALL_DIAGNOSTIC] FALHA NO BACKEND: Código HTTP ${res.status} | Resposta: ${errorText}`,
                   );
-                  toast.error(`Falha ao disparar push: HTTP ${res.status}`);
                 }
               })
-              .catch((pushErr) => {
-                console.error("[CALL_DIAGNOSTIC] ERRO DE REDE/CONEXÃO ao chamar a API:", pushErr);
-                toast.error("Erro de conexão ao disparar notificação.");
-              });
+              .catch((pushErr) =>
+                console.error("[CALL_DIAGNOSTIC] ERRO DE REDE/CONEXÃO ao chamar a API:", pushErr),
+              );
           } catch (e) {
             console.error("[CALL_DIAGNOSTIC] Exceção ao disparar push de chamada:", e);
           }

@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { loadEnv } from "../../src/lib/env-loader.server.js";
 import { supabaseAdmin } from "../../src/integrations/supabase/client.server.js";
-import { sendFcmV1Notification } from "../../src/lib/fcm-v1.server.js";
+import { getAppSettings } from "../../src/lib/settings.server.js";
 
 // Garantir que as variáveis do .env estão carregadas
 loadEnv();
@@ -25,139 +25,144 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { targetUserId, fcmToken, token, title, body, data, customData } = req.body;
+    const { targetUserId, title, body, data, customData } = req.body;
     const fcmPayloadData = data || customData || {};
-    const target = targetUserId || fcmToken || token;
-
-    if (!target) {
-      return res.status(400).json({ error: "O campo targetUserId ou fcmToken é obrigatório." });
-    }
-
-    console.log(`[Push] Tentando enviar notificação v1 para ${target}: ${title} - ${body}`);
-
-    let tokens: string[] = [];
-
-    // Determinar se o target é um Token FCM direto ou um User ID (UUID)
-    const targetStr = String(target).trim();
-    const isUUID =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(targetStr);
-    const isDirectFcmToken =
-      Boolean(fcmToken || token) || !isUUID || targetStr.includes(":") || targetStr.length > 40;
-
-    if (isDirectFcmToken && !isUUID) {
-      console.log("[Push] Identificado token FCM direto fornecido na requisição.");
-      tokens = [targetStr];
-    } else {
-      const admin = supabaseAdmin;
-      if (!admin) {
-        return res.status(500).json({ error: "Supabase Admin não disponível." });
-      }
-
-      // Query the user's FCM token from profiles
-      const { data: recipientProfile, error: profileError } = await (admin as any)
-        .from("profiles")
-        .select("fcm_token, nome")
-        .eq("id", targetStr)
-        .maybeSingle();
-
-      if (profileError || !recipientProfile) {
-        if (targetStr.length > 25) {
-          tokens = [targetStr];
-        } else {
-          return res.status(404).json({
-            error: "Perfil do destinatário não encontrado.",
-            diagnosis: `Não foi encontrado nenhum utilizador com o ID '${targetStr}' na tabela profiles do Supabase. Certifique-se de passar o User ID (UUID) do destinatário ou o Token FCM direto.`,
-          });
-        }
-      } else {
-        if (recipientProfile.fcm_token) {
-          const rawToken = String(recipientProfile.fcm_token).trim();
-          try {
-            if (rawToken.startsWith("[") && rawToken.endsWith("]")) {
-              const parsed = JSON.parse(rawToken);
-              if (Array.isArray(parsed)) {
-                tokens = parsed.filter(Boolean);
-              }
-            } else {
-              tokens = [rawToken];
-            }
-          } catch {
-            tokens = [rawToken];
-          }
-        }
-      }
-    }
-
-    if (tokens.length === 0) {
-      console.warn(`[Push] Destinatário ${target} não tem FCM token válido cadastrado.`);
-      return res.json({
-        success: false,
-        message: "Destinatário não tem fcm_token registrado no perfil.",
-        diagnosis: "O utilizador existe no Supabase, mas a coluna 'fcm_token' está vazia.",
-      });
+    if (!targetUserId) {
+      return res.status(400).json({ error: "O campo targetUserId é obrigatório." });
     }
 
     console.log(
-      `[Push] Disparando notificação FCM v1 para ${tokens.length} dispositivo(s)/telemóvel(is)...`,
+      `[Push] Tentando enviar notificação para usuário ${targetUserId}: ${title} - ${body}`,
     );
 
-    const fcmResults: any[] = [];
-    const errorsList: string[] = [];
+    const admin = supabaseAdmin;
+    if (!admin) {
+      return res.status(500).json({ error: "Supabase Admin não disponível." });
+    }
 
-    for (const t of tokens) {
-      try {
-        const resV1 = await sendFcmV1Notification({
-          token: t,
+    // Query the user's FCM token from profiles
+    const { data: recipientProfile, error: profileError } = await (admin as any)
+      .from("profiles")
+      .select("fcm_token, nome")
+      .eq("id", targetUserId)
+      .maybeSingle();
+
+    if (profileError || !recipientProfile) {
+      console.error("[Push] Erro ao buscar perfil do destinatário:", profileError);
+      return res.status(404).json({ error: "Perfil do destinatário não encontrado." });
+    }
+
+    const rawFcmToken = recipientProfile.fcm_token;
+    const extractTokens = (raw: string | null | undefined): string[] => {
+      if (!raw || typeof raw !== "string") return [];
+      const trimmed = raw.trim();
+      if (!trimmed) return [];
+      if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed
+              .map((t) => String(t).trim())
+              .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
+          }
+        } catch {
+          // fallback
+        }
+      }
+      return trimmed
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => Boolean(t) && !t.startsWith("fcm_mock_"));
+    };
+
+    const tokens = extractTokens(rawFcmToken);
+    if (tokens.length === 0) {
+      console.warn(`[Push] Usuário ${targetUserId} não tem FCM token válido cadastrado.`);
+      return res.json({
+        success: false,
+        message: "Destinatário não tem fcm_token registrado no perfil.",
+      });
+    }
+
+    const settings = await getAppSettings();
+    const serverKey =
+      settings.fcm_server_key || process.env.FCM_SERVER_KEY || process.env.VITE_FCM_SERVER_KEY;
+    let fcmResultLog = null;
+
+    if (!serverKey) {
+      console.warn("[Push] FCM_SERVER_KEY não configurada no servidor.");
+    } else {
+      const isCallNotification =
+        fcmPayloadData?.type === "INCOMING_CALL" ||
+        fcmPayloadData?.type === "incoming_call" ||
+        (typeof title === "string" && title.toLowerCase().includes("chamada"));
+
+      const callChannelId = "incoming_calls";
+      const generalChannelId = "default_channel";
+      const channelId = isCallNotification ? callChannelId : generalChannelId;
+
+      const fcmBody: any = {
+        priority: "high",
+        content_available: true,
+        notification: {
           title,
           body,
-          data: {
-            ...fcmPayloadData,
-            type: fcmPayloadData?.type || "general",
-            roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId || "",
-            title,
-            body,
-          },
+          android_channel_id: channelId,
+          channel_id: channelId,
+          sound: isCallNotification ? "ringtone" : "default",
+          badge: 1,
           priority: "high",
-        });
+          click_action: "FLUTTER_NOTIFICATION_CLICK",
+        },
+        data: {
+          ...fcmPayloadData,
+          type: fcmPayloadData?.type || (isCallNotification ? "INCOMING_CALL" : "general"),
+          roomId: fcmPayloadData?.roomId || fcmPayloadData?.callId || targetUserId,
+          channelId,
+          title,
+          body,
+        },
+        android: {
+          priority: "high",
+          ttl: isCallNotification ? "60s" : "86400s",
+          notification: {
+            sound: isCallNotification ? "ringtone" : "default",
+            channel_id: channelId,
+            android_channel_id: channelId,
+            priority: "max",
+            visibility: "public",
+          },
+        },
+      };
 
-        fcmResults.push(resV1);
-        if (!resV1.success) {
-          errorsList.push(resV1.error || "UNKNOWN_FCM_ERROR");
-        }
-      } catch (fcmErr: any) {
-        console.error("[Push] Erro ao enviar FCM v1 para token:", t, fcmErr);
-        errorsList.push(fcmErr.message || "FCM_V1_FAILED");
-      }
-    }
-
-    let diagnosis = "";
-    if (errorsList.length > 0) {
-      if (
-        errorsList.some(
-          (e) => e.includes("UNREGISTERED") || e.includes("NotRegistered") || e.includes("404"),
-        )
-      ) {
-        diagnosis =
-          "O Token FCM do telemóvel expirou ou a aplicação foi reinstalada (UNREGISTERED/404). Abra a app no telemóvel para registrar um novo token.";
-      } else if (errorsList.some((e) => e.includes("INVALID_ARGUMENT"))) {
-        diagnosis =
-          "Token FCM com formato inválido ou pertencente a outro projeto. Abra a app para gerar token atualizado.";
+      if (tokens.length === 1) {
+        fcmBody.to = tokens[0];
       } else {
-        diagnosis = `O Google FCM v1 retornou: ${errorsList.join(", ")}`;
+        fcmBody.registration_ids = tokens;
       }
-    } else {
-      diagnosis = `Notificação entregue com SUCESSO via Google FCM HTTP v1 (Service Account) para ${tokens.length} dispositivo(s)!`;
+
+      // Dispatch push notification via FCM legacy endpoint
+      const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
+        method: "POST",
+        headers: {
+          Authorization: `key=${serverKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(fcmBody),
+      });
+
+      if (!fcmResponse.ok) {
+        const errorText = await fcmResponse.text();
+        console.error("[Push] Erro ao disparar FCM:", errorText);
+        throw new Error(`FCM API responded with status ${fcmResponse.status}: ${errorText}`);
+      }
+
+      const fcmResult = await fcmResponse.json();
+      console.log("[Push] Notificação disparada com sucesso via FCM:", fcmResult);
+      fcmResultLog = fcmResult;
     }
 
-    return res.json({
-      success: errorsList.length === 0,
-      api: "FCM_HTTP_V1",
-      fcmResult: fcmResults,
-      tokensCount: tokens.length,
-      maskedTokens: tokens.map((t: string) => `${t.slice(0, 8)}...${t.slice(-6)}`),
-      errors: errorsList,
-      diagnosis,
-    });
+    res.json({ success: true, fcmResult: fcmResultLog });
   } catch (error: any) {
     console.error("[Push] Erro crítico no envio da notificação:", error);
     res.status(500).json({ error: error.message || "Erro interno" });

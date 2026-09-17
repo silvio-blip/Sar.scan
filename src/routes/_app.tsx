@@ -31,7 +31,6 @@ import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import GlassSurface from "@/components/GlassSurface";
 import { isNativePlatform, mergeFcmTokens, parseFcmTokens } from "@/lib/utils";
-import { CallDiagnosticTerminal } from "@/components/CallDiagnosticTerminal";
 
 export const Route = createFileRoute("/_app")({ component: AppLayout });
 
@@ -539,8 +538,6 @@ function AppLayout() {
           </div>
         </GlassSurface>
       </nav>
-
-      <CallDiagnosticTerminal />
     </div>
   );
 }
