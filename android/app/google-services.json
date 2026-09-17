@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "181086329740",
+    "project_id": "sar-scan",
+    "storage_bucket": "sar-scan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:181086329740:android:3fe4abe3cddda8cd4094a9",
+        "android_client_info": {
+          "package_name": "com.sar.scan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCu53FxtzW8Yi80ykbyPLqR62dUxrOGqF4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
