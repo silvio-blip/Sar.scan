@@ -123,12 +123,23 @@ CREATE POLICY "Allow service role full access" ON public.app_settings
     setIsSavingKey(true);
     setSqlScriptToCopy(null);
     try {
-      const res = await fetch(getApiUrl("/api/notifications/config"), {
+      const url = getApiUrl("/api/notifications/config");
+      console.log(`[Diagnostic] Enviando requisição para: ${url}`);
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ service_account_json: serviceAccountInput.trim() }),
       });
-      const data = await res.json();
+
+      const responseText = await res.text();
+      let data: any = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch (parseErr) {
+        console.error("[Diagnostic] Resposta não é JSON válido:", responseText);
+        throw new Error(`Servidor retornou resposta inválida (não-JSON): ${responseText.slice(0, 100)}`);
+      }
+
       if (res.ok && data.success) {
         toast.success(`Conta de Serviço salva com sucesso! (Origem: ${data.source || "Supabase"})`);
         diagnosticLogger.addLog(
