@@ -21,6 +21,7 @@ function createSupabaseAdminClient() {
   const SUPABASE_URL = cleanEnvValue(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
   const SUPABASE_SERVICE_ROLE_KEY = cleanEnvValue(
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
       process.env.SUPABASE_PUBLISHABLE_KEY ||
       process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
   );
@@ -30,28 +31,11 @@ function createSupabaseAdminClient() {
       ...(!SUPABASE_URL ? ["SUPABASE_URL"] : []),
       ...(!SUPABASE_SERVICE_ROLE_KEY ? ["SUPABASE_SERVICE_ROLE_KEY"] : []),
     ];
-    const message = `Erro na Vercel / Ambiente: Variáveis de conexão SUPABASE_URL ou chaves públicas/privadas não encontradas.`;
-    console.error(`[Supabase] ${message}`);
-    // No preview do AI Studio, vamos tentar usar um cliente padrão mockado ou vazio em vez de estourar erro fatal na inicialização do módulo, se possível, para evitar falha no carregamento.
+    const message = `Erro no Servidor: Variáveis de conexão ausentes (${missing.join(", ")}). Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY.`;
+    console.error(`[Supabase Admin] ${message}`);
     return createClient<Database>("https://placeholder-url.supabase.co", "placeholder-key", {
       auth: { persistSession: false },
     });
-  }
-
-  // Detect if using a public publishable key as fallback for the admin role
-  const isPublicFallback =
-    !process.env.SUPABASE_SERVICE_ROLE_KEY &&
-    (SUPABASE_SERVICE_ROLE_KEY === process.env.SUPABASE_PUBLISHABLE_KEY ||
-      SUPABASE_SERVICE_ROLE_KEY === process.env.VITE_SUPABASE_PUBLISHABLE_KEY);
-
-  if (isPublicFallback) {
-    console.warn(
-      "[Supabase Admin] AVISO CRÍTICO: SUPABASE_SERVICE_ROLE_KEY não detectada. " +
-        "Usando VITE_SUPABASE_PUBLISHABLE_KEY (chave pública anon) como fallback para operações de administrador. " +
-        "Isso fará com que as buscas na tabela 'app_settings' e gerenciamento de assinaturas falhem se o RLS (Row Level Security) estiver ativo, " +
-        "pois chaves públicas não possuem permissão para ver ou editar esses dados restritos. " +
-        "Por favor, configure a variável de ambiente SUPABASE_SERVICE_ROLE_KEY no Vercel/Ambiente com a chave secreta 'service_role' para corrigir isso.",
-    );
   }
 
   return createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {

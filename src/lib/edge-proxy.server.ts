@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 import nodemailer from "nodemailer";
+import { GoogleGenAI } from "@google/genai";
 
 import { getAppSettings } from "./settings.server.js";
 import { loadEnv } from "./env-loader.server.js";
@@ -82,10 +83,6 @@ async function getGeminiKey() {
   );
 }
 
-async function getGeminiModel() {
-  return "gemini-flash-lite-latest";
-}
-
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
 type GeminiContent = { role?: string; parts: GeminiPart[] };
 
@@ -96,36 +93,58 @@ async function geminiCall(opts: {
   maxTokens?: number;
 }) {
   const key = await getGeminiKey();
-  const model = await getGeminiModel();
-  const body: Record<string, unknown> = {
-    contents: opts.contents,
-    generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 2048,
-      ...(opts.responseSchema
-        ? { responseMimeType: "application/json", responseSchema: opts.responseSchema }
-        : {}),
+  const ai = new GoogleGenAI({
+    apiKey: key,
+    httpOptions: {
+      headers: {
+        "User-Agent": "aistudio-build",
+      },
     },
-  };
-  if (opts.systemInstruction) {
-    body.systemInstruction = { parts: [{ text: opts.systemInstruction }] };
-  }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const txt = await res.text();
-    if (res.status === 429)
-      throw new Error("Limite de uso da Gemini atingido. Tente em alguns instantes.");
-    throw new Error(`Gemini ${res.status}: ${txt.slice(0, 200)}`);
+
+  const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  let response: any = null;
+  let lastErr: any = null;
+
+  for (const m of modelsToTry) {
+    try {
+      response = await ai.models.generateContent({
+        model: m,
+        contents: opts.contents,
+        config: {
+          maxOutputTokens: opts.maxTokens ?? 2048,
+          ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
+          ...(opts.responseSchema
+            ? { responseMimeType: "application/json", responseSchema: opts.responseSchema as any }
+            : {}),
+        },
+      });
+      break;
+    } catch (err: any) {
+      lastErr = err;
+      console.warn(`[Gemini SDK] Model ${m} failed:`, err?.message || err);
+    }
   }
-  const data = await res.json();
-  const text: string =
-    data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ??
-    "";
-  return { text, raw: data };
+
+  if (!response) {
+    const msg = lastErr?.message || String(lastErr);
+    console.error("[Gemini SDK Error All Models Failed]", lastErr);
+    if (
+      msg.includes("429") ||
+      msg.includes("503") ||
+      msg.includes("resource_exhausted") ||
+      msg.includes("quota") ||
+      msg.includes("UNAVAILABLE")
+    ) {
+      throw new Error(
+        "Serviço da Gemini temporariamente sobrecarregado (503/429). Tente novamente em alguns segundos.",
+      );
+    }
+    throw new Error(`Erro na API do Gemini: ${msg}`);
+  }
+
+  const text = response.text ?? "";
+  return { text, raw: response };
 }
 
 const ALIMENTOS_SCHEMA = {

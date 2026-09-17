@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
 
 import { loadEnv } from "./src/lib/env-loader.server";
 loadEnv();
@@ -130,36 +131,50 @@ O formato deve ser exatamente:
   ]
 }`;
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
         },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: promptText },
-                {
-                  inlineData: {
-                    mimeType,
-                    data: base64Data,
-                  },
-                },
-              ],
-            },
-          ],
-        }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Erro na API do Gemini (${response.status}): ${errorText}`);
+      let aiResponse;
+      const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+      let lastError: any = null;
+
+      for (const m of modelsToTry) {
+        try {
+          aiResponse = await ai.models.generateContent({
+            model: m,
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  { text: promptText },
+                  {
+                    inlineData: {
+                      mimeType,
+                      data: base64Data,
+                    },
+                  },
+                ],
+              },
+            ],
+          });
+          break;
+        } catch (e: any) {
+          lastError = e;
+          console.warn(`[Server] Model ${m} failed, trying next...`, e?.message || e);
+        }
       }
 
-      const responseData = await response.json();
-      const textoFinal = responseData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      if (!aiResponse) {
+        throw lastError || new Error("Failed to generate content with all Gemini models.");
+      }
+
+      const textoFinal = aiResponse.text || "";
 
       // Verificar se algum alimento foi de fato identificado
       let hasFoods = false;

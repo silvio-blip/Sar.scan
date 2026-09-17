@@ -31,7 +31,7 @@ type Entry = {
   foto_url: string | null;
 };
 
-function DiarioPage() {
+export function DiarioPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [open, setOpen] = useState<Entry | null>(null);
@@ -278,7 +278,7 @@ function DiarioPage() {
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-1000 select-none pb-8">
+    <div className="space-y-8 select-none pb-8 transform-gpu">
       <div className="flex flex-col gap-1.5">
         <h1 className="text-4xl font-display font-black tracking-tight text-foreground">Diário</h1>
         <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
@@ -287,29 +287,22 @@ function DiarioPage() {
       </div>
 
       {/* Main Focus: Daily Total (Warm-Beige Glass Card) */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-secondary/40 rounded-[44px] p-10 text-center flex flex-col items-center gap-4 border border-border/60 shadow-sm relative overflow-hidden group"
-      >
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.02] via-transparent to-transparent" />
-        <div className="absolute -top-20 -right-20 size-60 bg-primary/5 blur-[80px] rounded-full group-hover:bg-primary/10 transition-all duration-1000" />
-
+      <div className="bg-secondary/40 rounded-[36px] p-8 text-center flex flex-col items-center gap-4 border border-border/60 shadow-sm relative overflow-hidden group transform-gpu">
         <div className="relative z-10 flex flex-col items-center">
           <div className="text-[9px] font-black uppercase tracking-[0.3em] text-muted-foreground mb-1">
             Consumo de Hoje
           </div>
-          <div className="text-7xl font-display font-black text-foreground tracking-tighter drop-shadow-sm">
+          <div className="text-6xl sm:text-7xl font-display font-black text-foreground tracking-tighter drop-shadow-sm">
             {Math.round(totalCal)}
           </div>
-          <div className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mt-2.5">
+          <div className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mt-2">
             quilocalorias
           </div>
         </div>
 
-        <div className="w-full h-[1px] bg-border my-4 relative z-10" />
+        <div className="w-full h-[1px] bg-border/80 my-2 relative z-10" />
 
-        <div className="grid grid-cols-3 w-full gap-4 relative z-10">
+        <div className="grid grid-cols-3 w-full gap-3 relative z-10">
           {[
             {
               l: "Prot",
@@ -328,14 +321,14 @@ function DiarioPage() {
             },
           ].map((m) => (
             <div key={m.l} className="flex flex-col items-center">
-              <div className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">
+              <div className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-0.5">
                 {m.l}
               </div>
               <div className="text-sm font-black text-foreground">{Math.round(m.v)}g</div>
             </div>
           ))}
         </div>
-      </motion.div>
+      </div>
 
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">

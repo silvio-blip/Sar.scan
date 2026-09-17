@@ -119,7 +119,7 @@ const PLANS: PlanDef[] = [
   },
 ];
 
-function PremiumPage() {
+export function PremiumPage() {
   const { user, session, isPremium, isAdmin, subscription, refresh } = useAuth();
   const [selected, setSelected] = useState<PlanId>("monthly");
   const [loading, setLoading] = useState<PlanId | null>(null);

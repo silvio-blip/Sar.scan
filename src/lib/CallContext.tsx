@@ -74,8 +74,17 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activeNotificationRef = useRef<Notification | null>(null);
 
   useEffect(() => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
+    try {
+      if (
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        typeof Notification.requestPermission === "function" &&
+        Notification.permission === "default"
+      ) {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch {
+      // Ignore errors when running in restricted environments
     }
   }, []);
 

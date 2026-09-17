@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
 import { getApiUrl } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -621,7 +622,7 @@ function MessageCard({
   );
 }
 
-function ChatPage() {
+export function ChatPage() {
   const { user, profile, isPremium, canAccessAI, subscription, isAdmin } = useAuth();
   const navigate = useNavigate();
   const {
@@ -660,6 +661,119 @@ function ChatPage() {
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [chatSwipeOffset, setChatSwipeOffset] = useState(0);
+  const [isChatDismissing, setIsChatDismissing] = useState(false);
+  const chatTouchStartRef = useRef<{
+    x: number;
+    y: number;
+    time: number;
+    target: EventTarget | null;
+    isLockedHorizontal: boolean | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (
+      view !== "list" ||
+      isCalling ||
+      !!activeCall ||
+      !!incomingCall ||
+      isRecording ||
+      isProfileModalOpen ||
+      showLimitModal
+    ) {
+      document.body.dataset.inChat = "true";
+    } else {
+      delete document.body.dataset.inChat;
+    }
+    return () => {
+      delete document.body.dataset.inChat;
+    };
+  }, [view, isCalling, activeCall, incomingCall, isRecording, isProfileModalOpen, showLimitModal]);
+
+  const dismissConversation = () => {
+    if (isChatDismissing) return;
+    setIsChatDismissing(true);
+    setChatSwipeOffset(window.innerWidth || 480);
+    setTimeout(() => {
+      setView("list");
+      setSelectedUser(null);
+      setIsChatDismissing(false);
+      setChatSwipeOffset(0);
+    }, 220);
+  };
+
+  const handleChatTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length !== 1 || isChatDismissing) return;
+    const touch = e.touches[0];
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      target.closest("input, textarea, button, audio, [role='slider'], .custom-scrollbar")
+    ) {
+      // Don't initiate swipe when interacting with controls
+      chatTouchStartRef.current = null;
+      return;
+    }
+    chatTouchStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now(),
+      target: e.target,
+      isLockedHorizontal: null,
+    };
+  };
+
+  const handleChatTouchMove = (e: React.TouchEvent) => {
+    if (!chatTouchStartRef.current || e.touches.length !== 1 || isChatDismissing) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - chatTouchStartRef.current.x;
+    const deltaY = touch.clientY - chatTouchStartRef.current.y;
+
+    if (chatTouchStartRef.current.isLockedHorizontal === null) {
+      if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+        if (deltaX > 8 && deltaX > Math.abs(deltaY) * 1.05) {
+          chatTouchStartRef.current.isLockedHorizontal = true;
+        } else {
+          chatTouchStartRef.current.isLockedHorizontal = false;
+        }
+      }
+    }
+
+    if (chatTouchStartRef.current.isLockedHorizontal) {
+      if (deltaX > 0) {
+        setChatSwipeOffset(deltaX);
+      } else {
+        setChatSwipeOffset(0);
+      }
+    }
+  };
+
+  const handleChatTouchEnd = (e: React.TouchEvent) => {
+    if (!chatTouchStartRef.current || isChatDismissing) return;
+    const isLocked = chatTouchStartRef.current.isLockedHorizontal;
+    const elapsed = Date.now() - chatTouchStartRef.current.time;
+    const currentOffset = chatSwipeOffset;
+    chatTouchStartRef.current = null;
+
+    if (isLocked && (currentOffset > 75 || (currentOffset > 35 && elapsed < 300))) {
+      setIsChatDismissing(true);
+      setChatSwipeOffset(window.innerWidth || 480);
+      setTimeout(() => {
+        setView("list");
+        setSelectedUser(null);
+        setIsChatDismissing(false);
+        setChatSwipeOffset(0);
+      }, 220);
+    } else {
+      setChatSwipeOffset(0);
+    }
+  };
+
+  const handleChatTouchCancel = () => {
+    chatTouchStartRef.current = null;
+    setChatSwipeOffset(0);
+  };
 
   const startRecording = async () => {
     if (view === "ai") return;
@@ -2256,346 +2370,373 @@ function ChatPage() {
           </DialogContent>
         </Dialog>
 
-        {(view === "dm" || view === "ai") && (
-          <div className="flex flex-col h-full fixed inset-0 z-50 bg-background pt-6 animate-in slide-in-from-right-4 duration-300">
-            <div className="flex items-center gap-4 mb-4 px-6">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setView("list")}
-                className="rounded-full bg-secondary hover:bg-muted text-foreground h-10 w-10"
-              >
-                <ArrowLeft className="size-5" />
-              </Button>
-              <div className="flex-1 flex items-center gap-3">
-                {view === "ai" ? (
-                  <>
-                    <div className="size-10 rounded-xl bg-primary flex items-center justify-center">
-                      <Crown className="size-5 text-primary-foreground" />
-                    </div>
-                    <div>
-                      <h2 className="text-xs font-black uppercase tracking-tight text-foreground">
-                        IA Nutricionista
-                      </h2>
-                      <p className="text-[10px] text-primary font-black uppercase tracking-widest">
-                        Ativa Agora
-                      </p>
-                    </div>
-                    {usageInfo && usageInfo.limit !== -1 && (
-                      <div className="ml-auto flex flex-col items-end">
-                        <div className="px-2 py-1 rounded-xl bg-secondary border border-border flex flex-col items-center">
-                          <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase leading-none mb-0.5">
-                            Uso Diário
-                          </span>
-                          <span className="text-[10px] font-black text-primary leading-none">
-                            {usageInfo.count} / {usageInfo.limit}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Avatar
-                      className="size-11 aspect-square rounded-2xl border border-border cursor-pointer hover:border-primary/20 transition-all shrink-0"
-                      onClick={() => selectedUser && openProfile(selectedUser)}
-                    >
-                      <AvatarImage src={selectedUser?.avatar_url || ""} className="object-cover" />
-                      <AvatarFallback className="bg-secondary text-primary font-black">
-                        {selectedUser?.nome?.[0] || "?"}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div
-                      className="flex-1 min-w-0"
-                      onClick={() => selectedUser && openProfile(selectedUser)}
-                    >
-                      <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors cursor-pointer text-foreground">
-                        {selectedUser?.nome || "Usuário"}
-                      </h2>
-                      <p className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">
-                        Social Match
-                      </p>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-6 mb-2 custom-scrollbar flex flex-col pt-4 overscroll-behavior-contain">
-              {view === "ai" && !canAccessAI ? (
-                <div className="my-auto">
-                  <Card className="p-8 text-center space-y-6 bg-gradient-to-br from-primary/10 to-transparent border-primary/10 rounded-[40px] shadow-sm">
-                    <div className="size-20 rounded-[32px] bg-primary mx-auto flex items-center justify-center shadow-lg shadow-primary/10">
-                      <Lock className="size-10 text-primary-foreground" />
-                    </div>
-                    <div className="space-y-2">
-                      <h2 className="text-2xl font-display font-black text-foreground">
-                        Recurso Premium
-                      </h2>
-                      <p className="text-sm text-muted-foreground px-4">
-                        Tire dúvidas em tempo real com nosso especialista nutricional via IA.
-                      </p>
-                      <p className="text-[10px] text-muted-foreground/60 font-black uppercase tracking-widest mt-2">
-                        Exclusivo para planos Mensal e Anual
-                      </p>
-                    </div>
-                    <Button
-                      asChild
-                      className="w-full h-14 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-wider shadow-sm"
-                    >
-                      <Link to="/premium">
-                        <Crown className="size-5 mr-2" /> Assinar Premium
-                      </Link>
-                    </Button>
-                  </Card>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="text-center py-4">
-                    <p className="text-[9px] font-black uppercase tracking-[0.25em] border border-border inline-block px-4 py-1 rounded-full text-muted-foreground bg-secondary/50">
-                      Início da Conversa
-                    </p>
-                  </div>
-                  {renderMessages()}
-                  {sending && (
-                    <div className="flex justify-start animate-in fade-in duration-300">
-                      <div className="bg-card border border-border rounded-2xl px-5 py-3 shadow-sm">
-                        <div className="flex gap-1.5 items-center">
-                          <div className="size-1.5 bg-primary/30 rounded-full animate-bounce" />
-                          <div className="size-1.5 bg-primary/30 rounded-full animate-bounce [animation-delay:0.2s]" />
-                          <div className="size-1.5 bg-primary/30 rounded-full animate-bounce [animation-delay:0.4s]" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} className="h-4" />
-                </div>
-              )}
-            </div>
-
-            <div className="p-2 sm:p-3 pb-[calc(var(--android-bottom-offset,16px)+12px)] relative bg-transparent">
-              {isSelectionMode ? (
-                <motion.div
-                  initial={{ y: 50, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: 50, opacity: 0 }}
-                  className="flex items-center justify-center absolute inset-x-0 -top-20 px-4 pointer-events-none"
+        {typeof document !== "undefined" &&
+          (view === "dm" || view === "ai") &&
+          createPortal(
+            <motion.div
+              data-in-chat="true"
+              onTouchStart={handleChatTouchStart}
+              onTouchMove={handleChatTouchMove}
+              onTouchEnd={handleChatTouchEnd}
+              onTouchCancel={handleChatTouchCancel}
+              initial={{ x: "100%" }}
+              animate={{
+                x: isChatDismissing ? "100%" : chatSwipeOffset > 0 ? chatSwipeOffset : 0,
+                opacity: isChatDismissing ? 0 : 1,
+              }}
+              exit={{ x: "100%" }}
+              transition={
+                chatSwipeOffset > 0 && !isChatDismissing
+                  ? { type: "tween", duration: 0 }
+                  : { type: "spring", stiffness: 450, damping: 38, mass: 0.4 }
+              }
+              style={{ willChange: "transform, opacity" }}
+              className="flex flex-col h-[100dvh] w-full fixed inset-0 z-[999] bg-background max-w-[480px] mx-auto border-x border-border shadow-2xl overflow-hidden select-none"
+            >
+              <div className="flex items-center gap-3 px-4 pt-[max(12px,env(safe-area-inset-top,12px))] pb-2.5 border-b border-border/40 shrink-0 bg-background/95 backdrop-blur-md">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={dismissConversation}
+                  className="rounded-full bg-secondary hover:bg-muted text-foreground h-10 w-10 shrink-0"
                 >
-                  <div className="bg-card backdrop-blur-3xl border border-border h-16 rounded-full shadow-2xl flex items-center px-2 gap-1 pointer-events-auto ring-1 ring-primary/5 max-w-full overflow-hidden">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={clearSelection}
-                      className="size-12 rounded-full hover:bg-secondary text-foreground"
-                    >
-                      <X className="size-5" />
-                    </Button>
-
-                    <div className="px-4 h-10 flex items-center bg-secondary rounded-full border border-border">
-                      <p className="text-sm font-black text-foreground whitespace-nowrap">
-                        {selectedMessageIds.size}
-                      </p>
-                    </div>
-
-                    {!showDeleteOptions ? (
-                      <>
-                        {selectedMessageIds.size === 1 && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-12 rounded-full hover:bg-secondary text-primary"
-                            onClick={() => {
-                              const id = Array.from(selectedMessageIds)[0];
-                              const m = (view === "ai" ? aiMsgs : directMsgs)?.find(
-                                (msg: any) => msg.id === id,
-                              );
-                              if (m) {
-                                setReplyTo(m);
-                                clearSelection();
-                              }
-                            }}
-                          >
-                            <Undo2 className="size-5" />
-                          </Button>
-                        )}
-
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-12 rounded-full hover:bg-rose-500/10 text-rose-500"
-                          onClick={() => setShowDeleteOptions(true)}
-                        >
-                          <Trash2 className="size-5" />
-                        </Button>
-                      </>
-                    ) : (
-                      <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="flex items-center gap-1 overflow-x-auto pr-2"
-                      >
-                        <Button
-                          size="sm"
-                          className="bg-secondary hover:bg-muted text-foreground rounded-full px-4 h-10 font-bold text-[10px] uppercase tracking-wider"
-                          onClick={() => deleteSelectedMessages(false)}
-                        >
-                          Só para mim
-                        </Button>
-                        {canDeleteAllSelectedForAll() && (
-                          <Button
-                            size="sm"
-                            className="bg-rose-500 text-white hover:bg-rose-600 rounded-full px-4 h-10 font-black text-[10px] uppercase tracking-wider shadow-lg shadow-rose-500/20"
-                            onClick={() => deleteSelectedMessages(true)}
-                          >
-                            Para todos
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-10 rounded-full text-foreground/45 hover:bg-secondary"
-                          onClick={() => setShowDeleteOptions(false)}
-                        >
-                          <ArrowLeft className="size-4" />
-                        </Button>
-                      </motion.div>
-                    )}
-                  </div>
-                </motion.div>
-              ) : (
-                replyTo && (
-                  <div className="flex items-center justify-between bg-secondary/95 backdrop-blur-md p-3 rounded-t-2xl border-x border-t border-border mb-[-1px] animate-in slide-in-from-bottom-2">
-                    <div className="flex items-center gap-3">
-                      <Undo2 className="size-4 text-primary" />
+                  <ArrowLeft className="size-5" />
+                </Button>
+                <div className="flex-1 flex items-center gap-3 min-w-0">
+                  {view === "ai" ? (
+                    <>
+                      <div className="size-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                        <Crown className="size-5 text-primary-foreground" />
+                      </div>
                       <div className="min-w-0">
-                        <p className="text-[10px] font-bold text-primary uppercase">Respondendo</p>
-                        <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                          {replyTo.content}
+                        <h2 className="text-xs font-black uppercase tracking-tight text-foreground truncate">
+                          IA Nutricionista
+                        </h2>
+                        <p className="text-[10px] text-primary font-black uppercase tracking-widest">
+                          Ativa Agora
                         </p>
                       </div>
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-6 text-muted-foreground/50 hover:text-foreground"
-                      onClick={() => setReplyTo(null)}
-                    >
-                      <X className="size-4" />
-                    </Button>
+                      {usageInfo && usageInfo.limit !== -1 && (
+                        <div className="ml-auto flex flex-col items-end shrink-0">
+                          <div className="px-2 py-1 rounded-xl bg-secondary border border-border flex flex-col items-center">
+                            <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase leading-none mb-0.5">
+                              Uso Diário
+                            </span>
+                            <span className="text-[10px] font-black text-primary leading-none">
+                              {usageInfo.count} / {usageInfo.limit}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <Avatar
+                        className="size-10 aspect-square rounded-2xl border border-border cursor-pointer hover:border-primary/20 transition-all shrink-0"
+                        onClick={() => selectedUser && openProfile(selectedUser)}
+                      >
+                        <AvatarImage
+                          src={selectedUser?.avatar_url || ""}
+                          className="object-cover"
+                        />
+                        <AvatarFallback className="bg-secondary text-primary font-black">
+                          {selectedUser?.nome?.[0] || "?"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => selectedUser && openProfile(selectedUser)}
+                      >
+                        <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors text-foreground">
+                          {selectedUser?.nome || "Usuário"}
+                        </h2>
+                        <p className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">
+                          Social Match
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-4 sm:px-6 custom-scrollbar flex flex-col pt-3 pb-2 overscroll-contain">
+                {view === "ai" && !canAccessAI ? (
+                  <div className="my-auto">
+                    <Card className="p-8 text-center space-y-6 bg-gradient-to-br from-primary/10 to-transparent border-primary/10 rounded-[40px] shadow-sm">
+                      <div className="size-20 rounded-[32px] bg-primary mx-auto flex items-center justify-center shadow-lg shadow-primary/10">
+                        <Lock className="size-10 text-primary-foreground" />
+                      </div>
+                      <div className="space-y-2">
+                        <h2 className="text-2xl font-display font-black text-foreground">
+                          Recurso Premium
+                        </h2>
+                        <p className="text-sm text-muted-foreground px-4">
+                          Tire dúvidas em tempo real com nosso especialista nutricional via IA.
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/60 font-black uppercase tracking-widest mt-2">
+                          Exclusivo para planos Mensal e Anual
+                        </p>
+                      </div>
+                      <Button
+                        asChild
+                        className="w-full h-14 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-wider shadow-sm"
+                      >
+                        <Link to="/premium">
+                          <Crown className="size-5 mr-2" /> Assinar Premium
+                        </Link>
+                      </Button>
+                    </Card>
                   </div>
-                )
-              )}
-              <div className="flex gap-2 max-w-4xl mx-auto items-center">
-                {isRecording ? (
-                  <div className="flex-1 flex items-center justify-between bg-secondary/40 rounded-xl h-12 px-4 shadow-none">
-                    <div className="flex items-center gap-3 text-foreground">
-                      <div className="size-2 bg-red-500 rounded-full animate-pulse" />
-                      <span className="text-xs font-black mono tabular-nums opacity-60">
-                        {formatTime(recordingTime)}
-                      </span>
-                      <AudioVisualizer stream={mediaRecorderRef.current?.stream || null} />
+                ) : (
+                  <div className="space-y-4">
+                    <div className="text-center py-4">
+                      <p className="text-[9px] font-black uppercase tracking-[0.25em] border border-border inline-block px-4 py-1 rounded-full text-muted-foreground bg-secondary/50">
+                        Início da Conversa
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
-                        onClick={cancelRecording}
-                      >
-                        <Trash className="size-5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-primary text-primary-foreground rounded-xl px-4 h-10 font-black text-[10px] uppercase tracking-wider"
-                        onClick={stopRecording}
-                      >
-                        Parar
-                      </Button>
-                    </div>
+                    {renderMessages()}
+                    {sending && (
+                      <div className="flex justify-start animate-in fade-in duration-300">
+                        <div className="bg-card border border-border rounded-2xl px-5 py-3 shadow-sm">
+                          <div className="flex gap-1.5 items-center">
+                            <div className="size-1.5 bg-primary/30 rounded-full animate-bounce" />
+                            <div className="size-1.5 bg-primary/30 rounded-full animate-bounce [animation-delay:0.2s]" />
+                            <div className="size-1.5 bg-primary/30 rounded-full animate-bounce [animation-delay:0.4s]" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} className="h-4" />
                   </div>
-                ) : audioBlob ? (
-                  <div className="flex-1 flex items-center justify-between bg-secondary/40 rounded-xl h-12 px-4 shadow-none">
-                    <div className="flex items-center gap-2">
+                )}
+              </div>
+
+              <div className="p-3 bg-card/95 backdrop-blur-md border-t border-border/50 pb-[max(12px,env(safe-area-inset-bottom,12px))] relative shrink-0">
+                {isSelectionMode ? (
+                  <motion.div
+                    initial={{ y: 50, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: 50, opacity: 0 }}
+                    className="flex items-center justify-center absolute inset-x-0 -top-20 px-4 pointer-events-none"
+                  >
+                    <div className="bg-card backdrop-blur-3xl border border-border h-16 rounded-full shadow-2xl flex items-center px-2 gap-1 pointer-events-auto ring-1 ring-primary/5 max-w-full overflow-hidden">
                       <Button
-                        size="icon"
                         variant="ghost"
-                        className="size-10 rounded-full bg-card border border-border text-foreground hover:bg-muted"
-                        onClick={() => {
-                          if (isPreviewing) {
-                            previewAudioRef.current?.pause();
-                            setIsPreviewing(false);
-                          } else {
-                            const url = URL.createObjectURL(audioBlob);
-                            const audio = new Audio(url);
-                            previewAudioRef.current = audio;
-                            audio.play();
-                            setIsPreviewing(true);
-                            audio.onended = () => setIsPreviewing(false);
-                          }
-                        }}
-                      >
-                        {isPreviewing ? (
-                          <Pause className="size-5 text-foreground" />
-                        ) : (
-                          <Play className="size-5 text-foreground" />
-                        )}
-                      </Button>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-primary">
-                        Áudio Pronto
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
                         size="icon"
-                        variant="ghost"
-                        className="size-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
-                        onClick={() => setAudioBlob(null)}
+                        onClick={clearSelection}
+                        className="size-12 rounded-full hover:bg-secondary text-foreground"
                       >
                         <X className="size-5" />
                       </Button>
+
+                      <div className="px-4 h-10 flex items-center bg-secondary rounded-full border border-border">
+                        <p className="text-sm font-black text-foreground whitespace-nowrap">
+                          {selectedMessageIds.size}
+                        </p>
+                      </div>
+
+                      {!showDeleteOptions ? (
+                        <>
+                          {selectedMessageIds.size === 1 && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-12 rounded-full hover:bg-secondary text-primary"
+                              onClick={() => {
+                                const id = Array.from(selectedMessageIds)[0];
+                                const m = (view === "ai" ? aiMsgs : directMsgs)?.find(
+                                  (msg: any) => msg.id === id,
+                                );
+                                if (m) {
+                                  setReplyTo(m);
+                                  clearSelection();
+                                }
+                              }}
+                            >
+                              <Undo2 className="size-5" />
+                            </Button>
+                          )}
+
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-12 rounded-full hover:bg-rose-500/10 text-rose-500"
+                            onClick={() => setShowDeleteOptions(true)}
+                          >
+                            <Trash2 className="size-5" />
+                          </Button>
+                        </>
+                      ) : (
+                        <motion.div
+                          initial={{ scale: 0.9, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          className="flex items-center gap-1 overflow-x-auto pr-2"
+                        >
+                          <Button
+                            size="sm"
+                            className="bg-secondary hover:bg-muted text-foreground rounded-full px-4 h-10 font-bold text-[10px] uppercase tracking-wider"
+                            onClick={() => deleteSelectedMessages(false)}
+                          >
+                            Só para mim
+                          </Button>
+                          {canDeleteAllSelectedForAll() && (
+                            <Button
+                              size="sm"
+                              className="bg-rose-500 text-white hover:bg-rose-600 rounded-full px-4 h-10 font-black text-[10px] uppercase tracking-wider shadow-lg shadow-rose-500/20"
+                              onClick={() => deleteSelectedMessages(true)}
+                            >
+                              Para todos
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-10 rounded-full text-foreground/45 hover:bg-secondary"
+                            onClick={() => setShowDeleteOptions(false)}
+                          >
+                            <ArrowLeft className="size-4" />
+                          </Button>
+                        </motion.div>
+                      )}
+                    </div>
+                  </motion.div>
+                ) : (
+                  replyTo && (
+                    <div className="flex items-center justify-between bg-secondary/95 backdrop-blur-md p-3 rounded-t-2xl border-x border-t border-border mb-[-1px] animate-in slide-in-from-bottom-2">
+                      <div className="flex items-center gap-3">
+                        <Undo2 className="size-4 text-primary" />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold text-primary uppercase">
+                            Respondendo
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                            {replyTo.content}
+                          </p>
+                        </div>
+                      </div>
                       <Button
                         size="icon"
-                        className="size-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 shadow-md shadow-primary/10"
-                        onClick={sendAudio}
-                        disabled={sending}
+                        variant="ghost"
+                        className="size-6 text-muted-foreground/50 hover:text-foreground"
+                        onClick={() => setReplyTo(null)}
                       >
-                        <SendIcon className="size-5" />
+                        <X className="size-4" />
                       </Button>
                     </div>
-                  </div>
-                ) : (
-                  <>
-                    <Input
-                      ref={inputRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      placeholder="Escreva algo..."
-                      onKeyDown={(e) => e.key === "Enter" && send()}
-                      className="bg-secondary/40 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-foreground text-xs sm:text-sm h-12 rounded-xl flex-1 px-4 shadow-none"
-                    />
-                    {input.trim() || (view === "ai" && !input.trim()) ? (
-                      <Button
-                        onClick={send}
-                        disabled={sending || !input.trim() || (view === "ai" && !canAccessAI)}
-                        className="size-12 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 shadow-md transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center shrink-0"
-                      >
-                        <SendIcon className="size-5" />
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={startRecording}
-                        disabled={sending}
-                        className="size-12 rounded-xl bg-secondary/40 text-primary hover:bg-secondary/60 transition-all active:scale-95 flex items-center justify-center shrink-0 shadow-none"
-                      >
-                        <Mic className="size-5 text-primary" />
-                      </Button>
-                    )}
-                  </>
+                  )
                 )}
+                <div className="flex gap-2 max-w-4xl mx-auto items-center">
+                  {isRecording ? (
+                    <div className="flex-1 flex items-center justify-between bg-secondary/40 rounded-xl h-12 px-4 shadow-none">
+                      <div className="flex items-center gap-3 text-foreground">
+                        <div className="size-2 bg-red-500 rounded-full animate-pulse" />
+                        <span className="text-xs font-black mono tabular-nums opacity-60">
+                          {formatTime(recordingTime)}
+                        </span>
+                        <AudioVisualizer stream={mediaRecorderRef.current?.stream || null} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
+                          onClick={cancelRecording}
+                        >
+                          <Trash className="size-5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-primary text-primary-foreground rounded-xl px-4 h-10 font-black text-[10px] uppercase tracking-wider"
+                          onClick={stopRecording}
+                        >
+                          Parar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : audioBlob ? (
+                    <div className="flex-1 flex items-center justify-between bg-secondary/40 rounded-xl h-12 px-4 shadow-none">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-10 rounded-full bg-card border border-border text-foreground hover:bg-muted"
+                          onClick={() => {
+                            if (isPreviewing) {
+                              previewAudioRef.current?.pause();
+                              setIsPreviewing(false);
+                            } else {
+                              const url = URL.createObjectURL(audioBlob);
+                              const audio = new Audio(url);
+                              previewAudioRef.current = audio;
+                              audio.play();
+                              setIsPreviewing(true);
+                              audio.onended = () => setIsPreviewing(false);
+                            }
+                          }}
+                        >
+                          {isPreviewing ? (
+                            <Pause className="size-5 text-foreground" />
+                          ) : (
+                            <Play className="size-5 text-foreground" />
+                          )}
+                        </Button>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+                          Áudio Pronto
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-10 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted"
+                          onClick={() => setAudioBlob(null)}
+                        >
+                          <X className="size-5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          className="size-10 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 shadow-md shadow-primary/10"
+                          onClick={sendAudio}
+                          disabled={sending}
+                        >
+                          <SendIcon className="size-5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Input
+                        ref={inputRef}
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                        placeholder="Escreva algo..."
+                        onKeyDown={(e) => e.key === "Enter" && send()}
+                        className="bg-secondary/40 border-none focus-visible:ring-2 focus-visible:ring-primary/20 text-foreground text-xs sm:text-sm h-12 rounded-xl flex-1 px-4 shadow-none"
+                      />
+                      {input.trim() || (view === "ai" && !input.trim()) ? (
+                        <Button
+                          onClick={send}
+                          disabled={sending || !input.trim() || (view === "ai" && !canAccessAI)}
+                          className="size-12 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 shadow-md transition-all active:scale-95 disabled:opacity-20 flex items-center justify-center shrink-0"
+                        >
+                          <SendIcon className="size-5" />
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={startRecording}
+                          disabled={sending}
+                          className="size-12 rounded-xl bg-secondary/40 text-primary hover:bg-secondary/60 transition-all active:scale-95 flex items-center justify-center shrink-0 shadow-none"
+                        >
+                          <Mic className="size-5 text-primary" />
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
-        )}
+            </motion.div>,
+            document.body,
+          )}
       </div>
 
       <Dialog open={showLimitModal} onOpenChange={setShowLimitModal}>

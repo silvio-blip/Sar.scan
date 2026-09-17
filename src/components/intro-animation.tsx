@@ -22,27 +22,31 @@ export function IntroAnimation({ onDone }: { onDone: () => void }) {
   const [gone, setGone] = useState(false);
 
   const foods = useMemo<Food[]>(() => {
-    return Array.from({ length: 80 }).map(() => ({
+    return Array.from({ length: 18 }).map(() => ({
       emoji: FOOD_EMOJIS[Math.floor(Math.random() * FOOD_EMOJIS.length)],
-      startX: (Math.random() - 0.5) * 200 + "vw",
-      startY: (Math.random() - 0.5) * 200 + "vh",
-      endX: (Math.random() - 0.5) * 300 + "vw",
-      endY: (Math.random() - 0.5) * 300 + "vh",
-      rotX: Math.random() * 720 + "deg",
-      rotY: Math.random() * 720 + "deg",
-      endScale: Math.random() * 2 + 1,
-      finalOpacity: Math.random() * 0.4 + 0.1,
-      delay: Math.random() * 2 + "s",
-      duration: Math.random() * 2.5 + 3.5 + "s",
+      startX: (Math.random() - 0.5) * 100 + "vw",
+      startY: (Math.random() - 0.5) * 100 + "vh",
+      endX: (Math.random() - 0.5) * 150 + "vw",
+      endY: (Math.random() - 0.5) * 150 + "vh",
+      rotX: Math.random() * 360 + "deg",
+      rotY: Math.random() * 360 + "deg",
+      endScale: Math.random() * 1.5 + 1,
+      finalOpacity: Math.random() * 0.3 + 0.1,
+      delay: Math.random() * 0.8 + "s",
+      duration: Math.random() * 1.2 + 1.4 + "s",
     }));
   }, []);
 
+  const handleSkip = () => {
+    setGone(true);
+    setTimeout(onDone, 300);
+  };
+
   useEffect(() => {
-    // 5.8s start fadeOut + 1.2s duration = 7s
     const t = setTimeout(() => {
       setGone(true);
-      setTimeout(onDone, 1200);
-    }, 5800);
+      setTimeout(onDone, 400);
+    }, 2200);
     return () => clearTimeout(t);
   }, [onDone]);
 
@@ -50,7 +54,7 @@ export function IntroAnimation({ onDone }: { onDone: () => void }) {
   const chars = ["s", "a", "r", ".", "s", "a", "c", "n"];
 
   return (
-    <div className={`intro-screen ${gone ? "intro-fade" : ""}`}>
+    <div onClick={handleSkip} className={`intro-screen cursor-pointer ${gone ? "intro-fade" : ""}`}>
       <style>{`
         /* Reset e Configurações Base */
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&display=swap');

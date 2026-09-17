@@ -66,7 +66,7 @@ function cleanApiKey(val: string | undefined | null): string | null {
   return cleaned;
 }
 
-function ScannerPage() {
+export function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
   const qc = useQueryClient();
   const { stream, streamOn, startCamera, stopCamera, facingMode, toggleCamera, isSwitching } =
@@ -529,7 +529,7 @@ function ScannerPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 animate-in fade-in duration-1000 select-none">
+    <div className="flex flex-col gap-4 select-none transform-gpu">
       {/* Top Header */}
       <header className="flex items-center justify-between px-2 pt-2">
         <SarLogo size="sm" align="left" />

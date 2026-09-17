@@ -16,37 +16,40 @@ function cleanEnvValue(val: string | undefined): string | undefined {
 
 function createSupabaseClient() {
   const SUPABASE_URL = cleanEnvValue(
-    import.meta.env.VITE_SUPABASE_URL ||
+    (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined) ||
       import.meta.env.SUPABASE_URL ||
-      (typeof process !== "undefined" ? process.env?.SUPABASE_URL : undefined),
+      import.meta.env.VITE_SUPABASE_URL ||
+      (typeof process !== "undefined" ? process.env?.VITE_SUPABASE_URL : undefined),
   );
 
-  const SUPABASE_PUBLISHABLE_KEY = cleanEnvValue(
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  const SUPABASE_SERVICE_ROLE_KEY = cleanEnvValue(
+    (typeof process !== "undefined" ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined) ||
+      import.meta.env.SUPABASE_SERVICE_ROLE_KEY ||
+      import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+      (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined) ||
       import.meta.env.SUPABASE_PUBLISHABLE_KEY ||
-      (typeof process !== "undefined" ? process.env?.SUPABASE_PUBLISHABLE_KEY : undefined),
+      import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      (typeof process !== "undefined" ? process.env?.VITE_SUPABASE_PUBLISHABLE_KEY : undefined),
   );
 
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     const missing = [
       ...(!SUPABASE_URL ? ["SUPABASE_URL"] : []),
-      ...(!SUPABASE_PUBLISHABLE_KEY ? ["SUPABASE_PUBLISHABLE_KEY"] : []),
+      ...(!SUPABASE_SERVICE_ROLE_KEY ? ["SUPABASE_SERVICE_ROLE_KEY"] : []),
     ];
-    const message = `Missing Supabase environment variable(s): ${missing.join(", ")}. Por favor, verifique as configurações no Vercel. Certifique-se de usar o prefixo VITE_ se estiver definindo variáveis para o frontend.`;
+    const message = `Variáveis de conexão do Supabase ausentes: ${missing.join(", ")}. Por favor, configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY nas variáveis de ambiente.`;
     console.error(`[Supabase] ${message}`);
 
-    // LOG EXTRA
-    console.log("[Supabase DEBUG] VITE_SUPABASE_URL:", import.meta.env.VITE_SUPABASE_URL);
-
-    // In production, we might want to still return a placeholder or handle this gracefully in UI
     if (import.meta.env.PROD) {
-      // Return a dummy client that throws on actual use, to avoid crashing the whole app on load if we can show a better error state
-      // But the proxy pattern below handles this
+      // Return placeholder client to prevent catastrophic bundle crashes on initial load
+      return createClient<Database>("https://placeholder-url.supabase.co", "placeholder-key", {
+        auth: { persistSession: false },
+      });
     }
     throw new Error(message);
   }
 
-  const client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  const client = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       storage: typeof window !== "undefined" ? localStorage : undefined,
       persistSession: true,

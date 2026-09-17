@@ -31,7 +31,7 @@ import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
-function PerfilPage() {
+export function PerfilPage() {
   const { user, profile, isAdmin, isPremium, signOut } = useAuth();
   useRewardsRealtime(user?.id);
 
@@ -99,7 +99,7 @@ function PerfilPage() {
   const initials = (profile?.nome ?? profile?.email ?? "U").slice(0, 2).toUpperCase();
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 select-none transform-gpu">
       <h1 className="text-3xl font-display font-black tracking-tight text-foreground">Perfil</h1>
 
       <div className="flex flex-col items-center text-center gap-4">

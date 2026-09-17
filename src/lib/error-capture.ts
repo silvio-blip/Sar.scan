@@ -8,10 +8,15 @@ function shouldIgnoreError(error: unknown): boolean {
       ? (error as any).message
       : error,
   );
+  const lower = message.toLowerCase();
   return (
-    message.includes("PeerJS") ||
-    message.includes("Lost connection to server") ||
-    message.includes("peerjs")
+    lower.includes("peerjs") ||
+    lower.includes("lost connection to server") ||
+    lower.includes("permission denied") ||
+    lower.includes("notallowederror") ||
+    lower.includes("the request is not allowed by the user agent") ||
+    lower.includes("the document is sandboxed") ||
+    lower.includes("allow-modals")
   );
 }
 
