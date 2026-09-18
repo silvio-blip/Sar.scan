@@ -90,15 +90,13 @@ const ROOT_ALLOWED_PATHS = new Set([
 const pageVariants = {
   enter: (direction: number) => ({
     x: direction > 0 ? "100%" : direction < 0 ? "-100%" : 0,
-    opacity: 0.95,
+    opacity: 1,
   }),
   center: {
     x: 0,
     opacity: 1,
-    scale: 1,
     transition: {
       x: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-      opacity: { duration: 0.15 },
     },
   },
 };
@@ -687,8 +685,6 @@ function AppLayout() {
             isDragging || animatingTo !== null
               ? {
                   x: currentEffectiveX,
-                  scale: 1 - Math.abs(normRatio) * 0.03,
-                  opacity: 1 - Math.abs(normRatio) * 0.12,
                 }
               : "center"
           }
@@ -697,8 +693,6 @@ function AppLayout() {
               ? { type: "tween", duration: 0 }
               : {
                   x: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-                  scale: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-                  opacity: { duration: 0.15 },
                 }
           }
           onAnimationComplete={() => {
@@ -711,7 +705,7 @@ function AppLayout() {
               setDragOffset(0);
             }
           }}
-          style={{ willChange: "transform, opacity" }}
+          style={{ willChange: "transform" }}
           className="w-full min-h-full"
         >
           <Outlet />
@@ -725,20 +719,16 @@ function AppLayout() {
               key={`incoming-next-${currentTabIdx + 1}`}
               className="absolute inset-0 px-6 pt-12 w-full min-h-full pointer-events-none overflow-y-auto"
               style={{
-                willChange: "transform, opacity",
+                willChange: "transform",
               }}
               animate={{
                 x: screenW + currentEffectiveX,
-                scale: 0.97 + (1 - nextRatio) * 0.03,
-                opacity: 0.6 + (1 - nextRatio) * 0.4,
               }}
               transition={
                 isDragging
                   ? { type: "tween", duration: 0 }
                   : {
                       x: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-                      scale: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-                      opacity: { duration: 0.15 },
                     }
               }
             >
@@ -757,20 +747,16 @@ function AppLayout() {
               key={`incoming-prev-${currentTabIdx - 1}`}
               className="absolute inset-0 px-6 pt-12 w-full min-h-full pointer-events-none overflow-y-auto"
               style={{
-                willChange: "transform, opacity",
+                willChange: "transform",
               }}
               animate={{
                 x: -screenW + currentEffectiveX,
-                scale: 0.97 + (1 - Math.abs(prevRatio)) * 0.03,
-                opacity: 0.6 + (1 - Math.abs(prevRatio)) * 0.4,
               }}
               transition={
                 isDragging
                   ? { type: "tween", duration: 0 }
                   : {
                       x: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-                      scale: { type: "spring", stiffness: 450, damping: 40, mass: 0.4 },
-                      opacity: { duration: 0.15 },
                     }
               }
             >

@@ -258,6 +258,10 @@ async function handleNutritionChat(body: Body) {
   const userId = body?.user_id ? String(body.user_id) : null;
   if (!message) return { reply: "" };
 
+  let userProfile: any = null;
+  let chatHistory: any[] = [];
+  const admin = getAdminSafe();
+
   if (userId) {
     const status = await getUserStatus(userId);
     if (!status?.isAdmin) {
@@ -272,9 +276,7 @@ async function handleNutritionChat(body: Body) {
         );
       }
 
-      // Verificação de limite diário para o plano Mensal (limite 50 mensagens por dia)
       if (planKey === "monthly") {
-        const admin = getAdminSafe();
         if (admin) {
           const { data: usageData } = await (admin as any)
             .from("chat_usage")
@@ -300,25 +302,61 @@ async function handleNutritionChat(body: Body) {
         }
       }
     }
+
+    if (admin) {
+      try {
+        const { data: prof } = await (admin as any)
+          .from("profiles")
+          .select("*")
+          .eq("id", userId)
+          .maybeSingle();
+        userProfile = prof;
+
+        const { data: hist } = await (admin as any)
+          .from("chat_messages")
+          .select("role, content")
+          .eq("user_id", userId)
+          .order("created_at", { ascending: true })
+          .limit(10);
+        if (hist) chatHistory = hist;
+      } catch (err) {
+        console.warn("[Nutrition Chat] Failed to fetch profile or history:", err);
+      }
+    }
   }
 
-  const { text } = await geminiCall({
-    systemInstruction:
-      "Você é um nutricionista brasileiro amigável. Respostas curtas, claras e em português.",
-    contents: [{ role: "user", parts: [{ text: message }] }],
+  const profileContext = userProfile
+    ? `Dados do usuário: Nome: ${userProfile.nome || "Usuário"}, Peso: ${userProfile.peso || "Não informado"}kg, Altura: ${userProfile.altura || "Não informada"}cm, Objetivo: ${userProfile.objetivo || "Não informado"}, Dieta/Preferências: ${userProfile.dieta || "Não informado"}.`
+    : "";
+
+  const systemInstruction = `Você é um nutricionista brasileiro amigável, especialista em saúde e bem-estar.
+${profileContext}
+Mantenha continuidade com o histórico da conversa. Responda de forma clara, acolhedora e motivadora em português.
+Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, além da resposta explicativa, inclua no final da resposta um bloco JSON estruturado no formato exato (sem formatação markdown adicional ao redor):
+[APLICAR_MELHORIAS: {"meta": "...", "dieta": "..."}] com as atualizações sugeridas para o perfil do usuário.`;
+
+  const contents: any[] = [];
+  chatHistory.forEach((h) => {
+    contents.push({
+      role: h.role === "assistant" ? "model" : "user",
+      parts: [{ text: h.content }],
+    });
   });
+  contents.push({ role: "user", parts: [{ text: message }] });
+
+  const { text } = await geminiCall({
+    systemInstruction,
+    contents,
+  });
+
   const reply = text || "Não consegui responder agora.";
 
-  if (userId) {
+  if (userId && admin) {
     try {
-      const admin = getAdminSafe();
-      if (admin) {
-        // Persist user message and assistant reply
-        await (admin as any).from("chat_messages").insert([
-          { user_id: userId, role: "user", content: message },
-          { user_id: userId, role: "assistant", content: reply },
-        ]);
-      }
+      await (admin as any).from("chat_messages").insert([
+        { user_id: userId, role: "user", content: message },
+        { user_id: userId, role: "assistant", content: reply },
+      ]);
     } catch (e) {
       console.error("chat persist failed", e);
     }

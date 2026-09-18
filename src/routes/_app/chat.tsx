@@ -1067,13 +1067,14 @@ export function ChatPage() {
     queryKey: ["dm", user?.id, selectedUser?.id],
     enabled: !!user && !!selectedUser && view === "dm",
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("direct_messages")
         .select("*")
         .or(
           `and(sender_id.eq.${user!.id},receiver_id.eq.${selectedUser!.id}),and(sender_id.eq.${selectedUser!.id},receiver_id.eq.${user!.id})`,
         )
-        .order("created_at");
+        .order("created_at", { ascending: true });
+      if (error) throw error;
       return (data ?? []) as Message[];
     },
   });
@@ -1214,33 +1215,49 @@ export function ChatPage() {
 
     setSending(true);
     try {
-      if (forAll) {
-        // Double check ownership
-        const canDeleteForAll = ids.every((id) => {
-          const m = (view === "ai" ? aiMsgs : directMsgs)?.find((msg: any) => msg.id === id);
-          return m?.sender_id === user.id;
-        });
-
-        if (!canDeleteForAll) {
-          toast.error("Você só pode remover para todos as suas próprias mensagens");
-          return;
+      if (view === "dm" && selectedUser) {
+        if (forAll) {
+          const { error } = await supabase
+            .from("direct_messages")
+            .update({ is_deleted_for_all: true })
+            .in("id", ids)
+            .eq("sender_id", user.id);
+          if (error) throw error;
+        } else {
+          for (const id of ids) {
+            await supabase.rpc("append_to_deleted_by", { msg_id: id, user_id: user.id });
+          }
         }
-
-        const { error } = await supabase
-          .from("direct_messages")
-          .update({ is_deleted_for_all: true })
-          .in("id", ids)
-          .eq("sender_id", user.id);
-        if (error) throw error;
+        toast.success(ids.length === 1 ? "Mensagem apagada" : `${ids.length} mensagens apagadas`);
+        clearSelection();
+        qc.invalidateQueries({ queryKey: ["dm", user.id, selectedUser.id] });
       } else {
-        // Batch append to deleted_by
-        for (const id of ids) {
-          await supabase.rpc("append_to_deleted_by", { msg_id: id, user_id: user.id });
+        if (forAll) {
+          const canDeleteForAll = ids.every((id) => {
+            const m = (view === "ai" ? aiMsgs : directMsgs)?.find((msg: any) => msg.id === id);
+            return m?.sender_id === user.id;
+          });
+
+          if (!canDeleteForAll) {
+            toast.error("Você só pode remover para todos as suas próprias mensagens");
+            return;
+          }
+
+          const { error } = await supabase
+            .from("direct_messages")
+            .update({ is_deleted_for_all: true })
+            .in("id", ids)
+            .eq("sender_id", user.id);
+          if (error) throw error;
+        } else {
+          for (const id of ids) {
+            await supabase.rpc("append_to_deleted_by", { msg_id: id, user_id: user.id });
+          }
         }
+        toast.success(ids.length === 1 ? "Mensagem apagada" : `${ids.length} mensagens apagadas`);
+        clearSelection();
+        qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
       }
-      toast.success(ids.length === 1 ? "Mensagem apagada" : `${ids.length} mensagens apagadas`);
-      clearSelection();
-      qc.invalidateQueries({ queryKey: ["dm", user.id, selectedUser?.id] });
     } catch (error) {
       console.error("Erro ao apagar mensagens selecionadas:", error);
       toast.error("Erro ao apagar mensagens");
@@ -1477,7 +1494,6 @@ export function ChatPage() {
           }),
         }).catch((err) => console.error("[Push] Erro ao disparar push de mensagem:", err));
 
-        // Trigger queries immediately
         await Promise.all([
           qc.invalidateQueries({ queryKey: ["dm", user.id, selectedUser.id] }),
           qc.invalidateQueries({ queryKey: ["recent_chats"] }),
@@ -2394,69 +2410,156 @@ export function ChatPage() {
               className="flex flex-col h-[100dvh] w-full fixed inset-0 z-[999] bg-background max-w-[480px] mx-auto border-x border-border shadow-2xl overflow-hidden select-none"
             >
               <div className="flex items-center gap-3 px-4 pt-[max(12px,env(safe-area-inset-top,12px))] pb-2.5 border-b border-border/40 shrink-0 bg-background/95 backdrop-blur-md">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={dismissConversation}
-                  className="rounded-full bg-secondary hover:bg-muted text-foreground h-10 w-10 shrink-0"
-                >
-                  <ArrowLeft className="size-5" />
-                </Button>
-                <div className="flex-1 flex items-center gap-3 min-w-0">
-                  {view === "ai" ? (
-                    <>
-                      <div className="size-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
-                        <Crown className="size-5 text-primary-foreground" />
-                      </div>
-                      <div className="min-w-0">
-                        <h2 className="text-xs font-black uppercase tracking-tight text-foreground truncate">
-                          IA Nutricionista
-                        </h2>
-                        <p className="text-[10px] text-primary font-black uppercase tracking-widest">
-                          Ativa Agora
-                        </p>
-                      </div>
-                      {usageInfo && usageInfo.limit !== -1 && (
-                        <div className="ml-auto flex flex-col items-end shrink-0">
-                          <div className="px-2 py-1 rounded-xl bg-secondary border border-border flex flex-col items-center">
-                            <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase leading-none mb-0.5">
-                              Uso Diário
-                            </span>
-                            <span className="text-[10px] font-black text-primary leading-none">
-                              {usageInfo.count} / {usageInfo.limit}
-                            </span>
-                          </div>
-                        </div>
+                {isSelectionMode ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={clearSelection}
+                      className="rounded-full bg-secondary hover:bg-muted text-foreground h-10 w-10 shrink-0"
+                    >
+                      <X className="size-5" />
+                    </Button>
+                    <div className="px-3 py-1 bg-secondary rounded-full border border-border">
+                      <span className="text-xs font-black text-foreground">
+                        {selectedMessageIds.size} selecionada
+                        {selectedMessageIds.size > 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <div className="ml-auto flex items-center gap-1">
+                      {selectedMessageIds.size === 1 && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-full hover:bg-secondary text-foreground size-10"
+                            title="Responder"
+                            onClick={() => {
+                              const id = Array.from(selectedMessageIds)[0];
+                              const m = (view === "ai" ? aiMsgs : directMsgs)?.find(
+                                (msg: any) => msg.id === id,
+                              );
+                              if (m) {
+                                setReplyTo(m);
+                                clearSelection();
+                              }
+                            }}
+                          >
+                            <Undo2 className="size-5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="rounded-full hover:bg-secondary text-foreground size-10"
+                            title="Copiar"
+                            onClick={() => {
+                              const id = Array.from(selectedMessageIds)[0];
+                              const m = (view === "ai" ? aiMsgs : directMsgs)?.find(
+                                (msg: any) => msg.id === id,
+                              );
+                              if (m?.content) {
+                                navigator.clipboard.writeText(m.content);
+                                toast.success("Mensagem copiada");
+                                clearSelection();
+                              }
+                            }}
+                          >
+                            <Copy className="size-5" />
+                          </Button>
+                        </>
                       )}
-                    </>
-                  ) : (
-                    <>
-                      <Avatar
-                        className="size-10 aspect-square rounded-2xl border border-border cursor-pointer hover:border-primary/20 transition-all shrink-0"
-                        onClick={() => selectedUser && openProfile(selectedUser)}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-full hover:bg-secondary text-foreground size-10"
+                        title="Fixar"
+                        onClick={() => {
+                          toast.success("Mensagem fixada");
+                          clearSelection();
+                        }}
                       >
-                        <AvatarImage
-                          src={selectedUser?.avatar_url || ""}
-                          className="object-cover"
-                        />
-                        <AvatarFallback className="bg-secondary text-primary font-black">
-                          {selectedUser?.nome?.[0] || "?"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div
-                        className="flex-1 min-w-0 cursor-pointer"
-                        onClick={() => selectedUser && openProfile(selectedUser)}
+                        <Pin className="size-5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-full hover:bg-rose-500/10 text-rose-500 size-10"
+                        title="Eliminar"
+                        onClick={() => {
+                          deleteSelectedMessages(false);
+                        }}
                       >
-                        <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors text-foreground">
-                          {selectedUser?.nome || "Usuário"}
-                        </h2>
-                        <p className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">
-                          Social Match
-                        </p>
-                      </div>
-                    </>
-                  )}
-                </div>
+                        <Trash2 className="size-5" />
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={dismissConversation}
+                      className="rounded-full bg-secondary hover:bg-muted text-foreground h-10 w-10 shrink-0"
+                    >
+                      <ArrowLeft className="size-5" />
+                    </Button>
+                    <div className="flex-1 flex items-center gap-3 min-w-0">
+                      {view === "ai" ? (
+                        <>
+                          <div className="size-10 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                            <Crown className="size-5 text-primary-foreground" />
+                          </div>
+                          <div className="min-w-0">
+                            <h2 className="text-xs font-black uppercase tracking-tight text-foreground truncate">
+                              IA Nutricionista
+                            </h2>
+                            <p className="text-[10px] text-primary font-black uppercase tracking-widest">
+                              Ativa Agora
+                            </p>
+                          </div>
+                          {usageInfo && usageInfo.limit !== -1 && (
+                            <div className="ml-auto flex flex-col items-end shrink-0">
+                              <div className="px-2 py-1 rounded-xl bg-secondary border border-border flex flex-col items-center">
+                                <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase leading-none mb-0.5">
+                                  Uso Diário
+                                </span>
+                                <span className="text-[10px] font-black text-primary leading-none">
+                                  {usageInfo.count} / {usageInfo.limit}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Avatar
+                            className="size-10 aspect-square rounded-2xl border border-border cursor-pointer hover:border-primary/20 transition-all shrink-0"
+                            onClick={() => selectedUser && openProfile(selectedUser)}
+                          >
+                            <AvatarImage
+                              src={selectedUser?.avatar_url || ""}
+                              className="object-cover"
+                            />
+                            <AvatarFallback className="bg-secondary text-primary font-black">
+                              {selectedUser?.nome?.[0] || "?"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer"
+                            onClick={() => selectedUser && openProfile(selectedUser)}
+                          >
+                            <h2 className="text-sm font-black tracking-tight truncate hover:text-primary transition-colors text-foreground">
+                              {selectedUser?.nome || "Usuário"}
+                            </h2>
+                            <p className="text-[10px] text-muted-foreground font-black uppercase tracking-tighter">
+                              Social Match
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-4 sm:px-6 custom-scrollbar flex flex-col pt-3 pb-2 overscroll-contain">
