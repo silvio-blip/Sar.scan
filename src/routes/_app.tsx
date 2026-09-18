@@ -139,9 +139,11 @@ function AppLayout() {
           } else {
             App.exitApp();
           }
-        }).then((h: any) => {
-          handle = h;
-        }).catch((err: any) => console.warn("Erro backButton listener:", err));
+        })
+          .then((h: any) => {
+            handle = h;
+          })
+          .catch((err: any) => console.warn("Erro backButton listener:", err));
       } catch (e) {
         console.warn("Capacitor App listener não disponível:", e);
       }
@@ -228,9 +230,11 @@ function AppLayout() {
           toast.message(`💬 ${notification.title || "Nova mensagem"}`, {
             description: notification.body || "Toque para visualizar",
           });
-        }).then((h: any) => {
-          receivedHandle = h;
-        }).catch((err: any) => console.warn("[Push] listener error:", err));
+        })
+          .then((h: any) => {
+            receivedHandle = h;
+          })
+          .catch((err: any) => console.warn("[Push] listener error:", err));
 
         PushNotifications.addListener("pushNotificationActionPerformed", () => {
           try {
@@ -238,9 +242,11 @@ function AppLayout() {
           } catch (routeErr) {
             console.error("[Push] Erro ao redirecionar para o chat:", routeErr);
           }
-        }).then((h: any) => {
-          actionHandle = h;
-        }).catch((err: any) => console.warn("[Push] action error:", err));
+        })
+          .then((h: any) => {
+            actionHandle = h;
+          })
+          .catch((err: any) => console.warn("[Push] action error:", err));
       }
     }
 
