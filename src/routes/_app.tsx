@@ -130,11 +130,27 @@ function AppLayout() {
   };
 
   useEffect(() => {
+    let handle: any = null;
     if (typeof window !== "undefined" && (window as any).Capacitor) {
-      App.addListener("backButton", () => {
-        router.history.back();
-      });
+      try {
+        App.addListener("backButton", ({ canGoBack }: { canGoBack?: boolean }) => {
+          if (canGoBack) {
+            router.history.back();
+          } else {
+            App.exitApp();
+          }
+        }).then((h: any) => {
+          handle = h;
+        }).catch((err: any) => console.warn("Erro backButton listener:", err));
+      } catch (e) {
+        console.warn("Capacitor App listener não disponível:", e);
+      }
     }
+    return () => {
+      if (handle && typeof handle.remove === "function") {
+        handle.remove();
+      }
+    };
   }, [router]);
 
   useEffect(() => {
@@ -175,24 +191,22 @@ function AppLayout() {
       const isCap = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
       const cap = isCap ? (window as any).Capacitor : null;
 
-      if (localStorage.getItem("push_notifications_active") === "false") {
+      // Só tenta registrar notificações se o utilizador ativou explicitamente
+      if (localStorage.getItem("push_notifications_active") !== "true") {
         return;
       }
       if (isCap) {
         const { PushNotifications } = cap.Plugins || {};
-        if (PushNotifications) {
+        if (PushNotifications && typeof PushNotifications.checkPermissions === "function") {
           try {
             const check = await PushNotifications.checkPermissions();
-            if (check?.receive !== "granted") {
-              const result = await PushNotifications.requestPermissions();
-              if (result?.receive === "granted") {
-                PushNotifications.register();
-              }
-            } else {
-              PushNotifications.register();
+            if (check?.receive === "granted") {
+              await PushNotifications.register().catch((err: any) => {
+                console.warn("[Push] FCM registration skipped:", err);
+              });
             }
           } catch (err) {
-            console.error("[Push] Erro no registro de notificações:", err);
+            console.warn("[Push] Notificações Push não configuradas:", err);
           }
         }
       }
@@ -203,15 +217,20 @@ function AppLayout() {
 
   useEffect(() => {
     const isCapacitor = typeof window !== "undefined" && (window as any).Capacitor !== undefined;
-    if (isCapacitor) {
+    let receivedHandle: any = null;
+    let actionHandle: any = null;
+
+    if (isCapacitor && localStorage.getItem("push_notifications_active") === "true") {
       const cap = (window as any).Capacitor;
       const { PushNotifications } = cap.Plugins || {};
-      if (PushNotifications) {
+      if (PushNotifications && typeof PushNotifications.addListener === "function") {
         PushNotifications.addListener("pushNotificationReceived", (notification: any) => {
           toast.message(`💬 ${notification.title || "Nova mensagem"}`, {
             description: notification.body || "Toque para visualizar",
           });
-        });
+        }).then((h: any) => {
+          receivedHandle = h;
+        }).catch((err: any) => console.warn("[Push] listener error:", err));
 
         PushNotifications.addListener("pushNotificationActionPerformed", () => {
           try {
@@ -219,9 +238,20 @@ function AppLayout() {
           } catch (routeErr) {
             console.error("[Push] Erro ao redirecionar para o chat:", routeErr);
           }
-        });
+        }).then((h: any) => {
+          actionHandle = h;
+        }).catch((err: any) => console.warn("[Push] action error:", err));
       }
     }
+
+    return () => {
+      if (receivedHandle && typeof receivedHandle.remove === "function") {
+        receivedHandle.remove();
+      }
+      if (actionHandle && typeof actionHandle.remove === "function") {
+        actionHandle.remove();
+      }
+    };
   }, [user, router]);
 
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);

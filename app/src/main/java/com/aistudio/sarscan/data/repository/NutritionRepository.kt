@@ -131,20 +131,24 @@ class NutritionRepository(
     }
 
     private fun loadUserProfile(): UserProfile {
-        return UserProfile(
-            name = prefs.getString("name", "Usuário") ?: "Usuário",
-            weightKg = prefs.getFloat("weightKg", 72.0f),
-            heightCm = prefs.getFloat("heightCm", 175.0f),
-            age = prefs.getInt("age", 28),
-            goal = prefs.getString("goal", "Perder peso") ?: "Perder peso",
-            targetCalories = prefs.getInt("targetCalories", 2000),
-            targetWaterMl = prefs.getInt("targetWaterMl", 2500),
-            targetProteinG = prefs.getInt("targetProteinG", 140),
-            targetCarbsG = prefs.getInt("targetCarbsG", 210),
-            targetFatG = prefs.getInt("targetFatG", 60),
-            streakDays = prefs.getInt("streakDays", 4),
-            totalScans = prefs.getInt("totalScans", 18)
-        )
+        return try {
+            UserProfile(
+                name = prefs.getString("name", "Usuário") ?: "Usuário",
+                weightKg = prefs.getFloat("weightKg", 72.0f),
+                heightCm = prefs.getFloat("heightCm", 175.0f),
+                age = prefs.getInt("age", 28),
+                goal = prefs.getString("goal", "Perder peso") ?: "Perder peso",
+                targetCalories = prefs.getInt("targetCalories", 2000),
+                targetWaterMl = prefs.getInt("targetWaterMl", 2500),
+                targetProteinG = prefs.getInt("targetProteinG", 140),
+                targetCarbsG = prefs.getInt("targetCarbsG", 210),
+                targetFatG = prefs.getInt("targetFatG", 60),
+                streakDays = prefs.getInt("streakDays", 4),
+                totalScans = prefs.getInt("totalScans", 18)
+            )
+        } catch (e: Exception) {
+            UserProfile()
+        }
     }
 
     private fun updateScanStats() {
