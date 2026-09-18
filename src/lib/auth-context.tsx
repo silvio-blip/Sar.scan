@@ -75,6 +75,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       let typedSub = sub as Subscription | null;
 
+      // 1. Novo utilizador logado pela primeira vez: conceder 7 dias grátis com 30 scans
+      if (!typedSub) {
+        console.log("[Auth] Novo utilizador detectado. Concedendo 7 dias grátis com 30 scans...");
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 7);
+        const initialTrialSub = {
+          user_id: uid,
+          status: "trialing",
+          trial_end: trialEnd.toISOString(),
+          plan: "trial",
+          ai_agent_enabled: true,
+          scans_credits: 30,
+        };
+
+        try {
+          const { data: created, error: createErr } = await supabase
+            .from("subscriptions")
+            .upsert(initialTrialSub)
+            .select("status, trial_end, current_period_end, plan, scans_credits, ai_agent_enabled")
+            .single();
+
+          if (!createErr && created) {
+            typedSub = created as Subscription;
+          } else {
+            typedSub = initialTrialSub as Subscription;
+          }
+        } catch (initErr) {
+          console.error("[Auth] Erro ao criar trial inicial:", initErr);
+          typedSub = initialTrialSub as Subscription;
+        }
+      }
+
+      // 2. Verificar se o período de teste de 7 dias expirou
+      if (typedSub && typedSub.status === "trialing" && typedSub.trial_end) {
+        const trialExpired = new Date(typedSub.trial_end) < new Date();
+        if (trialExpired) {
+          console.log("[Auth] Teste grátis de 7 dias expirou. Migrando para status free...");
+          try {
+            await supabase
+              .from("subscriptions")
+              .update({ status: "free", plan: null, ai_agent_enabled: false })
+              .eq("user_id", uid);
+            typedSub = {
+              ...typedSub,
+              status: "free",
+              plan: null,
+              ai_agent_enabled: false,
+            };
+          } catch (err) {
+            console.error("[Auth] Erro ao expirar teste grátis:", err);
+          }
+        }
+      }
+
+      // 3. Verificar se assinatura ativa expirou
       if (typedSub && typedSub.status === "active" && typedSub.current_period_end) {
         const expired = new Date(typedSub.current_period_end) < new Date();
         if (expired) {

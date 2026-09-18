@@ -136,9 +136,13 @@ export function PremiumPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const activateFreeTrial = async () => {
-    if (!user) return;
-    setLoading("monthly"); // Reutilizar estado de carga
+  const activateFreeTrial = async (planId?: PlanId) => {
+    if (!user) {
+      toast.error("Por favor, faça autenticação antes de ativar o teste.");
+      return;
+    }
+    const chosenPlan = planId || "monthly";
+    setLoading(chosenPlan);
     try {
       const trialEnd = new Date();
       trialEnd.setDate(trialEnd.getDate() + 7);
@@ -147,21 +151,21 @@ export function PremiumPage() {
         user_id: user.id,
         status: "trialing",
         trial_end: trialEnd.toISOString(),
-        plan: "monthly",
+        plan: chosenPlan,
         ai_agent_enabled: true,
         scans_credits: 30,
       });
 
       if (error) throw error;
 
-      toast.success("Teste grátis de 7 dias ativado!");
+      toast.success("Teste grátis de 7 dias ativado! Você recebeu 30 scans gratuitos.");
       if (refresh) await refresh();
 
-      const likelyPlan = { ...(PLANS.find((p) => p.id === "monthly")! || PLANS[1]), scans: 30 };
+      const likelyPlan = { ...(PLANS.find((p) => p.id === chosenPlan)! || PLANS[1]), scans: 30 };
       setPurchasedPlan(likelyPlan);
       setShowSuccessModal(true);
     } catch (e: any) {
-      console.error(e);
+      console.error("[Trial Activation Error]:", e);
       toast.error("Erro ao ativar o teste grátis.");
     } finally {
       setLoading(null);
@@ -469,7 +473,15 @@ export function PremiumPage() {
                     onClick={(e) => {
                       e.stopPropagation();
                       if (loading) return;
-                      setConfirmingPlan(p);
+                      const hasActivePlan =
+                        subscription &&
+                        (subscription.status === "active" || subscription.status === "trialing");
+
+                      if (!hasActivePlan && p.trialDays) {
+                        setConfirmingPlan(p);
+                      } else {
+                        startCheckout(p.id, false);
+                      }
                     }}
                     disabled={loading === p.id}
                     className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-sm ${
@@ -621,8 +633,9 @@ export function PremiumPage() {
             <div className="flex flex-col w-full gap-3">
               <Button
                 onClick={() => {
-                  if (confirmingPlan) startCheckout(confirmingPlan.id, true);
+                  const targetPlan = confirmingPlan?.id;
                   setConfirmingPlan(null);
+                  activateFreeTrial(targetPlan);
                 }}
                 disabled={!!loading}
                 className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black text-sm shadow-md transition-all"

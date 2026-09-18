@@ -464,15 +464,19 @@ export async function getUserStatus(userId: string) {
     }
   }
 
-  // Se não existir subscription, criamos uma 'free' por padrão com 3 créditos
+  // Se não existir subscription, criamos o teste grátis de 7 dias com 30 créditos
   if (!finalSub) {
+    const trialEnd = new Date();
+    trialEnd.setDate(trialEnd.getDate() + 7);
     const { data: newSub } = await (admin as any)
       .from("subscriptions")
       .insert({
         user_id: userId,
-        status: "free",
-        scans_credits: 3,
-        ai_agent_enabled: isAdmin, // Habilita IA para admins na criação
+        status: "trialing",
+        trial_end: trialEnd.toISOString(),
+        scans_credits: 30,
+        plan: "trial",
+        ai_agent_enabled: true,
       })
       .select()
       .single();
