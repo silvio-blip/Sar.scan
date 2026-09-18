@@ -48,6 +48,14 @@ export async function initializeGooglePlayIAP(): Promise<void> {
           id: "sar_scan_assinatura",
           type: "paid subscription",
         },
+        {
+          id: "sar_scan_assinatura_semanal",
+          type: "paid subscription",
+        },
+        {
+          id: "sar_scan_assinatura_anual",
+          type: "paid subscription",
+        },
       ]);
 
       // Setup purchase behaviors
@@ -57,7 +65,17 @@ export async function initializeGooglePlayIAP(): Promise<void> {
       });
 
       store.when("sar_scan_assinatura").approved((p: any) => {
-        console.log("[Play IAP] Subscription approved natively:", p);
+        console.log("[Play IAP] Monthly Subscription approved natively:", p);
+        p.verify();
+      });
+
+      store.when("sar_scan_assinatura_semanal").approved((p: any) => {
+        console.log("[Play IAP] Weekly Subscription approved natively:", p);
+        p.verify();
+      });
+
+      store.when("sar_scan_assinatura_anual").approved((p: any) => {
+        console.log("[Play IAP] Yearly Subscription approved natively:", p);
         p.verify();
       });
 

@@ -58,7 +58,13 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         auth,
       });
 
-      if (data.productId === "sar_scan_assinatura") {
+      const isSubscription =
+        data.productId === "sar_scan_assinatura" ||
+        data.productId === "sar_scan_assinatura_mensal" ||
+        data.productId === "sar_scan_assinatura_semanal" ||
+        data.productId === "sar_scan_assinatura_anual";
+
+      if (isSubscription) {
         // Evaluate native recurring Subscription status
         const response = await play.purchases.subscriptions.get({
           packageName: packageName,
@@ -166,35 +172,102 @@ export async function verifyGooglePlayPurchaseInternal(data: {
 
     const currentCredits = (currentSub as any)?.scans_credits ?? 0;
 
-    if (data.productId === "sar_scan_assinatura") {
+    if (
+      data.productId === "sar_scan_assinatura" ||
+      data.productId === "sar_scan_assinatura_mensal"
+    ) {
       // Monthly recurrence plan grants 150 scans and opens AI Nutrition
       const addedCredits = 150;
       const newTotal = currentCredits + addedCredits;
 
-      const { data: updatedSub, error: updateError } = await (supabaseAdmin as any)
-        .from("subscriptions")
-        .upsert(
-          {
-            user_id: user.id,
-            status: "active",
-            plan: "monthly",
-            scans_credits: newTotal,
-            ai_agent_enabled: true,
-            current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        )
-        .select()
-        .single();
+      const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
+        {
+          user_id: user.id,
+          status: "active",
+          plan: "monthly",
+          scans_credits: newTotal,
+          ai_agent_enabled: true,
+          current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
 
       if (updateError) {
         console.error("[Play Billing Backend] Failed subscribing user in database:", updateError);
-        throw new Error("Erro crítico ao sincronizar assinatura.");
+        throw new Error("Erro crítico ao sincronizar assinatura mensal.");
       }
 
       console.log(
-        `[Play Billing Backend] Success subscribing user ${user.id}. New credit limit: ${newTotal}`,
+        `[Play Billing Backend] Success subscribing user ${user.id} to monthly plan. New credit limit: ${newTotal}`,
+      );
+      return {
+        success: true,
+        productId: data.productId,
+        creditsGranted: addedCredits,
+        totalCredits: newTotal,
+        subscriptionStatus: "active",
+        details: googleApiResponseData,
+      };
+    } else if (data.productId === "sar_scan_assinatura_semanal") {
+      // Weekly recurrence plan grants 30 scans
+      const addedCredits = 30;
+      const newTotal = currentCredits + addedCredits;
+
+      const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
+        {
+          user_id: user.id,
+          status: "active",
+          plan: "weekly",
+          scans_credits: newTotal,
+          ai_agent_enabled: false,
+          current_period_end: new Date(Date.now() + 7 * 86400000).toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+
+      if (updateError) {
+        console.error("[Play Billing Backend] Failed subscribing user in database:", updateError);
+        throw new Error("Erro crítico ao sincronizar assinatura semanal.");
+      }
+
+      console.log(
+        `[Play Billing Backend] Success subscribing user ${user.id} to weekly plan. New credit limit: ${newTotal}`,
+      );
+      return {
+        success: true,
+        productId: data.productId,
+        creditsGranted: addedCredits,
+        totalCredits: newTotal,
+        subscriptionStatus: "active",
+        details: googleApiResponseData,
+      };
+    } else if (data.productId === "sar_scan_assinatura_anual") {
+      // Yearly recurrence plan grants 1200 scans and opens AI Nutrition
+      const addedCredits = 1200;
+      const newTotal = currentCredits + addedCredits;
+
+      const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
+        {
+          user_id: user.id,
+          status: "active",
+          plan: "yearly",
+          scans_credits: newTotal,
+          ai_agent_enabled: true,
+          current_period_end: new Date(Date.now() + 365 * 86400000).toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      );
+
+      if (updateError) {
+        console.error("[Play Billing Backend] Failed subscribing user in database:", updateError);
+        throw new Error("Erro crítico ao sincronizar assinatura anual.");
+      }
+
+      console.log(
+        `[Play Billing Backend] Success subscribing user ${user.id} to yearly plan. New credit limit: ${newTotal}`,
       );
       return {
         success: true,

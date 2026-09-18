@@ -2,7 +2,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { createStripeCheckout, syncStripePlans } from "@/lib/stripe.functions";
-import { initializeGooglePlayIAP, requestGooglePlayPurchase } from "@/lib/google-play.functions";
+import {
+  initializeGooglePlayIAP,
+  requestGooglePlayPurchase,
+  isCapacitor,
+} from "@/lib/google-play.functions";
 import { isInstalledApp } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -265,6 +269,24 @@ export function PremiumPage() {
     }
     setLoading(planId);
     try {
+      if (isCapacitor()) {
+        const playProductId =
+          planId === "weekly"
+            ? "sar_scan_assinatura_semanal"
+            : planId === "yearly"
+              ? "sar_scan_assinatura_anual"
+              : "sar_scan_assinatura";
+
+        const res = await requestGooglePlayPurchase(playProductId, session.access_token);
+        if (res.success) {
+          toast.success("Assinatura ativada com sucesso através da Google Play!");
+          if (refresh) await refresh();
+        } else {
+          toast.error(res.error || "A transação falhou ou foi cancelada na Google Play.");
+        }
+        return;
+      }
+
       const res = await createStripeCheckout({
         token: session.access_token,
         plan: planId,
@@ -277,7 +299,8 @@ export function PremiumPage() {
         throw new Error("URL de checkout inválida");
       }
     } catch (e: any) {
-      toast.error(e.message || "Erro ao iniciar o checkout do Stripe.");
+      toast.error(e.message || "Erro ao iniciar o checkout.");
+    } finally {
       setLoading(null);
     }
   };
@@ -496,10 +519,11 @@ export function PremiumPage() {
           </p>
           <div className="flex justify-end pt-2">
             <Button
+              onClick={startCreditsCheckout}
+              disabled={buyingCredits}
               className="h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/95 transition-all duration-300 shadow-sm"
-              disabled={true}
             >
-              Em breve
+              {buyingCredits ? <Loader2 className="size-4 animate-spin" /> : "Comprar 50 Scans"}
             </Button>
           </div>
         </div>

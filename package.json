@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.4",
     "@capacitor/camera": "^8.2.0",
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/push-notifications": "^8.1.1",
@@ -46,6 +47,7 @@
     "@radix-ui/react-toggle": "^1.1.10",
     "@radix-ui/react-toggle-group": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@stripe/stripe-js": "^9.16.0",
     "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.2.1",

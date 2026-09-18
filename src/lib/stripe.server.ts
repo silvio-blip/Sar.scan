@@ -61,6 +61,203 @@ export const PLANS_DEF = [
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];
 
+async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promise<string> {
+  const plan = PLANS_DEF.find((p) => p.id === planId);
+  if (!plan) throw new Error(`Plano inválido: ${planId}`);
+
+  let existingTyped: {
+    product_id?: string;
+    price_id?: string;
+    amount?: number;
+  } | null = null;
+
+  try {
+    const { data: existing } = await (supabaseAdmin as any)
+      .from("stripe_products")
+      .select("*")
+      .eq("plan", plan.id)
+      .maybeSingle();
+    existingTyped = existing;
+  } catch (dbErr) {
+    console.warn("[Stripe] Failed to query stripe_products table:", dbErr);
+  }
+
+  let validPriceId: string | null = null;
+  let validProductId: string | null = null;
+
+  // 1. Verify if the database's price_id is actually valid in the current active Stripe account
+  if (existingTyped?.price_id) {
+    try {
+      const price = await stripe.prices.retrieve(existingTyped.price_id);
+      if (price && price.active && !price.deleted && price.unit_amount === plan.amount) {
+        validPriceId = price.id;
+        validProductId =
+          typeof price.product === "string" ? price.product : (price.product as any)?.id;
+        console.log(`[Stripe] Using verified existing price ${validPriceId} for plan ${plan.id}`);
+      }
+    } catch {
+      console.warn(
+        `[Stripe] Stored price ${existingTyped.price_id} does not exist in active Stripe account. Will regenerate.`,
+      );
+    }
+  }
+
+  if (validPriceId) {
+    return validPriceId;
+  }
+
+  // 2. Check if product exists in active Stripe account
+  if (existingTyped?.product_id && !validProductId) {
+    try {
+      const prod = await stripe.products.retrieve(existingTyped.product_id);
+      if (prod && !prod.deleted) {
+        validProductId = prod.id;
+      }
+    } catch {
+      validProductId = null;
+    }
+  }
+
+  // 3. Search Stripe for existing products with metadata plan = plan.id or matching name
+  if (!validProductId) {
+    try {
+      const existingProds = await stripe.products.list({ limit: 50, active: true });
+      const found = existingProds.data.find(
+        (p) => p.metadata?.plan === plan.id || p.name === plan.label,
+      );
+      if (found) {
+        validProductId = found.id;
+        console.log(`[Stripe] Found existing matching product in Stripe: ${found.id}`);
+      }
+    } catch (searchErr) {
+      console.warn("[Stripe] Could not list products:", searchErr);
+    }
+  }
+
+  // 4. Create product if still not found
+  if (!validProductId) {
+    console.log(`[Stripe] Creating product in active Stripe account for plan: ${plan.id}`);
+    const product = await stripe.products.create({
+      name: plan.label,
+      metadata: { plan: plan.id, scans: String(plan.scans) },
+    });
+    validProductId = product.id;
+  }
+
+  // 5. Search if this product already has an active price with the correct amount
+  try {
+    const existingPrices = await stripe.prices.list({
+      product: validProductId,
+      active: true,
+      limit: 10,
+    });
+    const matchPrice = existingPrices.data.find(
+      (pr) =>
+        pr.unit_amount === plan.amount &&
+        pr.currency.toLowerCase() === "eur" &&
+        pr.recurring?.interval === plan.interval,
+    );
+    if (matchPrice) {
+      validPriceId = matchPrice.id;
+      console.log(`[Stripe] Reusing active price from Stripe product: ${validPriceId}`);
+    }
+  } catch (priceListErr) {
+    console.warn("[Stripe] Could not list existing prices for product:", priceListErr);
+  }
+
+  // 6. Create Price if needed
+  if (!validPriceId) {
+    console.log(`[Stripe] Creating price in active Stripe account for plan: ${plan.id}`);
+    const price = await stripe.prices.create({
+      product: validProductId,
+      unit_amount: plan.amount,
+      currency: "eur",
+      recurring: { interval: plan.interval as any },
+      metadata: { plan: plan.id },
+    });
+    validPriceId = price.id;
+  }
+
+  // 7. Update Supabase stripe_products cache
+  try {
+    await (supabaseAdmin as any).from("stripe_products").upsert({
+      plan: plan.id,
+      product_id: validProductId,
+      price_id: validPriceId,
+      amount: plan.amount,
+      currency: "eur",
+      interval: plan.interval,
+      updated_at: new Date().toISOString(),
+    });
+    console.log(`[Stripe] Updated stripe_products cache with price: ${validPriceId}`);
+  } catch (upsertErr) {
+    console.warn("[Stripe] Non-blocking warning: failed to upsert to stripe_products:", upsertErr);
+  }
+
+  return validPriceId;
+}
+
+async function ensureValidCustomer(
+  stripe: Stripe,
+  user: { id: string; email?: string },
+): Promise<string> {
+  let customerId: string | null = null;
+
+  try {
+    const { data: sub } = await (supabaseAdmin as any)
+      .from("subscriptions")
+      .select("stripe_customer_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const subTyped = sub as { stripe_customer_id: string } | null;
+    customerId = subTyped?.stripe_customer_id || null;
+  } catch (dbErr) {
+    console.warn("[Stripe] Could not query subscriptions table for customer:", dbErr);
+  }
+
+  // Verify that the customer actually exists in the active Stripe account
+  if (customerId) {
+    try {
+      const cust = await stripe.customers.retrieve(customerId);
+      if (cust && !(cust as any).deleted) {
+        return customerId;
+      }
+    } catch {
+      console.warn(
+        `[Stripe] Customer ${customerId} not found in active Stripe account. Generating new customer...`,
+      );
+      customerId = null;
+    }
+  }
+
+  // Create new customer on Stripe
+  const newCust = await stripe.customers.create({
+    email: user.email,
+    metadata: { user_id: user.id },
+  });
+  customerId = newCust.id;
+
+  try {
+    await (supabaseAdmin as any).from("subscriptions").upsert(
+      {
+        user_id: user.id,
+        stripe_customer_id: customerId,
+        status: "free",
+        scans_credits: 0,
+      },
+      { onConflict: "user_id" },
+    );
+  } catch (upsertErr) {
+    console.warn(
+      "[Stripe] Non-blocking warning: failed to upsert customer into subscriptions:",
+      upsertErr,
+    );
+  }
+
+  return customerId;
+}
+
 export async function syncStripePlansInternal(data: { token: string }) {
   const user = await authUser(data.token);
   const { data: roles } = await (supabaseAdmin as any)
@@ -71,48 +268,10 @@ export async function syncStripePlansInternal(data: { token: string }) {
   if (!isAdmin) throw new Error("Apenas admin pode sincronizar planos");
 
   const { stripe } = await getStripe();
-  const results: { plan: string; productId: string; priceId: string }[] = [];
+  const results: { plan: string; priceId: string }[] = [];
   for (const plan of PLANS_DEF) {
-    const { data: existing } = await (supabaseAdmin as any)
-      .from("stripe_products")
-      .select("*")
-      .eq("plan", plan.id)
-      .maybeSingle();
-
-    const existingTyped = existing as {
-      product_id?: string;
-      price_id?: string;
-      amount?: number;
-    } | null;
-    let productId = existingTyped?.product_id;
-    let priceId = existingTyped?.price_id;
-
-    if (!productId) {
-      const product = await stripe.products.create({
-        name: plan.label,
-        metadata: { plan: plan.id, scans: String(plan.scans) },
-      });
-      productId = product.id;
-    }
-    if (!priceId || existingTyped?.amount !== plan.amount) {
-      const price = await stripe.prices.create({
-        product: productId!,
-        unit_amount: plan.amount,
-        currency: "eur",
-        recurring: { interval: plan.interval as any },
-      });
-      priceId = price.id;
-    }
-    await (supabaseAdmin as any).from("stripe_products").upsert({
-      plan: plan.id,
-      product_id: productId,
-      price_id: priceId,
-      amount: plan.amount,
-      currency: "eur",
-      interval: plan.interval,
-      updated_at: new Date().toISOString(),
-    });
-    results.push({ plan: plan.id, productId: productId!, priceId: priceId! });
+    const priceId = await ensureValidProductAndPrice(stripe, plan.id);
+    results.push({ plan: plan.id, priceId });
   }
   return { ok: true, results };
 }
@@ -126,80 +285,8 @@ export async function createStripeCheckoutInternal(data: {
   const user = await authUser(data.token);
   const { stripe } = await getStripe();
 
-  const { data: prod, error } = await (supabaseAdmin as any)
-    .from("stripe_products")
-    .select("*")
-    .eq("plan", data.plan)
-    .maybeSingle();
-
-  let prodTyped = prod as { price_id: string } | null;
-  if (error || !prodTyped) {
-    console.log(`[Stripe] Plan ${data.plan} not found in database. Attempting automatic sync...`);
-    try {
-      const plan = PLANS_DEF.find((p) => p.id === data.plan);
-      if (!plan) throw new Error("Plano inválido");
-
-      const product = await stripe.products.create({
-        name: plan.label,
-        metadata: { plan: plan.id, scans: String(plan.scans) },
-      });
-      const productId = product.id;
-
-      const price = await stripe.prices.create({
-        product: productId!,
-        unit_amount: plan.amount,
-        currency: "eur",
-        recurring: { interval: plan.interval as any },
-      });
-      const priceId = price.id;
-
-      const { data: inserted } = await (supabaseAdmin as any)
-        .from("stripe_products")
-        .upsert({
-          plan: plan.id,
-          product_id: productId,
-          price_id: priceId,
-          amount: plan.amount,
-          currency: "eur",
-          interval: plan.interval,
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      prodTyped = inserted as { price_id: string } | null;
-    } catch (syncErr: any) {
-      console.error("[Stripe] Automatic plan sync failed:", syncErr);
-      throw new Error(
-        "Plano ainda não sincronizado. Vá para a página de administração para sincronizar planos ou verifique sua chave do Stripe no banco de dados.",
-      );
-    }
-  }
-
-  const { data: sub } = await (supabaseAdmin as any)
-    .from("subscriptions")
-    .select("stripe_customer_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const subTyped = sub as { stripe_customer_id: string } | null;
-  let customerId = subTyped?.stripe_customer_id;
-  if (!customerId) {
-    const cust = await stripe.customers.create({
-      email: user.email,
-      metadata: { user_id: user.id },
-    });
-    customerId = cust.id;
-    await (supabaseAdmin as any).from("subscriptions").upsert(
-      {
-        user_id: user.id,
-        stripe_customer_id: customerId,
-        status: "free",
-        scans_credits: 0,
-      },
-      { onConflict: "user_id" },
-    );
-  }
+  const priceId = await ensureValidProductAndPrice(stripe, data.plan);
+  const customerId = await ensureValidCustomer(stripe, user);
 
   const baseUrl =
     data.origin ||
@@ -211,59 +298,57 @@ export async function createStripeCheckoutInternal(data: {
     user.id,
     "Plan:",
     data.plan,
+    "Price:",
+    priceId,
     "Trial:",
     data.trial,
   );
   const planDef = PLANS_DEF.find((p) => p.id === data.plan);
 
+  const subscriptionData: any = {
+    metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
+  };
+
+  if (data.trial && (planDef?.trial_days ?? 7) > 0) {
+    subscriptionData.trial_period_days = planDef?.trial_days ?? 7;
+  }
+
+  const sessionOptions: any = {
+    mode: "subscription",
+    customer: customerId,
+    line_items: [{ price: priceId, quantity: 1 }],
+    subscription_data: subscriptionData,
+    billing_address_collection: "auto",
+    success_url: `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`,
+    cancel_url: `${baseUrl}/premium?canceled=1`,
+    metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
+  };
+
   try {
-    const subscriptionData: any = {
-      metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
-    };
-
-    if (data.trial && (planDef?.trial_days ?? 7) > 0) {
-      subscriptionData.trial_period_days = planDef?.trial_days ?? 7;
-    }
-
-    const sessionOptions: any = {
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: prodTyped.price_id, quantity: 1 }],
-      subscription_data: subscriptionData,
-      billing_address_collection: "auto",
-      success_url: `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`,
-      cancel_url: `${baseUrl}/premium?canceled=1`,
-      metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
-    };
-
-    // Nota: Métodos como MB WAY, Multibanco, PIX e BLIK não suportam 'subscription' no Stripe Checkout.
-    // Se incluirmos esses métodos, a Stripe recusa a criação da sessão.
-    // Usamos apenas os métodos que garantidamente suportam o modo assinatura em EUR.
-    const checkoutMethods = [
-      "card",
-      "paypal",
-      "klarna",
-      "sepa_debit",
-      "bancontact",
-      "ideal",
-      "revolut_pay",
-      "link",
-    ];
-
-    console.log("[Stripe] Creating checkout session with stable subscription methods...");
-    const session = await stripe.checkout.sessions.create({
-      ...sessionOptions,
-      payment_method_types: checkoutMethods as any,
-    });
-
+    console.log("[Stripe] Requesting session creation with dynamic payment methods...");
+    const session = await stripe.checkout.sessions.create(sessionOptions);
     console.log("[Stripe] Session created successfully:", session.id);
     return { url: session.url };
   } catch (stripeErr: any) {
-    console.error("[Stripe] Critical failure creating session:", stripeErr);
-    if (stripeErr.raw) {
-      console.error("[Stripe] Raw error details:", JSON.stringify(stripeErr.raw, null, 2));
+    console.warn(
+      "[Stripe] Primary session creation attempt failed:",
+      stripeErr.message,
+      "- Retrying with fallback payment methods (card)...",
+    );
+    try {
+      const fallbackSession = await stripe.checkout.sessions.create({
+        ...sessionOptions,
+        payment_method_types: ["card"],
+      });
+      console.log("[Stripe] Fallback session created successfully:", fallbackSession.id);
+      return { url: fallbackSession.url };
+    } catch (retryErr: any) {
+      console.error("[Stripe] Critical failure creating session:", retryErr);
+      if (retryErr.raw) {
+        console.error("[Stripe] Raw error details:", JSON.stringify(retryErr.raw, null, 2));
+      }
+      throw new Error(retryErr.message || "Erro na Stripe ao criar sessão");
     }
-    throw new Error(stripeErr.message || "Erro na Stripe ao criar sessão");
   }
 }
 
