@@ -265,24 +265,19 @@ export function PremiumPage() {
     }
     setLoading(planId);
     try {
-      const targetProductId = "sar_scan_assinatura";
-      const res = await requestGooglePlayPurchase(targetProductId, session.access_token);
+      const res = await createStripeCheckout({
+        token: session.access_token,
+        plan: planId,
+        trial,
+      });
 
-      if (res.success) {
-        toast.success("Plano Premium ativado com sucesso através da Google Play Store!");
-        if (refresh) await refresh();
-
-        const likelyPlan = PLANS.find((p) => p.id === planId) || PLANS[1];
-        setPurchasedPlan(likelyPlan);
-        setShowSuccessModal(true);
+      if (res && res.url) {
+        window.location.href = res.url;
       } else {
-        toast.error(
-          res.error || "Ocorreu um erro no processamento do ecrã de pagamento Google Play.",
-        );
+        throw new Error("URL de checkout inválida");
       }
     } catch (e: any) {
-      toast.error(e.message || "Erro ao iniciar compra Google Play.");
-    } finally {
+      toast.error(e.message || "Erro ao iniciar o checkout do Stripe.");
       setLoading(null);
     }
   };
@@ -443,16 +438,28 @@ export function PremiumPage() {
                   ))}
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-border flex items-center justify-end">
+                <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-medium">
+                    {p.trialDays} dias grátis · Cancele quando quiser
+                  </span>
                   <Button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (loading) return;
+                      setConfirmingPlan(p);
+                    }}
+                    disabled={loading === p.id}
                     className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-sm ${
                       active
                         ? "bg-primary text-primary-foreground hover:bg-primary/95"
                         : "bg-secondary text-foreground hover:bg-muted"
                     }`}
-                    disabled={true}
                   >
-                    Em breve
+                    {loading === p.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      "Assinar Agora"
+                    )}
                   </Button>
                 </div>
               </div>

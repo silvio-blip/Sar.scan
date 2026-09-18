@@ -23,7 +23,16 @@ import {
   Copy,
   Check,
   Bell,
+  AlertTriangle,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { isInstalledApp } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
@@ -42,6 +51,7 @@ export function PerfilPage() {
   const [copied, setCopied] = useState(false);
   const [cameraGranted, setCameraGranted] = useState<boolean | null>(null);
   const [micGranted, setMicGranted] = useState<boolean | null>(null);
+  const [showSignOutDialog, setShowSignOutDialog] = useState(false);
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.permissions) {
@@ -320,10 +330,45 @@ export function PerfilPage() {
       <Button
         variant="outline"
         className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
-        onClick={signOut}
+        onClick={() => setShowSignOutDialog(true)}
       >
         <LogOut className="size-4 mr-2" /> Sair da Conta
       </Button>
+
+      <Dialog open={showSignOutDialog} onOpenChange={setShowSignOutDialog}>
+        <DialogContent className="bg-card border border-border rounded-[32px] p-6 max-w-sm">
+          <DialogHeader className="space-y-3">
+            <div className="size-12 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-500 mx-auto">
+              <LogOut className="size-6" />
+            </div>
+            <DialogTitle className="text-center text-xl font-bold text-foreground">
+              Sair da Conta
+            </DialogTitle>
+            <DialogDescription className="text-center text-xs text-muted-foreground">
+              Tem certeza de que deseja sair? Você precisará entrar novamente na próxima vez.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-3 pt-4 sm:justify-center">
+            <Button
+              variant="outline"
+              className="flex-1 h-12 rounded-2xl border-border font-bold text-xs"
+              onClick={() => setShowSignOutDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              className="flex-1 h-12 rounded-2xl font-bold text-xs"
+              onClick={() => {
+                setShowSignOutDialog(false);
+                signOut();
+              }}
+            >
+              Sim, Sair
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import React, { useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Trash2, Camera, Image as ImageIcon, Loader2 } from "lucide-react";
+import { Trash2, Camera, Image as ImageIcon, Loader2, ArrowLeft } from "lucide-react";
 import { FoodImage } from "@/components/food-image";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
@@ -319,11 +319,22 @@ export function DiarioPage() {
 
   return (
     <div className="space-y-8 select-none pb-8 transform-gpu">
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-4xl font-display font-black tracking-tight text-foreground">Diário</h1>
-        <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
-          {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
-        </p>
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-4xl font-display font-black tracking-tight text-foreground">
+            Diário
+          </h1>
+          <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
+            {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
+          </p>
+        </div>
+        <Link
+          to="/perfil"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-secondary/80 hover:bg-secondary text-foreground font-bold text-xs transition border border-border shadow-sm"
+        >
+          <ArrowLeft className="size-4" />
+          <span>Perfil</span>
+        </Link>
       </div>
 
       {/* Main Focus: Daily Total (Warm-Beige Glass Card) */}

@@ -112,8 +112,9 @@ function AppLayout() {
     const elapsed = Date.now() - touchStartRef.current.time;
     touchStartRef.current = null;
 
-    // Top-level horizontal swipe between tabs
-    if (isTopLevel) {
+    // Top-level horizontal swipe between tabs (only when on exact root tabs)
+    const isExactRoot = tabs.some((t) => t.to === loc.pathname || t.to + "/" === loc.pathname);
+    if (isTopLevel && isExactRoot) {
       if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.6 && elapsed < 450) {
         if (currentTabIdx !== -1) {
           if (deltaX < 0) {

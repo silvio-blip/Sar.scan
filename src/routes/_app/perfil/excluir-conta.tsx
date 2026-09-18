@@ -4,8 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertCircle, Trash2, X, Eye, EyeOff } from "lucide-react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { AlertCircle, Trash2, X, Eye, EyeOff, ArrowLeft } from "lucide-react";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/perfil/excluir-conta")({
@@ -78,8 +78,18 @@ export default function ExcluirContaPage() {
   };
 
   return (
-    <div className="max-w-md mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Excluir Conta</h1>
+    <div className="space-y-6 animate-in fade-in duration-700 p-6 max-w-md mx-auto">
+      <div className="flex items-center gap-4">
+        <Link
+          to="/perfil"
+          className="size-12 rounded-[18px] border border-border bg-card flex items-center justify-center hover:bg-secondary transition-all shadow-sm text-foreground"
+        >
+          <ArrowLeft className="size-5" />
+        </Link>
+        <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
+          Excluir Conta
+        </h1>
+      </div>
 
       {isPendingDeletion ? (
         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-4">
