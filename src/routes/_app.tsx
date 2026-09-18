@@ -71,7 +71,12 @@ function AppLayout() {
   const navigate = useNavigate();
 
   const mainRef = useRef<HTMLElement>(null);
-  const currentTabIdx = tabs.findIndex((t) => loc.pathname.startsWith(t.to));
+  const currentTabIdx = tabs.findIndex((t) => {
+    if (t.to === "/perfil") {
+      return loc.pathname.startsWith("/perfil") || loc.pathname.startsWith("/diario");
+    }
+    return loc.pathname.startsWith(t.to);
+  });
   const isTopLevel = ROOT_ALLOWED_PATHS.has(loc.pathname);
   const isChatRoute = loc.pathname.startsWith("/chat");
 
@@ -282,9 +287,11 @@ function AppLayout() {
           distortionScale={-80}
           className="w-full shadow-[0_16px_36px_-6px_rgba(0,0,0,0.18)] overflow-hidden"
         >
-          <div className="w-full grid grid-cols-6 items-center p-1 relative z-10">
+          <div className="w-full grid grid-cols-5 items-center p-1 relative z-10">
             {tabs.map(({ to, Icon, label }) => {
-              const active = loc.pathname.startsWith(to);
+              const active =
+                loc.pathname.startsWith(to) ||
+                (to === "/perfil" && loc.pathname.startsWith("/diario"));
               return (
                 <Link
                   key={to}
