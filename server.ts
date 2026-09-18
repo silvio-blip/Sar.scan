@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 
@@ -18,9 +17,6 @@ import { getAppSettings } from "./src/lib/settings.server";
 // Logic from edge-proxy and stripe functions
 // Since we want to keep it simple, we'll import the logic directly if possible or copy it.
 // To avoid complex restructuring, I'll define the API routes here and use the logic from the existing files.
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();

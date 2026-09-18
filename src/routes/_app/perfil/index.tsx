@@ -183,6 +183,21 @@ export function PerfilPage() {
         </Card>
       </Link>
 
+      <Link to="/diario" className="block transform transition hover:scale-[1.02] active:scale-95">
+        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
+          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
+            <History className="size-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-foreground">Histórico de Leitura</div>
+            <div className="text-[11px] text-muted-foreground font-semibold">
+              Veja seu histórico de leituras e registros salvos
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </Card>
+      </Link>
+
       <div className="border-t border-border" />
 
       <div className="space-y-3">

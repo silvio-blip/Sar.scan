@@ -7,8 +7,9 @@ export function useRewardsRealtime(userId?: string) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!userId) return;
+    const channelName = `rewards-${userId}-${Math.random().toString(36).slice(2, 9)}`;
     const ch = supabase
-      .channel(`rewards-${userId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "rewards", filter: `user_id=eq.${userId}` },
@@ -34,8 +35,9 @@ export function useSubscriptionRealtime(userId?: string) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!userId) return;
+    const channelName = `subs-${userId}-${Math.random().toString(36).slice(2, 9)}`;
     const ch = supabase
-      .channel(`subs-${userId}`)
+      .channel(channelName)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "subscriptions", filter: `user_id=eq.${userId}` },

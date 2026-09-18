@@ -12,6 +12,8 @@ import { getFoodEmoji, getApiUrl } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 
+const today = () => new Date().toISOString().slice(0, 10);
+
 type Food = NutritionFood & { porcao?: string };
 
 export function BuscarPage() {
@@ -47,11 +49,11 @@ export function BuscarPage() {
   const filtered = (popular ?? []).filter((f) => f.nome.toLowerCase().includes(q.toLowerCase()));
   const showList = useMemo(() => variants ?? filtered, [variants, filtered]);
 
-  // Geração de imagens automáticas desativada nesta configuração.
-
   const adicionar = async (food: NutritionFood, p: number, fotoUrl?: string | null) => {
     if (!user) return;
     const finalPhoto = fotoUrl !== undefined ? fotoUrl : (food.foto_url ?? null);
+    const todayStr = today();
+    const nowIso = new Date().toISOString();
     const { error } = await supabase.from("food_entries").insert({
       user_id: user.id,
       nome: food.nome,
@@ -61,14 +63,19 @@ export function BuscarPage() {
       prot: Number(food.prot) * p,
       gord: Number(food.gord) * p,
       foto_url: finalPhoto,
+      data: todayStr,
+      created_at: nowIso,
     });
     if (error) {
       console.error("Erro ao salvar alimento no diário:", error);
       toast.error("Erro ao salvar alimento no diário");
       return;
     }
-    qc.invalidateQueries({ queryKey: ["entries"] });
-    qc.invalidateQueries();
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["entries"] }),
+      qc.invalidateQueries({ queryKey: ["consumption"] }),
+      qc.invalidateQueries({ queryKey: ["weekly"] }),
+    ]);
     toast.success("Adicionado ao diário!");
     setSelected(null);
   };
@@ -111,68 +118,70 @@ export function BuscarPage() {
 
   return (
     <div className="space-y-6 pb-20 select-none transform-gpu">
-      {/* Top Header */}
-      <div className="flex flex-col gap-1.5">
-        <h1 className="text-3xl font-display font-black tracking-tight text-foreground">
-          Buscar Alimento
-        </h1>
-        <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
-          {popular?.length ?? 0} alimentos na base local
-        </p>
-      </div>
+      {/* Sticky Top Header & Search Bar */}
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md pt-2 pb-4 space-y-4 border-b border-border/40">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-3xl font-display font-black tracking-tight text-foreground">
+            Buscar Alimento
+          </h1>
+          <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
+            {popular?.length ?? 0} alimentos na base local
+          </p>
+        </div>
 
-      {/* Search Input Box */}
-      <div className="bg-secondary/60 rounded-[24px] flex items-center gap-3.5 px-4 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
-        <Search
-          className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors shrink-0"
-          strokeWidth={2.5}
-        />
-        <input
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setVariants(null);
-          }}
-          placeholder="O que você comeu?"
-          className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground/60"
-        />
-        {q.trim() && (
-          <button
-            type="button"
-            onClick={() => {
-              setQ("");
+        {/* Search Input Box */}
+        <div className="bg-secondary/60 rounded-[24px] flex items-center gap-3.5 px-4 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
+          <Search
+            className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors shrink-0"
+            strokeWidth={2.5}
+          />
+          <input
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
               setVariants(null);
             }}
-            className="text-xs font-bold text-muted-foreground hover:text-foreground px-1"
+            placeholder="O que você comeu?"
+            className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground/60"
+          />
+          {q.trim() && (
+            <button
+              type="button"
+              onClick={() => {
+                setQ("");
+                setVariants(null);
+              }}
+              className="text-xs font-bold text-muted-foreground hover:text-foreground px-1"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {q.trim() && (
+          <Button
+            onClick={buscarIA}
+            disabled={aiBusy}
+            className="w-full h-12 rounded-[20px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold shadow-sm transition-all"
           >
-            ✕
+            {aiBusy ? (
+              <Loader2 className="size-5 animate-spin mr-2" />
+            ) : (
+              <Sparkles className="size-5 mr-2" />
+            )}
+            Analisar com IA: "{q}"
+          </Button>
+        )}
+
+        {variants && (
+          <button
+            onClick={() => setVariants(null)}
+            className="text-[10px] text-primary font-black uppercase tracking-widest hover:opacity-85 transition-opacity block"
+          >
+            ← Voltar à lista popular
           </button>
         )}
       </div>
-
-      {q.trim() && (
-        <Button
-          onClick={buscarIA}
-          disabled={aiBusy}
-          className="w-full h-12 rounded-[20px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold shadow-sm transition-all"
-        >
-          {aiBusy ? (
-            <Loader2 className="size-5 animate-spin mr-2" />
-          ) : (
-            <Sparkles className="size-5 mr-2" />
-          )}
-          Analisar com IA: "{q}"
-        </Button>
-      )}
-
-      {variants && (
-        <button
-          onClick={() => setVariants(null)}
-          className="text-[10px] text-primary font-black uppercase tracking-widest hover:opacity-85 transition-opacity"
-        >
-          ← Voltar à lista popular
-        </button>
-      )}
 
       {isLoading && (
         <div className="grid grid-cols-2 gap-4">

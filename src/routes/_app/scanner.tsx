@@ -206,6 +206,57 @@ export function ScannerPage() {
     }
   }, [profile?.meta_prazo]);
 
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime-scanner-sync-${user.id}-${Math.random().toString(36).slice(2, 7)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "food_entries",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["consumption"] });
+          qc.invalidateQueries({ queryKey: ["entries"] });
+          qc.invalidateQueries({ queryKey: ["weekly"] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "water_intake",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["water"] });
+          qc.invalidateQueries({ queryKey: ["water_history"] });
+          qc.invalidateQueries({ queryKey: ["weekly_water"] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "scan_usage",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["scan_usage"] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, qc]);
+
   const addWater = async (ml: number) => {
     if (!user) return;
     if (ml < 0) {
@@ -494,6 +545,8 @@ export function ScannerPage() {
         /* ignore */
       }
     }
+    const todayStr = today();
+    const nowIso = new Date().toISOString();
     const rows = items.map((it) => ({
       user_id: user.id,
       nome: it.nome,
@@ -503,9 +556,21 @@ export function ScannerPage() {
       prot: it.prot * it.porcoes,
       gord: it.gord * it.porcoes,
       foto_url: uploadedPhotoUrl,
+      data: todayStr,
+      created_at: nowIso,
     }));
-    await supabase.from("food_entries").insert(rows);
-    qc.invalidateQueries();
+    const { error: insertErr } = await supabase.from("food_entries").insert(rows);
+    if (insertErr) {
+      console.error("Erro ao salvar alimento no diário:", insertErr);
+      toast.error("Erro ao adicionar alimentos ao histórico");
+      return;
+    }
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["entries"] }),
+      qc.invalidateQueries({ queryKey: ["consumption"] }),
+      qc.invalidateQueries({ queryKey: ["weekly"] }),
+      qc.invalidateQueries({ queryKey: ["scan_usage"] }),
+    ]);
     toast.success(`${items.length} alimento(s) adicionado(s)`);
     setDetected(null);
     setScanPhoto(null);
@@ -513,7 +578,9 @@ export function ScannerPage() {
 
   const adicionarSugestao = async (food: NutritionFood, p: number, fotoUrl: string | null) => {
     if (!user) return;
-    await supabase.from("food_entries").insert({
+    const todayStr = today();
+    const nowIso = new Date().toISOString();
+    const { error: insertErr } = await supabase.from("food_entries").insert({
       user_id: user.id,
       nome: food.nome,
       porcoes: p,
@@ -522,8 +589,19 @@ export function ScannerPage() {
       prot: Number(food.prot) * p,
       gord: Number(food.gord) * p,
       foto_url: fotoUrl,
+      data: todayStr,
+      created_at: nowIso,
     });
-    qc.invalidateQueries();
+    if (insertErr) {
+      console.error("Erro ao salvar sugestão:", insertErr);
+      toast.error("Erro ao adicionar sugestão");
+      return;
+    }
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["entries"] }),
+      qc.invalidateQueries({ queryKey: ["consumption"] }),
+      qc.invalidateQueries({ queryKey: ["weekly"] }),
+    ]);
     toast.success("Adicionado ao diário");
     setPicked(null);
   };

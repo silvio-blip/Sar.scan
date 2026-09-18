@@ -43,15 +43,55 @@ export function DiarioPage() {
     queryKey: ["entries", user?.id, today()],
     enabled: !!user,
     queryFn: async () => {
+      const todayStr = today();
       const { data } = await supabase
         .from("food_entries")
         .select("*")
         .eq("user_id", user!.id)
-        .eq("data", today())
+        .or(`data.eq.${todayStr},created_at.gte.${todayStr}T00:00:00.000Z`)
         .order("created_at", { ascending: false });
       return (data ?? []) as Entry[];
     },
   });
+
+  React.useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`realtime-diario-sync-${user.id}-${Math.random().toString(36).slice(2, 7)}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "food_entries",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["entries"] });
+          qc.invalidateQueries({ queryKey: ["weekly"] });
+          qc.invalidateQueries({ queryKey: ["consumption"] });
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "water_intake",
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["water_history"] });
+          qc.invalidateQueries({ queryKey: ["weekly_water"] });
+          qc.invalidateQueries({ queryKey: ["water"] });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, qc]);
 
   const { data: weekly } = useQuery({
     queryKey: ["weekly", user?.id],
