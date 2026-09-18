@@ -38,7 +38,9 @@ export async function verifyGooglePlayPurchaseInternal(data: {
   const rawKey = settings.google_play_private_key || process.env.GOOGLE_PLAY_PRIVATE_KEY || "";
   const privateKey = rawKey.replace(/\\n/g, "\n");
   const packageName =
-    settings.google_play_package_name || process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.sar.scan";
+    settings.google_play_package_name ||
+    process.env.GOOGLE_PLAY_PACKAGE_NAME ||
+    "com.sarscacan.new";
 
   let purchaseIsValid = false;
   let googleApiResponseData: any = null;

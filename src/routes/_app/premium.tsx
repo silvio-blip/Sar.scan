@@ -184,11 +184,11 @@ export function PremiumPage() {
       `sarscan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
       `sar-scan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
       `foodscanner://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
-      `com.sar.scan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
+      `com.sarscacan.new://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
     ];
 
-    // Android Intent seguro que força abertura direta da aplicação com Package com.sar.scan
-    const androidIntent = `intent://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}#Intent;scheme=sarscan;package=com.sar.scan;S.browser_fallback_url=${encodeURIComponent(window.location.origin + "/premium?success=1")};end`;
+    // Android Intent seguro que força abertura direta da aplicação com Package com.sarscacan.new
+    const androidIntent = `intent://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}#Intent;scheme=sarscan;package=com.sarscacan.new;S.browser_fallback_url=${encodeURIComponent(window.location.origin + "/premium?success=1")};end`;
 
     // Navegar de forma não obstrutiva através de frames ocultos nos esquemas customizados
     let idx = 0;
@@ -798,7 +798,7 @@ export function PremiumPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Overlay de Redirecionamento Automático para o App com.sar.scan */}
+      {/* Overlay de Redirecionamento Automático para o App com.sarscacan.new */}
       <AnimatePresence>
         {showExternalRedirectOverlay && (
           <motion.div
