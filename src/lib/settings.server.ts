@@ -22,12 +22,21 @@ export async function getAppSettings(): Promise<AppSettings> {
     const admin = supabaseAdmin;
     console.log("[Settings] Iniciando busca na tabela app_settings...");
 
-    // Explicitly use the admin client to select from app_settings
-    const { data, error } = await (admin as any).from("app_settings").select("key, value");
+    // Explicitly use the admin client to select from app_settings (or fallback to app_stream_coxa)
+    let { data, error } = await (admin as any).from("app_settings").select("*");
+
+    if (error) {
+      console.warn("[Settings] Tabela app_settings não encontrada, tentando app_stream_coxa...");
+      const alt = await (admin as any).from("app_stream_coxa").select("*");
+      if (!alt.error && alt.data) {
+        data = alt.data;
+        error = null;
+      }
+    }
 
     if (error) {
       console.error(
-        "[Settings] ERRO AO BUSCAR NO BANCO (from app_settings):",
+        "[Settings] ERRO AO BUSCAR NO BANCO (from app_settings / app_stream_coxa):",
         JSON.stringify(error, null, 2),
       );
       return (_settingsCache || {}) as AppSettings;
@@ -37,9 +46,29 @@ export async function getAppSettings(): Promise<AppSettings> {
     if (data && Array.isArray(data)) {
       console.log(`[Settings] Sucesso na query, retornou ${data.length} linhas.`);
       for (const row of data) {
-        if (row.key && row.value) {
-          settings[row.key] = row.value;
-          console.log(`[Settings] Carregado: ${row.key}`);
+        // Formato 1: Tabela Chave-Valor (key, value)
+        if (row.key !== undefined && row.value !== undefined && row.key !== null) {
+          const valStr = typeof row.value === "string" ? row.value.trim() : String(row.value);
+          const keyStr = String(row.key).trim();
+          settings[keyStr] = valStr;
+          settings[keyStr.toLowerCase()] = valStr;
+          settings[keyStr.toUpperCase()] = valStr;
+          console.log(`[Settings] Carregado (chave/valor): ${keyStr}`);
+        }
+
+        // Formato 2: Tabela com colunas diretas (ex: stripe_secret_key, stripe_webhook_secret)
+        for (const [colKey, colVal] of Object.entries(row)) {
+          if (
+            colVal !== null &&
+            colVal !== undefined &&
+            !["id", "created_at", "updated_at", "key", "value"].includes(colKey)
+          ) {
+            const valStr = typeof colVal === "string" ? colVal.trim() : String(colVal);
+            settings[colKey] = valStr;
+            settings[colKey.toLowerCase()] = valStr;
+            settings[colKey.toUpperCase()] = valStr;
+            console.log(`[Settings] Carregado (coluna): ${colKey}`);
+          }
         }
       }
     } else {

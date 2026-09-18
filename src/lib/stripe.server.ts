@@ -7,11 +7,21 @@ let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = 
 
 async function loadKeys() {
   const settings = await getAppSettings();
-  const secret = settings.stripe_secret_key || process.env.STRIPE_SECRET_KEY || "";
+  const secret =
+    settings.stripe_secret_key ||
+    settings.STRIPE_SECRET_KEY ||
+    settings.stripeSecretKey ||
+    process.env.STRIPE_SECRET_KEY ||
+    "";
   if (!secret) throw new Error("stripe_secret_key not set in app_settings or environment");
   return {
     secret,
-    webhookSecret: settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET || "",
+    webhookSecret:
+      settings.stripe_webhook_secret ||
+      settings.STRIPE_WEBHOOK_SECRET ||
+      settings.stripeWebhookSecret ||
+      process.env.STRIPE_WEBHOOK_SECRET ||
+      "",
   };
 }
 
