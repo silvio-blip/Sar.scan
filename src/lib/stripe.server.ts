@@ -269,16 +269,29 @@ async function ensureValidCustomer(
   customerId = newCust.id;
 
   try {
-    await (supabaseAdmin as any).from("subscriptions").upsert(
-      {
+    const { data: existingSub } = await (supabaseAdmin as any)
+      .from("subscriptions")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existingSub) {
+      await (supabaseAdmin as any)
+        .from("subscriptions")
+        .update({
+          stripe_customer_id: customerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+    } else {
+      await (supabaseAdmin as any).from("subscriptions").insert({
         user_id: user.id,
         stripe_customer_id: customerId,
         status: "free",
-        scans_credits: 0,
+        scans_credits: 3,
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
-    );
+      });
+    }
   } catch (upsertErr) {
     console.warn(
       "[Stripe] Non-blocking warning: failed to upsert customer into subscriptions:",

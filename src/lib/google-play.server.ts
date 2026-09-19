@@ -412,23 +412,68 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     };
   }
 
-  // 1. Se for assinatura Stripe, aciona o cancelamento na API do Stripe
-  if (currentSub.stripe_subscription_id) {
-    try {
-      const { stripe } = await getStripe();
+  // 1. Se for assinatura Stripe, aciona o cancelamento na API do Stripe usando a chave do banco (app_settings)
+  try {
+    const { stripe } = await getStripe(true);
+    let stripeSubId = currentSub.stripe_subscription_id;
+
+    // Se não tiver o ID da assinatura salvo direto, procura pelas assinaturas ativas do cliente na Stripe
+    if (!stripeSubId && currentSub.stripe_customer_id) {
+      try {
+        const subs = await stripe.subscriptions.list({
+          customer: currentSub.stripe_customer_id,
+          status: "all",
+          limit: 5,
+        });
+        const activeSub = subs.data.find((s) => s.status === "active" || s.status === "trialing");
+        if (activeSub) {
+          stripeSubId = activeSub.id;
+        }
+      } catch (listErr: any) {
+        console.warn(
+          "[Subscription Server] Erro ao listar assinaturas do cliente Stripe:",
+          listErr?.message,
+        );
+      }
+    }
+
+    if (!stripeSubId && user.email) {
+      try {
+        const customers = await stripe.customers.list({ email: user.email, limit: 5 });
+        for (const cust of customers.data) {
+          const subs = await stripe.subscriptions.list({
+            customer: cust.id,
+            status: "all",
+            limit: 5,
+          });
+          const activeSub = subs.data.find((s) => s.status === "active" || s.status === "trialing");
+          if (activeSub) {
+            stripeSubId = activeSub.id;
+            break;
+          }
+        }
+      } catch (custErr: any) {
+        console.warn(
+          "[Subscription Server] Erro ao buscar cliente Stripe por email:",
+          custErr?.message,
+        );
+      }
+    }
+
+    if (stripeSubId) {
       if (data.immediate) {
-        await stripe.subscriptions.cancel(currentSub.stripe_subscription_id);
+        await stripe.subscriptions.cancel(stripeSubId);
       } else {
-        await stripe.subscriptions.update(currentSub.stripe_subscription_id, {
+        await stripe.subscriptions.update(stripeSubId, {
           cancel_at_period_end: true,
         });
       }
       console.log(
-        `[Subscription Server] Stripe subscription ${currentSub.stripe_subscription_id} cancelada com sucesso.`,
+        `[Subscription Server] Stripe subscription ${stripeSubId} cancelada com sucesso via API Stripe do banco.`,
       );
-    } catch (stripeErr: any) {
-      console.warn("[Subscription Server] Aviso ao cancelar no Stripe:", stripeErr?.message);
     }
+  } catch (stripeErr: any) {
+    console.warn("[Subscription Server] Aviso ao cancelar no Stripe:", stripeErr?.message);
   }
 
   // 2. Se for assinatura Google Play e credenciais estiverem configuradas
@@ -685,11 +730,31 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
     }
   }
 
-  // 4. Se for Stripe, verifica status no Stripe
-  if (currentSub.stripe_subscription_id) {
-    try {
-      const { stripe } = await getStripe();
-      const stripeSub = await stripe.subscriptions.retrieve(currentSub.stripe_subscription_id);
+  // 4. Se for Stripe, verifica status no Stripe com a chave do banco (app_settings)
+  try {
+    const { stripe } = await getStripe(true);
+    let stripeSubId = currentSub.stripe_subscription_id;
+
+    if (!stripeSubId && currentSub.stripe_customer_id) {
+      try {
+        const subs = await stripe.subscriptions.list({
+          customer: currentSub.stripe_customer_id,
+          limit: 5,
+        });
+        const activeSub = subs.data.find((s) => s.status === "active" || s.status === "trialing");
+        if (activeSub) {
+          stripeSubId = activeSub.id;
+        }
+      } catch (listErr: any) {
+        console.warn(
+          "[Subscription Sync] Erro ao listar assinaturas do cliente:",
+          listErr?.message,
+        );
+      }
+    }
+
+    if (stripeSubId) {
+      const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
       if (stripeSub.cancel_at_period_end || stripeSub.status === "canceled") {
         isCancelled = true;
       }
@@ -699,9 +764,9 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
         newAi = false;
         needsUpdate = true;
       }
-    } catch (stripeErr: any) {
-      console.warn("[Subscription Sync] Não foi possível consultar Stripe:", stripeErr?.message);
     }
+  } catch (stripeErr: any) {
+    console.warn("[Subscription Sync] Não foi possível consultar Stripe:", stripeErr?.message);
   }
 
   let finalSub = currentSub;
