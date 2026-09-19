@@ -1,5 +1,6 @@
 import { getApiUrl } from "./utils";
 import { toast } from "sonner";
+import { Capacitor } from "@capacitor/core";
 import { NativePurchases, PURCHASE_TYPE } from "@capgo/native-purchases";
 
 /**
@@ -13,10 +14,23 @@ export interface PlayPurchaseResult {
 }
 
 /**
- * Safety check to detect if running inside Capacitor native context.
+ * Safety check to detect if running inside real native Android/iOS Capacitor context.
+ * In a web browser / desktop preview, this returns false so web uses Stripe Checkout.
  */
 export const isCapacitor = (): boolean => {
-  return typeof window !== "undefined" && (window as any).Capacitor !== undefined;
+  if (typeof window === "undefined") return false;
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    const cap = (window as any).Capacitor;
+    return !!(
+      cap &&
+      (cap.isNative === true ||
+        cap.platform === "android" ||
+        cap.platform === "ios" ||
+        (typeof cap.isNativePlatform === "function" && cap.isNativePlatform()))
+    );
+  }
 };
 
 /**
@@ -44,6 +58,7 @@ export async function initializeGooglePlayIAP(): Promise<void> {
 export async function requestGooglePlayPurchase(
   productId: string,
   token: string,
+  customPlanId?: string,
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   console.log(`[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}`);
 
@@ -57,13 +72,31 @@ export async function requestGooglePlayPurchase(
   try {
     const isSub = productId !== "sar_scan_creditos";
 
+    // Determina o ID do Plano Base configurado no Google Play Console
+    let planIdentifier: string | undefined = customPlanId;
+    if (isSub && !planIdentifier) {
+      if (productId.includes("semanal")) {
+        planIdentifier = "semanal";
+      } else if (productId.includes("anual")) {
+        planIdentifier = "anual";
+      } else {
+        planIdentifier = "mensal";
+      }
+    }
+
     // 1. Invoca a Bottom Sheet oficial da Google Play Store no celular
-    const transaction = await NativePurchases.purchaseProduct({
+    const purchaseOptions: any = {
       productIdentifier: productId,
       productType: isSub ? PURCHASE_TYPE.SUBS : PURCHASE_TYPE.INAPP,
       isConsumable: !isSub,
       autoAcknowledgePurchases: true,
-    });
+    };
+
+    if (isSub && planIdentifier) {
+      purchaseOptions.planIdentifier = planIdentifier;
+    }
+
+    const transaction = await NativePurchases.purchaseProduct(purchaseOptions);
 
     console.log("[Play IAP] Transação oficial retornada pela Google Play:", transaction);
 
