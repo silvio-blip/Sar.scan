@@ -327,15 +327,12 @@ export async function createStripeCheckoutInternal(data: {
   origin?: string;
 }) {
   const user = await authUser(data.token);
-  const { stripe } = await getStripe();
+  const { stripe } = await getStripe(true);
 
   const priceId = await ensureValidProductAndPrice(stripe, data.plan);
   const customerId = await ensureValidCustomer(stripe, user);
 
-  const baseUrl =
-    data.origin ||
-    process.env.PUBLIC_APP_URL ||
-    "https://ais-dev-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
+  const baseUrl = data.origin || process.env.PUBLIC_APP_URL || "";
 
   console.log(
     "[Stripe] Creating checkout session. User:",
@@ -346,6 +343,8 @@ export async function createStripeCheckoutInternal(data: {
     priceId,
     "Trial:",
     data.trial,
+    "BaseUrl:",
+    baseUrl,
   );
   const planDef = PLANS_DEF.find((p) => p.id === data.plan);
 
@@ -357,14 +356,21 @@ export async function createStripeCheckoutInternal(data: {
     subscriptionData.trial_period_days = planDef?.trial_days ?? 7;
   }
 
+  const successUrl = baseUrl
+    ? `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`
+    : `https://sarscan.app/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`;
+  const cancelUrl = baseUrl
+    ? `${baseUrl}/premium?canceled=1`
+    : `https://sarscan.app/premium?canceled=1`;
+
   const sessionOptions: any = {
     mode: "subscription",
     customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: subscriptionData,
     billing_address_collection: "auto",
-    success_url: `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`,
-    cancel_url: `${baseUrl}/premium?canceled=1`,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
     metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
   };
 

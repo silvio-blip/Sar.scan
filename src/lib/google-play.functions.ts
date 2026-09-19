@@ -171,15 +171,7 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
       console.warn("[Play IAP] Erro ao consultar preços de consumíveis na Google Play:", inAppErr);
     }
 
-    console.log("[Play IAP] Preços e moedas localizadas recebidas da Google Play:", results);
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("sar_play_prices_cache", JSON.stringify(results));
-        window.dispatchEvent(new CustomEvent("sar_play_prices_updated", { detail: results }));
-      } catch (cacheErr) {
-        console.debug("[Play IAP] Falha ao salvar cache de preços:", cacheErr);
-      }
-    }
+    console.log("[Play IAP] Preços recebidos:", results);
     return results;
   } catch (err) {
     console.error("[Play IAP] Erro geral ao obter preços da Google Play:", err);
@@ -188,32 +180,17 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
 }
 
 /**
- * Retorna os preços em cache salvos localmente da Google Play Store (para exibição instantânea sem delay).
+ * Retorna os preços fixos oficiais da aplicação.
  */
 export function getStoredPlayPrices(): Record<string, PlayProductDetails> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem("sar_play_prices_cache");
-    if (raw) return JSON.parse(raw);
-  } catch (parseErr) {
-    console.debug("[Play IAP] Falha ao ler cache de preços:", parseErr);
-  }
   return {};
 }
 
 /**
- * Faz a revarredura automática em segundo plano dos preços reais dos pacotes da Google Play.
+ * Faz a consulta dos preços se necessário.
  */
 export async function syncGooglePlayPrices(): Promise<Record<string, PlayProductDetails>> {
-  if (!isCapacitor()) return {};
-  try {
-    await initializeGooglePlayIAP();
-    const prices = await fetchGooglePlayPrices();
-    return prices;
-  } catch (err) {
-    console.warn("[Play IAP] Falha na sincronização periódica de preços:", err);
-    return getStoredPlayPrices();
-  }
+  return {};
 }
 
 /**

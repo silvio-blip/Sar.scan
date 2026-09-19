@@ -138,56 +138,17 @@ export function PremiumPage() {
   const [purchasedPlan, setPurchasedPlan] = useState<PlanDef | null>(null);
   const [confirmingPlan, setConfirmingPlan] = useState<PlanDef | null>(null);
   const [showExternalRedirectOverlay, setShowExternalRedirectOverlay] = useState(false);
-  const [playPrices, setPlayPrices] = useState<Record<string, PlayProductDetails>>({});
-  const [loadingPlayPrices, setLoadingPlayPrices] = useState(false);
   const [restoringPurchases, setRestoringPurchases] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Consulta preços em tempo real da Google Play Store quando dentro do aplicativo instalado
-
-  useEffect(() => {
-    if (isCapacitor()) {
-      setLoadingPlayPrices(true);
-      initializeGooglePlayIAP()
-        .then(() => fetchGooglePlayPrices())
-        .then((prices) => {
-          if (prices && Object.keys(prices).length > 0) {
-            setPlayPrices(prices);
-          }
-        })
-        .catch((err) => {
-          console.warn("[PremiumPage] Não foi possível obter preços da Play Store:", err);
-        })
-        .finally(() => {
-          setLoadingPlayPrices(false);
-        });
-    }
+  // Planos em Euro fixo oficial do catálogo e banco de dados
+  const displayPlans = useMemo(() => {
+    return PLANS;
   }, []);
 
-  // Adapta os planos com os preços da Google Play Store ou mantém o padrão Web / Stripe
-  const displayPlans = useMemo(() => {
-    return PLANS.map((p) => {
-      const playInfo = playPrices[p.id] || playPrices[PLAY_PRODUCT_IDS[p.id]];
-      if (isCapacitor() && playInfo && playInfo.formattedPrice) {
-        return {
-          ...p,
-          price: playInfo.formattedPrice,
-          priceNum: playInfo.price,
-        };
-      }
-      return p;
-    });
-  }, [playPrices]);
-
-  // Preço localizado do pacote de 50 scans (consumível)
-  const displayCreditsPrice = useMemo(() => {
-    const playInfo = playPrices["credits"] || playPrices[PLAY_PRODUCT_IDS.credits];
-    if (isCapacitor() && playInfo && playInfo.formattedPrice) {
-      return playInfo.formattedPrice;
-    }
-    return "€9,99";
-  }, [playPrices]);
+  // Preço do pacote de 50 scans (consumível)
+  const displayCreditsPrice = "€9,99";
 
   // Verifica se o usuário possui alguma assinatura ativa no momento
   const hasActiveSubscription = useMemo(() => {
@@ -209,7 +170,7 @@ export function PremiumPage() {
   // Verifica se o usuário já utilizou o teste grátis ou já fez alguma compra
   const hasUsedTrial = useMemo(() => {
     if (!user) return false;
-    const hasDbTrial = Boolean(
+    return Boolean(
       subscription &&
       (subscription.status === "active" ||
         subscription.status === "expired" ||
@@ -218,8 +179,6 @@ export function PremiumPage() {
           subscription.plan !== undefined &&
           subscription.plan !== "free")),
     );
-    const hasLocalTrial = localStorage.getItem(`sar_trial_used_${user.id}`) === "true";
-    return hasDbTrial || hasLocalTrial;
   }, [user, subscription]);
 
   // Elegível para teste grátis apenas se nunca usou teste, não tem assinatura ativa e não é premium
@@ -253,21 +212,11 @@ export function PremiumPage() {
 
       if (error) throw error;
 
-      // Grava no armazenamento local que o trial já foi utilizado por este utilizador
-      localStorage.setItem(`sar_trial_used_${user.id}`, "true");
-
       toast.success("Teste grátis de 7 dias ativado! Você recebeu 30 scans gratuitos.");
       if (refresh) await refresh();
-
-      const likelyPlan = {
-        ...(displayPlans.find((p) => p.id === chosenPlan)! || displayPlans[1]),
-        scans: 30,
-      };
-      setPurchasedPlan(likelyPlan);
-      setShowSuccessModal(true);
+      navigate({ to: "/scan" });
     } catch (e: any) {
-      console.error("[Trial Activation Error]:", e);
-      toast.error("Erro ao ativar o teste grátis.");
+      toast.error(e.message || "Erro ao ativar teste grátis.");
     } finally {
       setLoading(null);
     }
@@ -340,10 +289,6 @@ export function PremiumPage() {
       const likelyPlan = displayPlans.find((p) => p.id === likelyPlanId) || displayPlans[1];
       setPurchasedPlan(likelyPlan);
 
-      if (user?.id) {
-        localStorage.setItem(`sar_trial_used_${user.id}`, "true");
-      }
-
       if (refresh) refresh();
 
       // Se o utilizador finalizou o checkout num navegador de telemóvel externo (não instalado WebView)
@@ -394,7 +339,6 @@ export function PremiumPage() {
         // Invoca a Bottom Sheet oficial da Google Play Store no celular
         const res = await requestGooglePlayPurchase(playProductId, session.access_token);
         if (res.success) {
-          localStorage.setItem(`sar_trial_used_${user.id}`, "true");
           toast.success("Assinatura ativada com sucesso pela Google Play!");
           if (refresh) await refresh();
           const planDef = displayPlans.find((p) => p.id === planId) || displayPlans[1];
@@ -437,7 +381,6 @@ export function PremiumPage() {
         // Invoca a Bottom Sheet oficial da Google Play Store para o pacote de 50 scans (consumível)
         const res = await requestGooglePlayPurchase(PLAY_PRODUCT_IDS.credits, session.access_token);
         if (res.success) {
-          localStorage.setItem(`sar_trial_used_${user.id}`, "true");
           toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");
           if (refresh) await refresh();
           setPurchasedPlan({

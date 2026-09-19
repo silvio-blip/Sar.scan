@@ -166,22 +166,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscription(typedSub);
       setIsAdmin(!!roles?.some((r) => r.role === "admin"));
 
-      // Daily credits reset for free users (to exactly 3, once per day)
+      // Daily credits reset for free users (to exactly 3, once per day based on DB updated_at)
       if (uid && typedSub && (!typedSub.plan || typedSub.status === "free")) {
-        const lastResetKey = `sar_last_reset_${uid}`;
         const today = new Date().toDateString();
-        const lastReset = localStorage.getItem(lastResetKey);
+        const lastDbDate = typedSub.updated_at ? new Date(typedSub.updated_at).toDateString() : "";
 
-        if (lastReset !== today) {
-          console.log("[Auth] Daily credit reset triggered for user:", uid);
-          localStorage.setItem(lastResetKey, today);
-          if (typedSub.scans_credits < 3) {
-            try {
-              await supabase.from("subscriptions").update({ scans_credits: 3 }).eq("user_id", uid);
-              typedSub.scans_credits = 3;
-            } catch (err) {
-              console.error("[Auth] Daily reset update error:", err);
-            }
+        if (lastDbDate !== today && typedSub.scans_credits < 3) {
+          console.log("[Auth] Daily credit reset triggered from DB state for user:", uid);
+          try {
+            await supabase
+              .from("subscriptions")
+              .update({ scans_credits: 3, updated_at: new Date().toISOString() })
+              .eq("user_id", uid);
+            typedSub.scans_credits = 3;
+          } catch (err) {
+            console.error("[Auth] Daily reset update error:", err);
           }
         }
       }
@@ -267,7 +266,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    // 1. Instantly unlock DOM and pointer events in case modal dialogs were open
+    if (typeof document !== "undefined") {
+      document.body.style.pointerEvents = "auto";
+      document.body.removeAttribute("data-scroll-locked");
+      const root = document.getElementById("root");
+      if (root) {
+        root.removeAttribute("aria-hidden");
+        root.style.pointerEvents = "auto";
+      }
+    }
+
+    // 2. Clear state immediately to stop all active subscribers/queries
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setSubscription(null);
+    setIsAdmin(false);
+
+    // 3. Clear Supabase auth keys from localStorage synchronously
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const key = localStorage.key(i);
+          if (key && (key.startsWith("sb-") || key.includes("supabase.auth"))) {
+            localStorage.removeItem(key);
+          }
+        }
+      }
+    } catch (storageErr) {
+      console.warn("[Auth] Error clearing storage on signOut:", storageErr);
+    }
+
+    // 4. Trigger Supabase server signout in the background without blocking execution
+    try {
+      supabase.auth.signOut().catch((e) => console.warn("[Auth] Background signOut:", e));
+    } catch (e) {
+      console.warn("[Auth] SignOut call error:", e);
+    }
+
+    // 5. Clean redirect to /login
+    if (typeof window !== "undefined") {
+      window.location.replace("/login");
+    }
   }, []);
 
   const isPremiumBase =

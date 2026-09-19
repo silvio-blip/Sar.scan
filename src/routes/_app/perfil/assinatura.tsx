@@ -48,30 +48,6 @@ export function AssinaturaPage() {
   const [syncing, setSyncing] = useState(false);
   const [remoteCancelled, setRemoteCancelled] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
-  const [playPrices, setPlayPrices] = useState<Record<string, PlayProductDetails>>(() =>
-    getStoredPlayPrices(),
-  );
-
-  // Revarredura de preços em segundo plano
-  useEffect(() => {
-    if (isCapacitor()) {
-      syncGooglePlayPrices().then((p) => {
-        if (p && Object.keys(p).length > 0) {
-          setPlayPrices(p);
-        }
-      });
-    }
-
-    const handlePricesUpdated = (e: any) => {
-      if (e.detail) {
-        setPlayPrices(e.detail);
-      }
-    };
-    window.addEventListener("sar_play_prices_updated", handlePricesUpdated);
-    return () => {
-      window.removeEventListener("sar_play_prices_updated", handlePricesUpdated);
-    };
-  }, []);
 
   // Sincroniza o status mais recente junto à Play Store / Stripe ao carregar a página
   useEffect(() => {
@@ -108,6 +84,10 @@ export function AssinaturaPage() {
     rawPlan?.includes("cancelled"),
   );
 
+  const isGooglePlaySub = Boolean(
+    hasActiveSub && !subscription?.stripe_subscription_id && !subscription?.stripe_customer_id,
+  );
+
   // Informações amigáveis do plano
   const planDetails = useMemo(() => {
     if (!planType || subscription?.status === "free") {
@@ -122,11 +102,10 @@ export function AssinaturaPage() {
     }
 
     if (planType === "weekly") {
-      const price = playPrices["weekly"]?.formattedPrice || "€4,99";
       return {
         title: "sar.scan Semanal",
         description: "30 scans por semana + registro rápido.",
-        priceText: `${price}/semana`,
+        priceText: "€4,99/semana",
         period: "Renovação semanal",
         badge: "Semanal",
         color: "text-primary",
@@ -134,11 +113,10 @@ export function AssinaturaPage() {
     }
 
     if (planType === "yearly") {
-      const price = playPrices["yearly"]?.formattedPrice || "€99,99";
       return {
         title: "sar.scan Anual",
         description: "1.200 scans por ano + IA Nutricionista liberada.",
-        priceText: `${price}/ano`,
+        priceText: "€99,99/ano",
         period: "Renovação anual",
         badge: "Mais Popular",
         color: "text-primary",
@@ -146,16 +124,15 @@ export function AssinaturaPage() {
     }
 
     // Mensal padrão
-    const price = playPrices["monthly"]?.formattedPrice || "€19,99";
     return {
       title: "sar.scan Mensal",
       description: "150 scans por mês + IA Nutricionista liberada.",
-      priceText: `${price}/mês`,
+      priceText: "€19,99/mês",
       period: "Renovação mensal",
       badge: "Mensal",
       color: "text-primary",
     };
-  }, [planType, subscription?.status, playPrices]);
+  }, [planType, subscription?.status]);
 
   // Formatação de datas
   const periodEndFormatted = useMemo(() => {
@@ -181,11 +158,12 @@ export function AssinaturaPage() {
 
     setCancelling(true);
     try {
-      // 1. Se estiver no app nativo Android (Capacitor), abre a tela nativa oficial da Play Store
-      if (isCapacitor()) {
-        const sku = planType
-          ? PLAY_PRODUCT_IDS[planType as keyof typeof PLAY_PRODUCT_IDS]
-          : undefined;
+      const sku = planType
+        ? PLAY_PRODUCT_IDS[planType as keyof typeof PLAY_PRODUCT_IDS]
+        : undefined;
+
+      // 1. Se for Google Play ou estiver no app nativo, abre a tela de gerenciamento de assinaturas
+      if (isGooglePlaySub || isCapacitor()) {
         await openPlayStoreSubscriptionManager(sku);
       }
 
@@ -197,8 +175,7 @@ export function AssinaturaPage() {
         setRemoteCancelled(false);
         await refresh();
       } else {
-        // Se estiver no APK nativo e a Play Store foi aberta, dá uma mensagem amigável
-        if (isCapacitor()) {
+        if (isGooglePlaySub || isCapacitor()) {
           toast.info("Acesse a Google Play Store para gerenciar ou cancelar sua renovação.");
           setShowCancelDialog(false);
         } else {
@@ -206,7 +183,7 @@ export function AssinaturaPage() {
         }
       }
     } catch (err: any) {
-      if (isCapacitor()) {
+      if (isGooglePlaySub || isCapacitor()) {
         toast.info("Acesse a Google Play Store para gerenciar ou cancelar sua renovação.");
         setShowCancelDialog(false);
       } else {

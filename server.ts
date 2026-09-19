@@ -309,7 +309,15 @@ O formato deve ser exatamente:
   // Proxy for stripe checkout
   app.post("/api/stripe/checkout", async (req, res) => {
     try {
-      const result = await createStripeCheckoutInternal(req.body);
+      const origin =
+        req.body?.origin ||
+        req.headers.origin ||
+        (req.headers.referer ? new URL(req.headers.referer as string).origin : "") ||
+        "";
+      const result = await createStripeCheckoutInternal({
+        ...req.body,
+        origin: origin || undefined,
+      });
       res.json(result);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erro desconhecido";

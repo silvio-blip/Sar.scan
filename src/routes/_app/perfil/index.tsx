@@ -57,6 +57,7 @@ export function PerfilPage() {
   const [cameraGranted, setCameraGranted] = useState<boolean | null>(null);
   const [micGranted, setMicGranted] = useState<boolean | null>(null);
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.permissions) {
@@ -432,6 +433,7 @@ export function PerfilPage() {
           <DialogFooter className="flex gap-3 pt-4 sm:justify-center">
             <Button
               variant="outline"
+              disabled={signingOut}
               className="flex-1 h-12 rounded-2xl border-border font-bold text-xs"
               onClick={() => setShowSignOutDialog(false)}
             >
@@ -439,13 +441,15 @@ export function PerfilPage() {
             </Button>
             <Button
               variant="destructive"
-              className="flex-1 h-12 rounded-2xl font-bold text-xs"
-              onClick={() => {
+              disabled={signingOut}
+              className="flex-1 h-12 rounded-2xl font-bold text-xs flex items-center justify-center gap-2"
+              onClick={async () => {
+                setSigningOut(true);
                 setShowSignOutDialog(false);
-                signOut();
+                await signOut();
               }}
             >
-              Sim, Sair
+              {signingOut ? <Loader2 className="size-4 animate-spin" /> : "Sim, Sair"}
             </Button>
           </DialogFooter>
         </DialogContent>
