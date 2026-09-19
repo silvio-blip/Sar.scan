@@ -22,6 +22,8 @@ import {
   Salad,
   Apple,
   Dumbbell,
+  Image as ImageIcon,
+  X as XIcon,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
@@ -170,13 +172,14 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Subscription validation: only monthly, yearly or admin can access AI chat
+  // Subscription validation: weekly, monthly, yearly, annual or admin can access AI chat
   const canAccessAI =
     isAdmin ||
     ((subscription?.status === "active" || subscription?.status === "trialing") &&
-      (subscription?.plan === "monthly" ||
-        subscription?.plan === "yearly" ||
-        subscription?.plan === "annual" ||
+      ((subscription?.plan || "").replace("_cancelled", "") === "weekly" ||
+        (subscription?.plan || "").replace("_cancelled", "") === "monthly" ||
+        (subscription?.plan || "").replace("_cancelled", "") === "yearly" ||
+        (subscription?.plan || "").replace("_cancelled", "") === "annual" ||
         !subscription?.plan));
 
   // Query AI message history
@@ -201,16 +204,18 @@ export function ChatPage() {
     queryFn: async () => {
       if (isAdmin) return { count: 0, limit: -1, plan: "admin" };
 
-      const planKey = subscription?.plan || "free";
-      let limit = 0;
-      if (subscription?.status === "active" || subscription?.status === "trialing") {
-        if (planKey === "yearly" || planKey === "annual" || !subscription?.plan) {
-          limit = -1; // unlimited
-        } else if (planKey === "monthly") {
-          limit = 50;
-        } else if (planKey === "weekly") {
-          limit = 0; // weekly has no access
-        }
+      const planKey = (subscription?.plan || "free").replace("_cancelled", "");
+      let limit = 50;
+      let isDaily = true;
+      if (planKey === "yearly" || planKey === "annual") {
+        limit = 150;
+        isDaily = true;
+      } else if (planKey === "weekly") {
+        limit = 50;
+        isDaily = false;
+      } else if (planKey === "monthly") {
+        limit = 50;
+        isDaily = true;
       }
 
       const { data: usageData } = await supabase
@@ -221,7 +226,7 @@ export function ChatPage() {
 
       let currentUsage = usageData?.usage_count ?? 0;
 
-      if (usageData?.last_message_at) {
+      if (usageData?.last_message_at && isDaily) {
         const lastDate = new Date(usageData.last_message_at).toDateString();
         if (lastDate !== new Date().toDateString()) {
           currentUsage = 0;
@@ -231,6 +236,26 @@ export function ChatPage() {
       return { count: currentUsage, limit, plan: planKey };
     },
   });
+
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImageMime, setSelectedImageMime] = useState<string>("image/jpeg");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "image/png" && file.type !== "image/jpeg") {
+      toast.error("Por favor, envie apenas imagens nos formatos PNG ou JPEG.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedImage(reader.result as string);
+      setSelectedImageMime(file.type);
+    };
+    reader.readAsDataURL(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   // Scroll to bottom on new messages
   const scrollToBottom = () => {
@@ -247,10 +272,10 @@ export function ChatPage() {
   // Send message to AI Nutritionist
   const sendMessage = async (messageText?: string) => {
     const text = (messageText ?? input).trim();
-    if (!user || !text) return;
+    if (!user || (!text && !selectedImage)) return;
 
     if (!canAccessAI) {
-      toast.error("Assine o plano Mensal ou Anual para conversar com a IA Nutricionista.");
+      toast.error("Assine um plano para conversar com a IA Nutricionista.");
       return;
     }
 
@@ -269,22 +294,34 @@ export function ChatPage() {
       id: tempId,
       user_id: user.id,
       role: "user",
-      content: text,
+      content: text + (selectedImage ? " 📷 [Imagem enviada]" : ""),
       created_at: new Date().toISOString(),
       is_sending: true,
     };
 
     setOptimisticMessages((prev) => [...prev, optimisticMsg]);
     setInput("");
+    const imgToSend = selectedImage;
+    const mimeToSend = selectedImageMime;
+    setSelectedImage(null);
     setSending(true);
 
     try {
+      const bodyPayload: any = {
+        message: text || "Analise esta imagem de prato ou alimento.",
+        user_id: user.id,
+      };
+      if (imgToSend) {
+        bodyPayload.image = imgToSend;
+        bodyPayload.imageMimeType = mimeToSend;
+      }
+
       const response = await fetch(getApiUrl("/api/edge"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "nutrition-chat",
-          body: { message: text, user_id: user.id },
+          body: bodyPayload,
         }),
       });
 
@@ -301,8 +338,9 @@ export function ChatPage() {
           .eq("user_id", user.id)
           .maybeSingle();
 
+        const planKey = (subscription?.plan || "free").replace("_cancelled", "");
         let currentCount = usageData?.usage_count ?? 0;
-        if (usageData?.last_message_at) {
+        if (usageData?.last_message_at && planKey !== "weekly") {
           const lastDate = new Date(usageData.last_message_at).toDateString();
           if (lastDate !== new Date().toDateString()) {
             currentCount = 0;
@@ -633,30 +671,65 @@ export function ChatPage() {
 
           {/* Input Footer */}
           <div className="p-3 sm:p-4 bg-card/95 backdrop-blur-md border-t border-border/80 shrink-0 pb-[max(14px,env(safe-area-inset-bottom,14px))]">
-            <div className="flex items-center gap-2 max-w-4xl mx-auto">
-              <Input
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Pergunte ao seu nutricionista..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                disabled={sending}
-                className="bg-secondary/40 border border-border/60 focus-visible:ring-2 focus-visible:ring-primary/20 text-foreground text-xs sm:text-sm h-12 rounded-2xl flex-1 px-4 placeholder:text-muted-foreground/60"
-              />
+            <div className="max-w-4xl mx-auto space-y-2">
+              {selectedImage && (
+                <div className="relative inline-block">
+                  <img
+                    src={selectedImage}
+                    alt="Preview"
+                    className="size-16 rounded-xl object-cover border border-border shadow-sm"
+                  />
+                  <button
+                    onClick={() => setSelectedImage(null)}
+                    className="absolute -top-2 -right-2 size-6 rounded-full bg-rose-500 text-white flex items-center justify-center shadow-md hover:bg-rose-600 transition-colors"
+                  >
+                    <XIcon className="size-3.5" />
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg"
+                  ref={fileInputRef}
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={sending}
+                  className="size-12 rounded-2xl border-border/60 bg-secondary/40 shrink-0 text-muted-foreground hover:text-foreground hover:bg-secondary/80 cursor-pointer"
+                  title="Enviar foto (PNG ou JPEG)"
+                >
+                  <ImageIcon className="size-5" />
+                </Button>
 
-              <Button
-                onClick={() => sendMessage()}
-                disabled={sending || !input.trim()}
-                className="size-12 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 shadow-md shadow-primary/20 transition-all active:scale-95 flex items-center justify-center shrink-0 disabled:opacity-40 cursor-pointer"
-                aria-label="Enviar mensagem"
-              >
-                <SendIcon className="size-5" />
-              </Button>
+                <Input
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Pergunte ou envie foto de um prato (PNG/JPEG)..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  disabled={sending}
+                  className="bg-secondary/40 border border-border/60 focus-visible:ring-2 focus-visible:ring-primary/20 text-foreground text-xs sm:text-sm h-12 rounded-2xl flex-1 px-4 placeholder:text-muted-foreground/60"
+                />
+
+                <Button
+                  onClick={() => sendMessage()}
+                  disabled={sending || (!input.trim() && !selectedImage)}
+                  className="size-12 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 shadow-md shadow-primary/20 transition-all active:scale-95 flex items-center justify-center shrink-0 disabled:opacity-40 cursor-pointer"
+                  aria-label="Enviar mensagem"
+                >
+                  <SendIcon className="size-5" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>

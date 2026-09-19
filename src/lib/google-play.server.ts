@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 import { getAppSettings } from "./settings.server.js";
+import { getStripe } from "./stripe.server.js";
 
 /**
  * Authenticates user through active Supabase JWT token.
@@ -189,6 +190,9 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "monthly",
           scans_credits: newTotal,
           ai_agent_enabled: true,
+          payment_provider: "google_play",
+          play_purchase_token: data.purchaseToken,
+          play_product_id: data.productId,
           current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -223,6 +227,9 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "weekly",
           scans_credits: newTotal,
           ai_agent_enabled: false,
+          payment_provider: "google_play",
+          play_purchase_token: data.purchaseToken,
+          play_product_id: data.productId,
           current_period_end: new Date(Date.now() + 7 * 86400000).toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -257,6 +264,9 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "yearly",
           scans_credits: newTotal,
           ai_agent_enabled: true,
+          payment_provider: "google_play",
+          play_purchase_token: data.purchaseToken,
+          play_product_id: data.productId,
           current_period_end: new Date(Date.now() + 365 * 86400000).toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -346,4 +356,371 @@ function testConsoleKeysWarning(email: string, key: string) {
       "---------------------------------------------------------------------------------",
     );
   }
+}
+
+/**
+ * Cancela a assinatura ativa do usuário (Google Play, Stripe ou Teste Grátis).
+ */
+export async function cancelSubscriptionInternal(data: { token: string; immediate?: boolean }) {
+  const user = await authUser(data.token);
+  console.log(`[Subscription Server] Cancelamento solicitado para usuário: ${user.id}`);
+
+  const { data: currentSub, error: subError } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (subError || !currentSub) {
+    throw new Error("Nenhuma assinatura encontrada para este usuário.");
+  }
+
+  const isAlreadyFree = !currentSub.plan || currentSub.status === "free";
+  if (isAlreadyFree) {
+    return {
+      success: true,
+      message: "Você já está no plano gratuito.",
+      status: "free",
+      plan: null,
+    };
+  }
+
+  // 1. Se for assinatura Stripe, aciona o cancelamento na API do Stripe
+  if (currentSub.stripe_subscription_id) {
+    try {
+      const { stripe } = await getStripe();
+      if (data.immediate) {
+        await stripe.subscriptions.cancel(currentSub.stripe_subscription_id);
+      } else {
+        await stripe.subscriptions.update(currentSub.stripe_subscription_id, {
+          cancel_at_period_end: true,
+        });
+      }
+      console.log(
+        `[Subscription Server] Stripe subscription ${currentSub.stripe_subscription_id} cancelada com sucesso.`,
+      );
+    } catch (stripeErr: any) {
+      console.warn("[Subscription Server] Aviso ao cancelar no Stripe:", stripeErr?.message);
+    }
+  }
+
+  // 2. Se for assinatura Google Play e credenciais estiverem configuradas
+  const settings = await getAppSettings();
+  const clientEmail =
+    settings.google_play_client_email || process.env.GOOGLE_PLAY_CLIENT_EMAIL || "";
+  const rawKey = settings.google_play_private_key || process.env.GOOGLE_PLAY_PRIVATE_KEY || "";
+  const packageName =
+    settings.google_play_package_name || process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.sarscan.new";
+
+  if (clientEmail && rawKey && currentSub.play_purchase_token && currentSub.play_product_id) {
+    try {
+      const auth = new google.auth.JWT({
+        email: clientEmail,
+        key: rawKey.replace(/\\n/g, "\n"),
+        scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+      });
+      const play = google.androidpublisher({ version: "v3", auth });
+
+      if (data.immediate) {
+        await play.purchases.subscriptions.revoke({
+          packageName,
+          subscriptionId: currentSub.play_product_id,
+          token: currentSub.play_purchase_token,
+        });
+      } else {
+        await play.purchases.subscriptions.cancel({
+          packageName,
+          subscriptionId: currentSub.play_product_id,
+          token: currentSub.play_purchase_token,
+        });
+      }
+      console.log(
+        "[Subscription Server] Google Play subscription cancelada com sucesso na API Google.",
+      );
+    } catch (playErr: any) {
+      console.warn("[Subscription Server] Aviso ao cancelar na Google Play API:", playErr?.message);
+    }
+  }
+
+  // 3. Atualiza os dados no Supabase
+  let updatedStatus = currentSub.status;
+  let updatedPlan = currentSub.plan ? currentSub.plan.replace("_cancelled", "") : "monthly";
+  let updatedAi = currentSub.ai_agent_enabled;
+  let updatedTrialEnd = currentSub.trial_end;
+
+  if (data.immediate) {
+    updatedStatus = "free";
+    updatedPlan = null;
+    updatedAi = false;
+    updatedTrialEnd = null;
+  } else {
+    updatedTrialEnd = "cancelled";
+  }
+
+  const { data: updatedSub, error: updateError } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .update({
+      status: updatedStatus,
+      plan: updatedPlan,
+      ai_agent_enabled: updatedAi,
+      trial_end: updatedTrialEnd,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (updateError) {
+    console.error(
+      "[Subscription Server] Erro ao atualizar status de cancelamento no banco:",
+      JSON.stringify(updateError),
+    );
+    throw new Error(
+      `Erro ao salvar status de cancelamento no banco de dados: ${updateError.message || JSON.stringify(updateError)}`,
+    );
+  }
+
+  const periodEnd = currentSub.current_period_end || currentSub.trial_end;
+  const formattedDate = periodEnd
+    ? new Date(periodEnd).toLocaleDateString("pt-BR")
+    : "fim do período";
+
+  const message = data.immediate
+    ? "Sua assinatura foi cancelada imediatamente. Sua conta agora está no plano gratuito."
+    : `Sua assinatura foi cancelada. Você continuará com acesso total aos benefícios até ${formattedDate} sem nenhuma nova cobrança.`;
+
+  return {
+    success: true,
+    message,
+    subscription: updatedSub,
+    expiresAt: periodEnd,
+    cancelAtPeriodEnd: !data.immediate,
+  };
+}
+
+/**
+ * Reativa a assinatura que estava agendada para cancelar no final do período.
+ */
+export async function reactivateSubscriptionInternal(data: { token: string }) {
+  const user = await authUser(data.token);
+  console.log(`[Subscription Server] Reativação solicitada para usuário: ${user.id}`);
+
+  const { data: currentSub, error: subError } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (subError || !currentSub) {
+    throw new Error("Nenhuma assinatura encontrada para este usuário.");
+  }
+
+  // 1. Se for Stripe, atualiza no Stripe
+  if (currentSub.stripe_subscription_id) {
+    try {
+      const { stripe } = await getStripe();
+      await stripe.subscriptions.update(currentSub.stripe_subscription_id, {
+        cancel_at_period_end: false,
+      });
+      console.log(
+        `[Subscription Server] Stripe subscription ${currentSub.stripe_subscription_id} reativada.`,
+      );
+    } catch (stripeErr: any) {
+      console.warn("[Subscription Server] Aviso ao reativar no Stripe:", stripeErr?.message);
+    }
+  }
+
+  // 2. Atualiza no Supabase
+  const restoredPlan = currentSub.plan ? currentSub.plan.replace("_cancelled", "") : "monthly";
+
+  const { data: updatedSub, error: updateError } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .update({
+      plan: restoredPlan,
+      status: "active",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .select()
+    .single();
+
+  if (updateError) {
+    console.error(
+      "[Subscription Server] Erro ao atualizar status de reativação no banco:",
+      JSON.stringify(updateError),
+    );
+    throw new Error(
+      `Erro ao salvar status de reativação no banco de dados: ${updateError.message || JSON.stringify(updateError)}`,
+    );
+  }
+
+  return {
+    success: true,
+    message: "Assinatura reativada com sucesso! A renovação automática foi retomada.",
+    subscription: updatedSub,
+  };
+}
+
+/**
+ * Faz a sincronização e varredura do status da assinatura junto à Google Play, Stripe e Supabase.
+ * Detecta se a assinatura foi cancelada ou expirada externamente (ex: cancelada pelo usuário na Play Store).
+ */
+export async function syncSubscriptionStatusInternal(data: { token: string }) {
+  const user = await authUser(data.token);
+  console.log(
+    `[Subscription Server] Sincronizando status da assinatura para o usuário: ${user.id}`,
+  );
+
+  const { data: currentSub, error: subError } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (subError) {
+    throw new Error("Falha ao consultar assinatura do usuário.");
+  }
+
+  if (!currentSub) {
+    // Cria plano gratuito caso não exista
+    const initialFreeSub = {
+      user_id: user.id,
+      status: "free",
+      trial_end: null,
+      plan: null,
+      ai_agent_enabled: false,
+      scans_credits: 3,
+      updated_at: new Date().toISOString(),
+    };
+    await (supabaseAdmin as any)
+      .from("subscriptions")
+      .upsert(initialFreeSub, { onConflict: "user_id" });
+    return { subscription: initialFreeSub, isExpired: false, isCancelled: false };
+  }
+
+  const now = new Date();
+  let needsUpdate = false;
+  let newStatus = currentSub.status;
+  let newPlan = currentSub.plan;
+  let newAi = currentSub.ai_agent_enabled;
+  let isCancelled = false;
+
+  // 1. Verifica se período de teste de 7 dias expirou
+  if (currentSub.status === "trialing" && currentSub.trial_end) {
+    if (new Date(currentSub.trial_end) < now) {
+      console.log(`[Subscription Sync] Teste grátis do usuário ${user.id} expirou.`);
+      newStatus = "free";
+      newPlan = null;
+      newAi = false;
+      needsUpdate = true;
+    }
+  }
+
+  // 2. Verifica se assinatura ativa expirou no tempo
+  if (currentSub.status === "active" && currentSub.current_period_end) {
+    if (new Date(currentSub.current_period_end) < now) {
+      console.log(`[Subscription Sync] Período da assinatura do usuário ${user.id} expirou.`);
+      newStatus = "free";
+      newPlan = null;
+      newAi = false;
+      needsUpdate = true;
+    }
+  }
+
+  // 3. Se houver integração com Google Play API e purchase token, valida se a renovação automática foi cancelada
+  const settings = await getAppSettings();
+  const clientEmail =
+    settings.google_play_client_email || process.env.GOOGLE_PLAY_CLIENT_EMAIL || "";
+  const rawKey = settings.google_play_private_key || process.env.GOOGLE_PLAY_PRIVATE_KEY || "";
+  const packageName =
+    settings.google_play_package_name || process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.sarscan.new";
+
+  if (clientEmail && rawKey && currentSub.play_purchase_token && currentSub.play_product_id) {
+    try {
+      const auth = new google.auth.JWT({
+        email: clientEmail,
+        key: rawKey.replace(/\\n/g, "\n"),
+        scopes: ["https://www.googleapis.com/auth/androidpublisher"],
+      });
+      const play = google.androidpublisher({ version: "v3", auth });
+      const response = await play.purchases.subscriptions.get({
+        packageName,
+        subscriptionId: currentSub.play_product_id,
+        token: currentSub.play_purchase_token,
+      });
+
+      const playData = response.data;
+      const expiryTime = Number(playData.expiryTimeMillis || 0);
+
+      // Usuário cancelou a renovação automática na Play Store
+      if (playData.autoRenewing === false || playData.cancelReason !== undefined) {
+        isCancelled = true;
+      }
+
+      // Se a data de validade na Play Store já passou
+      if (expiryTime > 0 && expiryTime < Date.now()) {
+        console.log(`[Subscription Sync] Google Play confirmou que a assinatura expirou.`);
+        newStatus = "free";
+        newPlan = null;
+        newAi = false;
+        needsUpdate = true;
+      }
+    } catch (err: any) {
+      console.warn(
+        "[Subscription Sync] Não foi possível consultar a Google Play API:",
+        err?.message,
+      );
+    }
+  }
+
+  // 4. Se for Stripe, verifica status no Stripe
+  if (currentSub.stripe_subscription_id) {
+    try {
+      const { stripe } = await getStripe();
+      const stripeSub = await stripe.subscriptions.retrieve(currentSub.stripe_subscription_id);
+      if (stripeSub.cancel_at_period_end || stripeSub.status === "canceled") {
+        isCancelled = true;
+      }
+      if (stripeSub.status === "canceled" || stripeSub.status === "unpaid") {
+        newStatus = "free";
+        newPlan = null;
+        newAi = false;
+        needsUpdate = true;
+      }
+    } catch (stripeErr: any) {
+      console.warn("[Subscription Sync] Não foi possível consultar Stripe:", stripeErr?.message);
+    }
+  }
+
+  let finalSub = currentSub;
+  if (needsUpdate) {
+    const { data: updated, error: updateErr } = await (supabaseAdmin as any)
+      .from("subscriptions")
+      .upsert(
+        {
+          user_id: user.id,
+          status: newStatus,
+          plan: newPlan,
+          ai_agent_enabled: newAi,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id" },
+      )
+      .select()
+      .single();
+
+    if (!updateErr && updated) {
+      finalSub = updated;
+    }
+  }
+
+  return {
+    subscription: finalSub,
+    isCancelled,
+    isExpired: finalSub.status === "free" && !finalSub.plan,
+    status: finalSub.status,
+    plan: finalSub.plan,
+    current_period_end: finalSub.current_period_end,
+    trial_end: finalSub.trial_end,
+  };
 }

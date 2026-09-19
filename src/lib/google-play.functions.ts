@@ -171,10 +171,47 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
     }
 
     console.log("[Play IAP] Preços e moedas localizadas recebidas da Google Play:", results);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("sar_play_prices_cache", JSON.stringify(results));
+        window.dispatchEvent(new CustomEvent("sar_play_prices_updated", { detail: results }));
+      } catch (cacheErr) {
+        console.debug("[Play IAP] Falha ao salvar cache de preços:", cacheErr);
+      }
+    }
     return results;
   } catch (err) {
     console.error("[Play IAP] Erro geral ao obter preços da Google Play:", err);
     return {};
+  }
+}
+
+/**
+ * Retorna os preços em cache salvos localmente da Google Play Store (para exibição instantânea sem delay).
+ */
+export function getStoredPlayPrices(): Record<string, PlayProductDetails> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem("sar_play_prices_cache");
+    if (raw) return JSON.parse(raw);
+  } catch (parseErr) {
+    console.debug("[Play IAP] Falha ao ler cache de preços:", parseErr);
+  }
+  return {};
+}
+
+/**
+ * Faz a revarredura automática em segundo plano dos preços reais dos pacotes da Google Play.
+ */
+export async function syncGooglePlayPrices(): Promise<Record<string, PlayProductDetails>> {
+  if (!isCapacitor()) return {};
+  try {
+    await initializeGooglePlayIAP();
+    const prices = await fetchGooglePlayPrices();
+    return prices;
+  } catch (err) {
+    console.warn("[Play IAP] Falha na sincronização periódica de preços:", err);
+    return getStoredPlayPrices();
   }
 }
 
@@ -339,6 +376,130 @@ export async function restoreGooglePlayPurchases(
     return {
       success: false,
       message: err.message || "Não foi possível restaurar compras anteriores da Google Play.",
+    };
+  }
+}
+
+/**
+ * Abre a página oficial de gerenciamento de assinaturas da Google Play Store no dispositivo do usuário.
+ */
+export function openPlayStoreSubscriptionManager(sku?: string) {
+  const packageName = "com.sarscan.new";
+  const url = sku
+    ? `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${packageName}`
+    : `https://play.google.com/store/account/subscriptions?package=${packageName}`;
+
+  if (typeof window !== "undefined") {
+    window.location.href = url;
+  }
+}
+
+/**
+ * Cancela a assinatura ativa do usuário pelo backend (Google Play, Stripe ou Teste Grátis).
+ */
+export async function cancelSubscriptionOnBackend(
+  token: string,
+  immediate: boolean = false,
+): Promise<{ success: boolean; message: string; data?: any }> {
+  try {
+    const res = await fetch(getApiUrl("/api/subscriptions/cancel"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ immediate }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data.error || "Não foi possível cancelar a assinatura.",
+      };
+    }
+
+    return {
+      success: true,
+      message: data.message || "Assinatura cancelada com sucesso.",
+      data,
+    };
+  } catch (err: any) {
+    console.error("[Subscription] Erro ao chamar cancelamento no backend:", err);
+    return {
+      success: false,
+      message: err.message || "Falha ao conectar com o servidor.",
+    };
+  }
+}
+
+export async function reactivateSubscriptionOnBackend(
+  token: string,
+): Promise<{ success: boolean; message: string; data?: any }> {
+  try {
+    const res = await fetch(getApiUrl("/api/subscriptions/reactivate"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data.error || "Não foi possível reativar a assinatura.",
+      };
+    }
+
+    return {
+      success: true,
+      message: data.message || "Assinatura reativada com sucesso.",
+      data,
+    };
+  } catch (err: any) {
+    console.error("[Subscription] Erro ao reativar assinatura no backend:", err);
+    return {
+      success: false,
+      message: err.message || "Falha ao conectar com o servidor.",
+    };
+  }
+}
+
+/**
+ * Sincroniza o status atual da assinatura do usuário junto aos provedores (Google Play / Stripe)
+ * para detectar cancelamentos externos na Play Store ou expirações.
+ */
+export async function syncSubscriptionStatusOnBackend(
+  token: string,
+): Promise<{ success: boolean; data?: any; message?: string }> {
+  try {
+    const res = await fetch(getApiUrl("/api/subscriptions/sync-status"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        success: false,
+        message: data.error || "Erro ao sincronizar status.",
+      };
+    }
+
+    return {
+      success: true,
+      data,
+    };
+  } catch (err: any) {
+    console.warn("[Subscription] Erro ao sincronizar status no backend:", err);
+    return {
+      success: false,
+      message: err.message || "Falha na sincronização.",
     };
   }
 }

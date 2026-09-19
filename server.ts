@@ -10,7 +10,12 @@ loadEnv();
 import { invokeEdgeInternal, checkEligibility, deductScan } from "./src/lib/edge-proxy.server";
 import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
-import { verifyGooglePlayPurchaseInternal } from "./src/lib/google-play.server";
+import {
+  verifyGooglePlayPurchaseInternal,
+  cancelSubscriptionInternal,
+  syncSubscriptionStatusInternal,
+  reactivateSubscriptionInternal,
+} from "./src/lib/google-play.server";
 import { supabaseAdmin } from "./src/integrations/supabase/client.server";
 import { getAppSettings } from "./src/lib/settings.server";
 
@@ -338,6 +343,56 @@ O formato deve ser exatamente:
       res.json(result);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Cancel Subscription route (Google Play, Stripe or Free)
+  app.post("/api/subscriptions/cancel", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+      const { immediate } = req.body || {};
+
+      const result = await cancelSubscriptionInternal({
+        token,
+        immediate: Boolean(immediate),
+      });
+      res.json(result);
+    } catch (error: unknown) {
+      console.error("[Subscription Cancel Error]", error);
+      const msg = error instanceof Error ? error.message : "Erro ao cancelar assinatura";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Sync / Scan Subscription status route (detects Play Store / Stripe external cancellations & expiries)
+  app.post("/api/subscriptions/sync-status", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+
+      const result = await syncSubscriptionStatusInternal({ token });
+      res.json(result);
+    } catch (error: unknown) {
+      console.error("[Subscription Sync Error]", error);
+      const msg =
+        error instanceof Error ? error.message : "Erro ao sincronizar status da assinatura";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Reactivate Subscription route
+  app.post("/api/subscriptions/reactivate", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+
+      const result = await reactivateSubscriptionInternal({ token });
+      res.json(result);
+    } catch (error: unknown) {
+      console.error("[Subscription Reactivate Error]", error);
+      const msg = error instanceof Error ? error.message : "Erro ao reativar assinatura";
       res.status(500).json({ error: msg });
     }
   });

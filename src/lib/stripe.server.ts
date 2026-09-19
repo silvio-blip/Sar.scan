@@ -243,6 +243,7 @@ async function ensureValidCustomer(
       {
         user_id: user.id,
         stripe_customer_id: customerId,
+        payment_provider: "stripe",
         status: "free",
         scans_credits: 0,
       },

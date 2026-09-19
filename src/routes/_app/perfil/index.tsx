@@ -44,7 +44,7 @@ import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
 export function PerfilPage() {
-  const { user, session, profile, isAdmin, isPremium, refresh, signOut } = useAuth();
+  const { user, session, profile, subscription, isAdmin, isPremium, refresh, signOut } = useAuth();
   useRewardsRealtime(user?.id);
 
   const [pushActive, setPushActive] = useState(
@@ -173,6 +173,36 @@ export function PerfilPage() {
           </Card>
         </Link>
       )}
+
+      {/* Aba / Gerenciamento de Assinaturas */}
+      <Link
+        to="/perfil/assinatura"
+        className="block transform transition hover:scale-[1.02] active:scale-95"
+      >
+        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
+          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+            <Crown className="size-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="font-bold text-sm text-foreground flex items-center gap-2">
+              Assinaturas
+              {isPremium && (
+                <span className="text-[9px] bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-full px-2 py-0.5 shadow-sm">
+                  {subscription?.plan ? `${subscription.plan.toUpperCase()}` : "PRO"}
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-muted-foreground font-semibold">
+              {subscription?.plan && subscription.status === "active"
+                ? `Plano ${subscription.plan === "weekly" ? "Semanal" : subscription.plan === "yearly" ? "Anual" : "Mensal"} · Ativo`
+                : subscription?.status === "trialing"
+                  ? "Teste Grátis (7 Dias) · Ativo"
+                  : "Plano Gratuito · Gerenciar e Cancelar"}
+            </div>
+          </div>
+          <ChevronRight className="size-4 text-muted-foreground" />
+        </Card>
+      </Link>
 
       <Link
         to="/perfil/recompensas"

@@ -102,7 +102,13 @@ async function geminiCall(opts: {
     },
   });
 
-  const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  const modelsToTry = [
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+  ];
   let response: any = null;
   let lastErr: any = null;
 
@@ -265,40 +271,55 @@ async function handleNutritionChat(body: Body) {
   if (userId) {
     const status = await getUserStatus(userId);
     if (!status?.isAdmin) {
-      const planKey = status?.plan || "free";
+      const planKey = (status?.plan || "free").replace("_cancelled", "");
       const hasAccess =
         (status?.status === "active" || status?.status === "trialing") &&
-        (planKey === "monthly" || planKey === "yearly" || planKey === "annual" || !planKey);
+        (planKey === "weekly" ||
+          planKey === "monthly" ||
+          planKey === "yearly" ||
+          planKey === "annual" ||
+          !planKey);
 
       if (!hasAccess) {
         throw new Error(
-          "O chat de nutrição com Inteligência Artificial é exclusivo para assinantes dos novos planos Mensal ou Anual. Assine um desses planos para liberar!",
+          "O chat de nutrição com Inteligência Artificial é exclusivo para assinantes. Assine um plano para liberar!",
         );
       }
 
-      if (planKey === "monthly") {
-        if (admin) {
-          const { data: usageData } = await (admin as any)
-            .from("chat_usage")
-            .select("usage_count, last_message_at")
-            .eq("user_id", userId)
-            .maybeSingle();
+      let limit = 50;
+      let isDaily = true;
+      if (planKey === "yearly" || planKey === "annual") {
+        limit = 150;
+        isDaily = true;
+      } else if (planKey === "weekly") {
+        limit = 50;
+        isDaily = false;
+      } else if (planKey === "monthly") {
+        limit = 50;
+        isDaily = true;
+      }
 
-          let currentUsage = usageData?.usage_count ?? 0;
+      if (admin) {
+        const { data: usageData } = await (admin as any)
+          .from("chat_usage")
+          .select("usage_count, last_message_at")
+          .eq("user_id", userId)
+          .maybeSingle();
 
-          if (usageData?.last_message_at) {
-            const lastDate = new Date(usageData.last_message_at).toDateString();
-            const today = new Date().toDateString();
-            if (lastDate !== today) {
-              currentUsage = 0;
-            }
+        let currentUsage = usageData?.usage_count ?? 0;
+
+        if (usageData?.last_message_at && isDaily) {
+          const lastDate = new Date(usageData.last_message_at).toDateString();
+          const today = new Date().toDateString();
+          if (lastDate !== today) {
+            currentUsage = 0;
           }
+        }
 
-          if (currentUsage >= 50) {
-            throw new Error(
-              "Você atingiu o limite de 50 mensagens diárias do seu plano Mensal. Faça o upgrade para o plano Anual para ter mensagens ilimitadas!",
-            );
-          }
+        if (currentUsage >= limit) {
+          throw new Error(
+            `Você atingiu o limite de ${limit} mensagens ${isDaily ? "diárias" : "do seu plano Semanal"}.`,
+          );
         }
       }
     }
@@ -331,7 +352,8 @@ async function handleNutritionChat(body: Body) {
 
   const systemInstruction = `Você é um nutricionista brasileiro amigável, especialista em saúde e bem-estar.
 ${profileContext}
-Mantenha continuidade com o histórico da conversa. Responda de forma clara, acolhedora e motivadora em português.
+Mantenha continuidade com o histórico da conversa. Responda de forma clara, acolhedora, precisa e motivadora em português.
+Se o usuário enviar uma foto de prato de comida ou alimento, analise detalhadamente os ingredientes, calorias estimadas e macronutrientes.
 Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, além da resposta explicativa, inclua no final da resposta um bloco JSON estruturado no formato exato (sem formatação markdown adicional ao redor):
 [APLICAR_MELHORIAS: {"meta": "...", "dieta": "..."}] com as atualizações sugeridas para o perfil do usuário.`;
 
@@ -342,7 +364,21 @@ Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, al
       parts: [{ text: h.content }],
     });
   });
-  contents.push({ role: "user", parts: [{ text: message }] });
+
+  const userParts: any[] = [{ text: message || "Analise esta imagem nutricional." }];
+  if (body.image) {
+    const base64Data = String(body.image).includes(",")
+      ? String(body.image).split(",")[1]
+      : String(body.image);
+    const mimeType = body.imageMimeType || "image/jpeg";
+    userParts.push({
+      inlineData: {
+        mimeType,
+        data: base64Data,
+      },
+    });
+  }
+  contents.push({ role: "user", parts: userParts });
 
   const { text } = await geminiCall({
     systemInstruction,

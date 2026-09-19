@@ -9,6 +9,11 @@ import {
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  isCapacitor,
+  syncGooglePlayPrices,
+  syncSubscriptionStatusOnBackend,
+} from "./google-play.functions";
 
 type Profile = {
   id: string;
@@ -219,6 +224,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.unsubscribe();
   }, []);
 
+  // Automatic background price re-scanning (Google Play) & subscription status verification
+  useEffect(() => {
+    if (isCapacitor()) {
+      syncGooglePlayPrices().catch((e) =>
+        console.warn("[Auth] Background Play Store price scan:", e),
+      );
+    }
+    if (session?.access_token) {
+      syncSubscriptionStatusOnBackend(session.access_token).catch((e) =>
+        console.warn("[Auth] Background subscription status check:", e),
+      );
+    }
+  }, [session?.access_token]);
+
   // Realtime auto-refresh when subscription or profile changes
   useEffect(() => {
     if (!user) return;
@@ -263,14 +282,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isUnlimited = isAdmin;
 
   // New logic: Weekly plan does NOT get AI Agent access. Only Monthly and Yearly (or manual enabled)
+  const rawPlan = subscription?.plan || null;
+  const plan = rawPlan ? rawPlan.replace("_cancelled", "") : null;
   const canAccessAI =
     isAdmin ||
     (isPremiumBase &&
-      subscription?.plan !== "weekly" &&
-      (subscription?.plan === "monthly" ||
-        subscription?.plan === "yearly" ||
-        subscription?.ai_agent_enabled ||
-        !subscription?.plan)); // Allow access if plan is missing but status is active (admin manual toggle)
+      plan !== "weekly" &&
+      (plan === "monthly" || plan === "yearly" || subscription?.ai_agent_enabled || !plan)); // Allow access if plan is missing but status is active (admin manual toggle)
 
   const value = useMemo(
     () => ({
