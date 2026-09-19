@@ -12,23 +12,44 @@ export function getApiUrl(path: string): string {
     return cleanPath;
   }
 
+  // 1. Variável de ambiente explícita VITE_API_BASE_URL (se configurada)
   let configuredBaseUrl = import.meta.env.VITE_API_BASE_URL;
-  if (configuredBaseUrl) {
+  if (configuredBaseUrl && typeof configuredBaseUrl === "string" && configuredBaseUrl.trim()) {
+    configuredBaseUrl = configuredBaseUrl.trim();
     if (configuredBaseUrl.endsWith("/")) {
       configuredBaseUrl = configuredBaseUrl.slice(0, -1);
     }
     return `${configuredBaseUrl}${cleanPath}`;
   }
 
-  let origin = window.location.origin;
-  if (origin && origin !== "null" && origin !== "file://") {
-    if (origin.endsWith("/")) {
-      origin = origin.slice(0, -1);
+  // 2. Detecção de ambiente Web vs Nativo (Capacitor / Android / iOS)
+  const origin = window.location.origin;
+  const isCapacitorLocal =
+    !origin ||
+    origin === "null" ||
+    origin === "file://" ||
+    origin.startsWith("file:") ||
+    origin.startsWith("capacitor:") ||
+    origin.startsWith("ionic:") ||
+    origin.startsWith("http-extension:") ||
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1");
+
+  // Se estiver rodando na Web normal em um domínio público (ex: *.run.app, *.lovable.app, etc.)
+  if (!isCapacitorLocal && origin) {
+    let cleanOrigin = origin;
+    if (cleanOrigin.endsWith("/")) {
+      cleanOrigin = cleanOrigin.slice(0, -1);
     }
-    return `${origin}${cleanPath}`;
+    return `${cleanOrigin}${cleanPath}`;
   }
 
-  return cleanPath;
+  // 3. Fallback no aplicativo Android / APK Nativo:
+  // Como o WebView local do celular não possui um servidor backend rodando na porta 80 do aparelho,
+  // direcionamos as chamadas para o backend na nuvem onde as APIs (/api/*) e Webhooks estão disponíveis.
+  const remoteProductionApi =
+    "https://ais-pre-ngxxvimnf4y47ehcqvxib7-112028348065.europe-west2.run.app";
+  return `${remoteProductionApi}${cleanPath}`;
 }
 
 export function isInstalledApp(): boolean {
