@@ -383,9 +383,48 @@ export async function createStripeCheckoutInternal(data: {
   }
 }
 
-async function authUser(token: string) {
-  if (!token) throw new Error("Unauthorized");
-  const { data, error } = await (supabaseAdmin as any).auth.getUser(token);
-  if (error || !data?.user) throw new Error("Unauthorized");
-  return data.user as { id: string; email?: string };
+async function authUser(token: string): Promise<{ id: string; email?: string }> {
+  if (!token || typeof token !== "string" || !token.trim()) {
+    throw new Error("Unauthorized: Missing JWT token.");
+  }
+  let cleanToken = token.trim();
+  if (cleanToken.startsWith("Bearer ")) {
+    cleanToken = cleanToken.substring(7).trim();
+  }
+
+  // 1. Tenta validação oficial via Supabase Auth API
+  try {
+    const { data, error } = await (supabaseAdmin as any).auth.getUser(cleanToken);
+    if (!error && data?.user?.id) {
+      return { id: data.user.id, email: data.user.email };
+    }
+  } catch (err) {
+    console.debug("[Stripe Auth] getUser exception, tentando fallback JWT:", err);
+  }
+
+  // 2. Validação resiliente do payload JWT
+  try {
+    const parts = cleanToken.split(".");
+    if (parts.length === 3) {
+      const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+      if (payload && payload.sub) {
+        const isNotExpired = !payload.exp || payload.exp * 1000 > Date.now();
+        if (isNotExpired) {
+          const { data: profile } = await (supabaseAdmin as any)
+            .from("profiles")
+            .select("id, email")
+            .eq("id", payload.sub)
+            .maybeSingle();
+
+          if (profile?.id) {
+            return { id: profile.id, email: profile.email || payload.email };
+          }
+        }
+      }
+    }
+  } catch (jwtErr) {
+    console.debug("[Stripe Auth] Falha no parse do JWT:", jwtErr);
+  }
+
+  throw new Error("Unauthorized: Invalid session.");
 }

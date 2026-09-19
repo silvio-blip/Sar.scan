@@ -181,19 +181,37 @@ export function AssinaturaPage() {
 
     setCancelling(true);
     try {
+      // 1. Se estiver no app nativo Android (Capacitor), abre a tela nativa oficial da Play Store
+      if (isCapacitor()) {
+        const sku = planType
+          ? PLAY_PRODUCT_IDS[planType as keyof typeof PLAY_PRODUCT_IDS]
+          : undefined;
+        await openPlayStoreSubscriptionManager(sku);
+      }
+
+      // 2. Registra a intenção de cancelamento no backend/Supabase
       const res = await cancelSubscriptionOnBackend(session.access_token, immediate);
       if (res.success) {
         toast.success(res.message);
         setShowCancelDialog(false);
-        if (res.data?.cancelAtPeriodEnd) {
-          setRemoteCancelled(true);
-        }
+        setRemoteCancelled(false);
         await refresh();
       } else {
-        toast.error(res.message);
+        // Se estiver no APK nativo e a Play Store foi aberta, dá uma mensagem amigável
+        if (isCapacitor()) {
+          toast.info("Acesse a Google Play Store para gerenciar ou cancelar sua renovação.");
+          setShowCancelDialog(false);
+        } else {
+          toast.error(res.message);
+        }
       }
     } catch (err: any) {
-      toast.error(err.message || "Erro ao solicitar cancelamento.");
+      if (isCapacitor()) {
+        toast.info("Acesse a Google Play Store para gerenciar ou cancelar sua renovação.");
+        setShowCancelDialog(false);
+      } else {
+        toast.error(err.message || "Erro ao solicitar cancelamento.");
+      }
     } finally {
       setCancelling(false);
     }

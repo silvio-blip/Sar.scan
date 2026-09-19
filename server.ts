@@ -360,8 +360,12 @@ O formato deve ser exatamente:
       });
       res.json(result);
     } catch (error: unknown) {
-      console.error("[Subscription Cancel Error]", error);
       const msg = error instanceof Error ? error.message : "Erro ao cancelar assinatura";
+      if (msg.startsWith("Unauthorized")) {
+        res.status(401).json({ error: msg });
+        return;
+      }
+      console.error("[Subscription Cancel Error]", error);
       res.status(500).json({ error: msg });
     }
   });
@@ -375,9 +379,13 @@ O formato deve ser exatamente:
       const result = await syncSubscriptionStatusInternal({ token });
       res.json(result);
     } catch (error: unknown) {
-      console.error("[Subscription Sync Error]", error);
       const msg =
         error instanceof Error ? error.message : "Erro ao sincronizar status da assinatura";
+      if (msg.startsWith("Unauthorized")) {
+        res.status(401).json({ error: msg });
+        return;
+      }
+      console.error("[Subscription Sync Error]", error);
       res.status(500).json({ error: msg });
     }
   });
@@ -391,8 +399,12 @@ O formato deve ser exatamente:
       const result = await reactivateSubscriptionInternal({ token });
       res.json(result);
     } catch (error: unknown) {
-      console.error("[Subscription Reactivate Error]", error);
       const msg = error instanceof Error ? error.message : "Erro ao reativar assinatura";
+      if (msg.startsWith("Unauthorized")) {
+        res.status(401).json({ error: msg });
+        return;
+      }
+      console.error("[Subscription Reactivate Error]", error);
       res.status(500).json({ error: msg });
     }
   });

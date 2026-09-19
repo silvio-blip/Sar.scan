@@ -1,6 +1,7 @@
 import { getApiUrl } from "./utils";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { NativePurchases, PURCHASE_TYPE, type Product } from "@capgo/native-purchases";
 
 /**
@@ -383,14 +384,23 @@ export async function restoreGooglePlayPurchases(
 /**
  * Abre a página oficial de gerenciamento de assinaturas da Google Play Store no dispositivo do usuário.
  */
-export function openPlayStoreSubscriptionManager(sku?: string) {
+export async function openPlayStoreSubscriptionManager(sku?: string) {
   const packageName = "com.sarscan.new";
   const url = sku
     ? `https://play.google.com/store/account/subscriptions?sku=${sku}&package=${packageName}`
     : `https://play.google.com/store/account/subscriptions?package=${packageName}`;
 
+  if (isCapacitor()) {
+    try {
+      await Browser.open({ url });
+      return;
+    } catch (e) {
+      console.warn("[Play IAP] Falha ao abrir com Browser.open:", e);
+    }
+  }
+
   if (typeof window !== "undefined") {
-    window.location.href = url;
+    window.open(url, "_blank");
   }
 }
 
