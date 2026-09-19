@@ -5,29 +5,59 @@ import { getAppSettings } from "./settings.server.js";
 
 let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = null;
 
-async function loadKeys() {
-  const settings = await getAppSettings();
-  const secret =
+function cleanKey(val: string | undefined | null): string {
+  if (!val) return "";
+  let s = val.trim();
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim();
+  }
+  return s;
+}
+
+async function loadKeys(forceRefresh = false) {
+  const settings = await getAppSettings(forceRefresh);
+  const secret = cleanKey(
     settings.stripe_secret_key ||
-    settings.STRIPE_SECRET_KEY ||
-    settings.stripeSecretKey ||
-    process.env.STRIPE_SECRET_KEY ||
-    "";
-  if (!secret) throw new Error("stripe_secret_key not set in app_settings or environment");
-  return {
-    secret,
-    webhookSecret:
-      settings.stripe_webhook_secret ||
+      settings.STRIPE_SECRET_KEY ||
+      settings.stripeSecretKey ||
+      settings.stripe_key ||
+      settings.STRIPE_KEY ||
+      settings.stripe_secret ||
+      settings.STRIPE_SECRET ||
+      process.env.STRIPE_SECRET_KEY ||
+      "",
+  );
+  const webhookSecret = cleanKey(
+    settings.stripe_webhook_secret ||
       settings.STRIPE_WEBHOOK_SECRET ||
       settings.stripeWebhookSecret ||
       process.env.STRIPE_WEBHOOK_SECRET ||
       "",
-  };
+  );
+
+  if (!secret) {
+    throw new Error(
+      "Chave secreta da Stripe (stripe_secret_key) não encontrada na tabela app_settings ou variáveis de ambiente.",
+    );
+  }
+  return { secret, webhookSecret };
 }
 
-export async function getStripe() {
-  if (_cached) return _cached;
-  const { secret, webhookSecret } = await loadKeys();
+export async function getStripe(forceRefresh = false) {
+  const { secret, webhookSecret } = await loadKeys(forceRefresh);
+
+  if (
+    _cached &&
+    _cached.secret === secret &&
+    _cached.webhookSecret === webhookSecret &&
+    !forceRefresh
+  ) {
+    return _cached;
+  }
+
+  console.log(
+    `[Stripe Server] Inicializando cliente Stripe com a chave do banco (${secret.slice(0, 8)}...${secret.slice(-4)})`,
+  );
   const stripe = new Stripe(secret, { apiVersion: "2024-12-18.acacia" as any });
   _cached = { stripe, secret, webhookSecret };
   return _cached;
@@ -243,9 +273,9 @@ async function ensureValidCustomer(
       {
         user_id: user.id,
         stripe_customer_id: customerId,
-        payment_provider: "stripe",
         status: "free",
         scans_credits: 0,
+        updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
     );

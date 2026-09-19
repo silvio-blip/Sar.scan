@@ -55,7 +55,6 @@ export async function handleStripeWebhook(payload: string, signature: string | n
             status: initialStatus,
             plan: planId,
             scans_credits: newTotal,
-            payment_provider: "stripe",
             stripe_customer_id: s.customer,
             stripe_subscription_id: s.subscription,
             ai_agent_enabled: planId === "monthly" || planId === "yearly",

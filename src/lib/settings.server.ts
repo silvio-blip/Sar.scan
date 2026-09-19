@@ -10,11 +10,16 @@ export type AppSettings = {
 
 let _settingsCache: AppSettings | null = null;
 let _lastFetch = 0;
-const CACHE_TTL = 60 * 1000; // 1 minute
+const CACHE_TTL = 5 * 1000; // 5 seconds for rapid updates
 
-export async function getAppSettings(): Promise<AppSettings> {
+export function invalidateSettingsCache() {
+  _settingsCache = null;
+  _lastFetch = 0;
+}
+
+export async function getAppSettings(forceRefresh = false): Promise<AppSettings> {
   const now = Date.now();
-  if (_settingsCache && now - _lastFetch < CACHE_TTL) {
+  if (!forceRefresh && _settingsCache && now - _lastFetch < CACHE_TTL) {
     return _settingsCache;
   }
 
@@ -42,13 +47,22 @@ export async function getAppSettings(): Promise<AppSettings> {
       return (_settingsCache || {}) as AppSettings;
     }
 
+    const cleanVal = (v: any) => {
+      if (v === null || v === undefined) return "";
+      let s = typeof v === "string" ? v.trim() : String(v).trim();
+      if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        s = s.slice(1, -1).trim();
+      }
+      return s;
+    };
+
     const settings: AppSettings = {};
     if (data && Array.isArray(data)) {
       console.log(`[Settings] Sucesso na query, retornou ${data.length} linhas.`);
       for (const row of data) {
         // Formato 1: Tabela Chave-Valor (key, value)
         if (row.key !== undefined && row.value !== undefined && row.key !== null) {
-          const valStr = typeof row.value === "string" ? row.value.trim() : String(row.value);
+          const valStr = cleanVal(row.value);
           const keyStr = String(row.key).trim();
           settings[keyStr] = valStr;
           settings[keyStr.toLowerCase()] = valStr;
@@ -63,7 +77,7 @@ export async function getAppSettings(): Promise<AppSettings> {
             colVal !== undefined &&
             !["id", "created_at", "updated_at", "key", "value"].includes(colKey)
           ) {
-            const valStr = typeof colVal === "string" ? colVal.trim() : String(colVal);
+            const valStr = cleanVal(colVal);
             settings[colKey] = valStr;
             settings[colKey.toLowerCase()] = valStr;
             settings[colKey.toUpperCase()] = valStr;

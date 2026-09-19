@@ -46,6 +46,7 @@ export function AssinaturaPage() {
   const [cancelling, setCancelling] = useState(false);
   const [reactivating, setReactivating] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [remoteCancelled, setRemoteCancelled] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [playPrices, setPlayPrices] = useState<Record<string, PlayProductDetails>>(() =>
     getStoredPlayPrices(),
@@ -77,7 +78,12 @@ export function AssinaturaPage() {
     if (session?.access_token) {
       setSyncing(true);
       syncSubscriptionStatusOnBackend(session.access_token)
-        .then(() => refresh())
+        .then((res) => {
+          if (res?.data?.isCancelled) {
+            setRemoteCancelled(true);
+          }
+          return refresh();
+        })
         .catch((err) => {
           console.debug("[Assinatura] Falha silenciosa ao sincronizar:", err);
         })
@@ -97,7 +103,9 @@ export function AssinaturaPage() {
   const rawPlan = subscription?.plan || null;
   const planType = rawPlan ? rawPlan.replace("_cancelled", "") : null;
   const isCancelled = Boolean(
-    (subscription as any)?.cancel_at_period_end || rawPlan?.includes("cancelled"),
+    remoteCancelled ||
+    (subscription as any)?.cancel_at_period_end ||
+    rawPlan?.includes("cancelled"),
   );
 
   // Informações amigáveis do plano
@@ -177,6 +185,9 @@ export function AssinaturaPage() {
       if (res.success) {
         toast.success(res.message);
         setShowCancelDialog(false);
+        if (res.data?.cancelAtPeriodEnd) {
+          setRemoteCancelled(true);
+        }
         await refresh();
       } else {
         toast.error(res.message);
@@ -200,6 +211,7 @@ export function AssinaturaPage() {
       const res = await reactivateSubscriptionOnBackend(session.access_token);
       if (res.success) {
         toast.success(res.message);
+        setRemoteCancelled(false);
         await refresh();
       } else {
         toast.error(res.message);

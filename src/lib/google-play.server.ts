@@ -190,9 +190,6 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "monthly",
           scans_credits: newTotal,
           ai_agent_enabled: true,
-          payment_provider: "google_play",
-          play_purchase_token: data.purchaseToken,
-          play_product_id: data.productId,
           current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -227,9 +224,6 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "weekly",
           scans_credits: newTotal,
           ai_agent_enabled: false,
-          payment_provider: "google_play",
-          play_purchase_token: data.purchaseToken,
-          play_product_id: data.productId,
           current_period_end: new Date(Date.now() + 7 * 86400000).toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -264,9 +258,6 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "yearly",
           scans_credits: newTotal,
           ai_agent_enabled: true,
-          payment_provider: "google_play",
-          play_purchase_token: data.purchaseToken,
-          play_product_id: data.productId,
           current_period_end: new Date(Date.now() + 365 * 86400000).toISOString(),
           updated_at: new Date().toISOString(),
         },
@@ -442,9 +433,10 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     }
   }
 
-  // 3. Atualiza os dados no Supabase
-  let updatedStatus = currentSub.status;
-  let updatedPlan = currentSub.plan ? currentSub.plan.replace("_cancelled", "") : "monthly";
+  // 3. Atualiza os dados no Supabase respeitando as restrições da tabela
+  let updatedStatus = currentSub.status || "active";
+  const rawPlan = currentSub.plan ? currentSub.plan.replace("_cancelled", "") : "monthly";
+  let updatedPlan: string | null = rawPlan;
   let updatedAi = currentSub.ai_agent_enabled;
   let updatedTrialEnd = currentSub.trial_end;
 
@@ -454,7 +446,9 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     updatedAi = false;
     updatedTrialEnd = null;
   } else {
-    updatedTrialEnd = "cancelled";
+    // Para cancelamento ao final do período, mantém o plano original ('monthly'|'weekly'|'yearly')
+    // e o término de período válido para cumprir o check constraint subscriptions_plan_check
+    updatedPlan = ["monthly", "weekly", "yearly"].includes(rawPlan) ? rawPlan : "monthly";
   }
 
   const { data: updatedSub, error: updateError } = await (supabaseAdmin as any)
