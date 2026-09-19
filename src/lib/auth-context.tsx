@@ -75,35 +75,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       let typedSub = sub as Subscription | null;
 
-      // 1. Novo utilizador logado pela primeira vez: conceder 7 dias grátis com 30 scans
+      // 1. Novo utilizador logado pela primeira vez: criar registro gratuito
       if (!typedSub) {
-        console.log("[Auth] Novo utilizador detectado. Concedendo 7 dias grátis com 30 scans...");
-        const trialEnd = new Date();
-        trialEnd.setDate(trialEnd.getDate() + 7);
-        const initialTrialSub = {
+        console.log(
+          "[Auth] Novo utilizador detectado. Criando conta inicial gratuita (3 scans diários)...",
+        );
+        const initialFreeSub = {
           user_id: uid,
-          status: "trialing",
-          trial_end: trialEnd.toISOString(),
-          plan: "trial",
-          ai_agent_enabled: true,
-          scans_credits: 30,
+          status: "free",
+          trial_end: null,
+          plan: null,
+          ai_agent_enabled: false,
+          scans_credits: 3,
         };
 
         try {
           const { data: created, error: createErr } = await supabase
             .from("subscriptions")
-            .upsert(initialTrialSub)
+            .upsert(initialFreeSub)
             .select("status, trial_end, current_period_end, plan, scans_credits, ai_agent_enabled")
             .single();
 
           if (!createErr && created) {
             typedSub = created as Subscription;
           } else {
-            typedSub = initialTrialSub as Subscription;
+            typedSub = initialFreeSub as Subscription;
           }
         } catch (initErr) {
-          console.error("[Auth] Erro ao criar trial inicial:", initErr);
-          typedSub = initialTrialSub as Subscription;
+          console.error("[Auth] Erro ao criar registro inicial:", initErr);
+          typedSub = initialFreeSub as Subscription;
         }
       }
 

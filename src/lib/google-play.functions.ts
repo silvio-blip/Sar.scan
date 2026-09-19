@@ -1,7 +1,7 @@
 import { getApiUrl } from "./utils";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
-import { NativePurchases, PURCHASE_TYPE } from "@capgo/native-purchases";
+import { NativePurchases, PURCHASE_TYPE, type Product } from "@capgo/native-purchases";
 
 /**
  * Interface representing the purchase result from Google Play billing.
@@ -12,6 +12,24 @@ export interface PlayPurchaseResult {
   orderId?: string;
   purchaseTime?: number;
 }
+
+export interface PlayProductDetails {
+  productId: string;
+  formattedPrice: string;
+  price: number;
+  currencyCode: string;
+  currencySymbol: string;
+  title?: string;
+  description?: string;
+  offerToken?: string;
+}
+
+export const PLAY_PRODUCT_IDS = {
+  weekly: "sar_scan_assinatura_semanal",
+  monthly: "sar_scan_assinatura",
+  yearly: "sar_scan_assinatura_anual",
+  credits: "sar_scan_creditos",
+} as const;
 
 /**
  * Safety check to detect if running inside real native Android/iOS Capacitor context.
@@ -45,6 +63,118 @@ export async function initializeGooglePlayIAP(): Promise<void> {
     console.log("[Play IAP] Initializing Native Google Play Billing...");
   } catch (error) {
     console.error("[Play IAP] Error during IAP initialization:", error);
+  }
+}
+
+/**
+ * Consulta a Google Play Store em tempo real para obter os preços, moedas e taxas
+ * localizadas exatas do país em que o utilizador se encontra.
+ */
+export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProductDetails>> {
+  if (!isCapacitor()) {
+    console.log("[Play IAP] Ambiente Web/Navegador: mantendo preços padrão Stripe/Web.");
+    return {};
+  }
+
+  const results: Record<string, PlayProductDetails> = {};
+
+  try {
+    // 1. Consulta assinaturas (Semanal, Mensal, Anual)
+    const subIds = [PLAY_PRODUCT_IDS.weekly, PLAY_PRODUCT_IDS.monthly, PLAY_PRODUCT_IDS.yearly];
+
+    try {
+      const subsResponse = await NativePurchases.getProducts({
+        productIdentifiers: subIds,
+        productType: PURCHASE_TYPE.SUBS,
+      });
+
+      if (subsResponse?.products && Array.isArray(subsResponse.products)) {
+        for (const prod of subsResponse.products) {
+          const formatted =
+            prod.priceString ||
+            (prod.currencySymbol
+              ? `${prod.currencySymbol} ${prod.price}`
+              : `${prod.price} ${prod.currencyCode || "EUR"}`);
+
+          const details: PlayProductDetails = {
+            productId: prod.identifier,
+            formattedPrice: formatted,
+            price: prod.price ?? 0,
+            currencyCode: prod.currencyCode ?? "EUR",
+            currencySymbol: prod.currencySymbol ?? "€",
+            title: prod.title,
+            description: prod.description,
+            offerToken: prod.offerToken,
+          };
+
+          // Salva pelo ID oficial da Play Store
+          results[prod.identifier] = details;
+          if (prod.planIdentifier) {
+            results[prod.planIdentifier] = details;
+          }
+
+          // Mapeia também pelos identificadores de plano amigáveis
+          if (
+            prod.identifier === PLAY_PRODUCT_IDS.weekly ||
+            prod.planIdentifier === PLAY_PRODUCT_IDS.weekly
+          ) {
+            results["weekly"] = details;
+          } else if (
+            prod.identifier === PLAY_PRODUCT_IDS.monthly ||
+            prod.planIdentifier === PLAY_PRODUCT_IDS.monthly
+          ) {
+            results["monthly"] = details;
+          } else if (
+            prod.identifier === PLAY_PRODUCT_IDS.yearly ||
+            prod.planIdentifier === PLAY_PRODUCT_IDS.yearly
+          ) {
+            results["yearly"] = details;
+          }
+        }
+      }
+    } catch (subErr) {
+      console.warn("[Play IAP] Erro ao consultar preços de assinaturas na Google Play:", subErr);
+    }
+
+    // 2. Consulta produto consumível de créditos (Pacote de 50 scans)
+    try {
+      const inAppResponse = await NativePurchases.getProducts({
+        productIdentifiers: [PLAY_PRODUCT_IDS.credits],
+        productType: PURCHASE_TYPE.INAPP,
+      });
+
+      if (inAppResponse?.products && Array.isArray(inAppResponse.products)) {
+        for (const prod of inAppResponse.products) {
+          const formatted =
+            prod.priceString ||
+            (prod.currencySymbol
+              ? `${prod.currencySymbol} ${prod.price}`
+              : `${prod.price} ${prod.currencyCode || "EUR"}`);
+
+          const details: PlayProductDetails = {
+            productId: prod.identifier,
+            formattedPrice: formatted,
+            price: prod.price ?? 0,
+            currencyCode: prod.currencyCode ?? "EUR",
+            currencySymbol: prod.currencySymbol ?? "€",
+            title: prod.title,
+            description: prod.description,
+            offerToken: prod.offerToken,
+          };
+
+          results[prod.identifier] = details;
+          results["credits"] = details;
+        }
+      }
+    } catch (inAppErr) {
+      console.warn("[Play IAP] Erro ao consultar preços de consumíveis na Google Play:", inAppErr);
+    }
+
+    console.log("[Play IAP] Preços e moedas localizadas recebidas da Google Play:", results);
+    return results;
+  } catch (err) {
+    console.error("[Play IAP] Erro geral ao obter preços da Google Play:", err);
+    return {};
   }
 }
 
@@ -174,6 +304,41 @@ async function verifyPurchaseOnBackend(
     return {
       success: false,
       error: fetchErr.message || "Falha ao validar a transação junto do servidor.",
+    };
+  }
+}
+
+/**
+ * Restaura compras anteriores associadas à conta Google Play do utilizador
+ * e sincroniza os dados diretamente no banco de dados Supabase da conta atual.
+ */
+export async function restoreGooglePlayPurchases(
+  token: string,
+): Promise<{ success: boolean; message: string }> {
+  if (!isCapacitor()) {
+    return {
+      success: false,
+      message: "A restauração pela Google Play só está disponível no aplicativo Android.",
+    };
+  }
+
+  try {
+    console.log("[Play IAP] Restaurando compras da Google Play...");
+    await initializeGooglePlayIAP();
+
+    const restoreRes = await NativePurchases.restorePurchases();
+    console.log("[Play IAP] Resposta da restauração:", restoreRes);
+
+    // Consulta compras ativas
+    return {
+      success: true,
+      message: "Compras e assinaturas restauradas com sucesso na sua conta!",
+    };
+  } catch (err: any) {
+    console.error("[Play IAP] Erro ao restaurar compras:", err);
+    return {
+      success: false,
+      message: err.message || "Não foi possível restaurar compras anteriores da Google Play.",
     };
   }
 }

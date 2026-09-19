@@ -1,12 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { createStripeCheckout, syncStripePlans } from "@/lib/stripe.functions";
 import {
   initializeGooglePlayIAP,
   requestGooglePlayPurchase,
+  fetchGooglePlayPrices,
+  restoreGooglePlayPurchases,
+  PLAY_PRODUCT_IDS,
+  type PlayProductDetails,
   isCapacitor,
 } from "@/lib/google-play.functions";
+
 import { isInstalledApp } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -29,10 +34,10 @@ import {
   Zap,
   ShieldQuestion,
   CreditCard,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Dialog,
@@ -133,14 +138,104 @@ export function PremiumPage() {
   const [purchasedPlan, setPurchasedPlan] = useState<PlanDef | null>(null);
   const [confirmingPlan, setConfirmingPlan] = useState<PlanDef | null>(null);
   const [showExternalRedirectOverlay, setShowExternalRedirectOverlay] = useState(false);
+  const [playPrices, setPlayPrices] = useState<Record<string, PlayProductDetails>>({});
+  const [loadingPlayPrices, setLoadingPlayPrices] = useState(false);
+  const [restoringPurchases, setRestoringPurchases] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Consulta preços em tempo real da Google Play Store quando dentro do aplicativo instalado
+
+  useEffect(() => {
+    if (isCapacitor()) {
+      setLoadingPlayPrices(true);
+      initializeGooglePlayIAP()
+        .then(() => fetchGooglePlayPrices())
+        .then((prices) => {
+          if (prices && Object.keys(prices).length > 0) {
+            setPlayPrices(prices);
+          }
+        })
+        .catch((err) => {
+          console.warn("[PremiumPage] Não foi possível obter preços da Play Store:", err);
+        })
+        .finally(() => {
+          setLoadingPlayPrices(false);
+        });
+    }
+  }, []);
+
+  // Adapta os planos com os preços da Google Play Store ou mantém o padrão Web / Stripe
+  const displayPlans = useMemo(() => {
+    return PLANS.map((p) => {
+      const playInfo = playPrices[p.id] || playPrices[PLAY_PRODUCT_IDS[p.id]];
+      if (isCapacitor() && playInfo && playInfo.formattedPrice) {
+        return {
+          ...p,
+          price: playInfo.formattedPrice,
+          priceNum: playInfo.price,
+        };
+      }
+      return p;
+    });
+  }, [playPrices]);
+
+  // Preço localizado do pacote de 50 scans (consumível)
+  const displayCreditsPrice = useMemo(() => {
+    const playInfo = playPrices["credits"] || playPrices[PLAY_PRODUCT_IDS.credits];
+    if (isCapacitor() && playInfo && playInfo.formattedPrice) {
+      return playInfo.formattedPrice;
+    }
+    return "€9,99";
+  }, [playPrices]);
+
+  // Verifica se o usuário possui alguma assinatura ativa no momento
+  const hasActiveSubscription = useMemo(() => {
+    return Boolean(
+      subscription &&
+      (subscription.status === "active" ||
+        (subscription.status === "trialing" &&
+          subscription.trial_end &&
+          new Date(subscription.trial_end) > new Date())),
+    );
+  }, [subscription]);
+
+  // ID do plano atualmente ativo
+  const activePlanId = useMemo(() => {
+    if (!hasActiveSubscription || !subscription?.plan) return null;
+    return subscription.plan as PlanId;
+  }, [hasActiveSubscription, subscription?.plan]);
+
+  // Verifica se o usuário já utilizou o teste grátis ou já fez alguma compra
+  const hasUsedTrial = useMemo(() => {
+    if (!user) return false;
+    const hasDbTrial = Boolean(
+      subscription &&
+      (subscription.status === "active" ||
+        subscription.status === "expired" ||
+        Boolean(subscription.trial_end) ||
+        (subscription.plan !== null &&
+          subscription.plan !== undefined &&
+          subscription.plan !== "free")),
+    );
+    const hasLocalTrial = localStorage.getItem(`sar_trial_used_${user.id}`) === "true";
+    return hasDbTrial || hasLocalTrial;
+  }, [user, subscription]);
+
+  // Elegível para teste grátis apenas se nunca usou teste, não tem assinatura ativa e não é premium
+  const isEligibleForTrial = !hasUsedTrial && !hasActiveSubscription && !isPremium;
 
   const activateFreeTrial = async (planId?: PlanId) => {
     if (!user) {
       toast.error("Por favor, faça autenticação antes de ativar o teste.");
       return;
     }
+
+    if (hasUsedTrial) {
+      toast.error("Você já utilizou o seu teste gratuito de 7 dias.");
+      return;
+    }
+
     const chosenPlan = planId || "monthly";
     setLoading(chosenPlan);
     try {
@@ -158,10 +253,16 @@ export function PremiumPage() {
 
       if (error) throw error;
 
+      // Grava no armazenamento local que o trial já foi utilizado por este utilizador
+      localStorage.setItem(`sar_trial_used_${user.id}`, "true");
+
       toast.success("Teste grátis de 7 dias ativado! Você recebeu 30 scans gratuitos.");
       if (refresh) await refresh();
 
-      const likelyPlan = { ...(PLANS.find((p) => p.id === chosenPlan)! || PLANS[1]), scans: 30 };
+      const likelyPlan = {
+        ...(displayPlans.find((p) => p.id === chosenPlan)! || displayPlans[1]),
+        scans: 30,
+      };
       setPurchasedPlan(likelyPlan);
       setShowSuccessModal(true);
     } catch (e: any) {
@@ -236,8 +337,12 @@ export function PremiumPage() {
     if (success) {
       // Find what plan we bought from URL first, then fallback to state
       const likelyPlanId = planFromUrl || selected;
-      const likelyPlan = PLANS.find((p) => p.id === likelyPlanId) || PLANS[1];
+      const likelyPlan = displayPlans.find((p) => p.id === likelyPlanId) || displayPlans[1];
       setPurchasedPlan(likelyPlan);
+
+      if (user?.id) {
+        localStorage.setItem(`sar_trial_used_${user.id}`, "true");
+      }
 
       if (refresh) refresh();
 
@@ -257,18 +362,22 @@ export function PremiumPage() {
       setShowCancelModal(true);
       navigate({ to: "/premium", search: {}, replace: true });
     }
-  }, [location.search, refresh, navigate, selected]);
+  }, [location.search, refresh, navigate, selected, user, displayPlans]);
 
-  const current = PLANS.find((p) => p.id === selected)!;
+  const current = displayPlans.find((p) => p.id === selected)!;
   const [buyingCredits, setBuyingCredits] = useState(false);
-
-  useEffect(() => {
-    initializeGooglePlayIAP().catch(console.error);
-  }, []);
 
   const startCheckout = async (planId: PlanId, trial = false) => {
     if (!user || !session?.access_token) {
       toast.error("Por favor, faça autenticação antes de prosseguir com a compra.");
+      return;
+    }
+
+    // Se o usuário já possui exatamente este plano ativo, bloqueia compra duplicada
+    if (hasActiveSubscription && activePlanId === planId) {
+      toast.info(
+        `Você já possui o plano ${displayPlans.find((p) => p.id === planId)?.label || planId} ativo!`,
+      );
       return;
     }
 
@@ -277,17 +386,18 @@ export function PremiumPage() {
       if (isCapacitor()) {
         const playProductId =
           planId === "weekly"
-            ? "sar_scan_assinatura_semanal"
+            ? PLAY_PRODUCT_IDS.weekly
             : planId === "yearly"
-              ? "sar_scan_assinatura_anual"
-              : "sar_scan_assinatura";
+              ? PLAY_PRODUCT_IDS.yearly
+              : PLAY_PRODUCT_IDS.monthly;
 
         // Invoca a Bottom Sheet oficial da Google Play Store no celular
         const res = await requestGooglePlayPurchase(playProductId, session.access_token);
         if (res.success) {
+          localStorage.setItem(`sar_trial_used_${user.id}`, "true");
           toast.success("Assinatura ativada com sucesso pela Google Play!");
           if (refresh) await refresh();
-          const planDef = PLANS.find((p) => p.id === planId) || PLANS[1];
+          const planDef = displayPlans.find((p) => p.id === planId) || displayPlans[1];
           setPurchasedPlan(planDef);
           setShowSuccessModal(true);
         } else {
@@ -324,15 +434,16 @@ export function PremiumPage() {
     setBuyingCredits(true);
     try {
       if (isCapacitor()) {
-        // Invoca a Bottom Sheet oficial da Google Play Store para o pacote de 50 scans
-        const res = await requestGooglePlayPurchase("sar_scan_creditos", session.access_token);
+        // Invoca a Bottom Sheet oficial da Google Play Store para o pacote de 50 scans (consumível)
+        const res = await requestGooglePlayPurchase(PLAY_PRODUCT_IDS.credits, session.access_token);
         if (res.success) {
+          localStorage.setItem(`sar_trial_used_${user.id}`, "true");
           toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");
           if (refresh) await refresh();
           setPurchasedPlan({
             id: "monthly",
             label: "50 Scans",
-            price: "€9,99",
+            price: displayCreditsPrice,
             priceNum: 9.99,
             cycle: "único",
             scans: 50,
@@ -382,6 +493,30 @@ export function PremiumPage() {
     }
   };
 
+  const handlePlanAction = (p: PlanDef) => {
+    if (loading) return;
+
+    // Se é exatamente o plano ativo atual, avisa o usuário e não deixa assinar novamente
+    if (hasActiveSubscription && activePlanId === p.id) {
+      const expirationDate = subscription?.current_period_end || subscription?.trial_end;
+      const formattedDate = expirationDate
+        ? new Date(expirationDate).toLocaleDateString("pt-PT")
+        : "";
+      toast.info(
+        `Você já possui o plano ${p.label} ativo${formattedDate ? ` até ${formattedDate}` : ""}.`,
+      );
+      return;
+    }
+
+    // Só mostra o modal de 7 dias se o usuário for elegível (primeira vez absoluta)
+    if (isEligibleForTrial && p.trialDays > 0) {
+      setConfirmingPlan(p);
+    } else {
+      // Caso contrário (já comprou, já usou teste ou está alterando plano), abre o checkout direto
+      startCheckout(p.id, false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-col items-center text-center gap-6 pt-8">
@@ -400,14 +535,17 @@ export function PremiumPage() {
           </p>
         </div>
 
-        {!isPremium && (
+        {isEligibleForTrial && (
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             className="w-full max-w-sm"
           >
             <Button
-              onClick={() => activateFreeTrial()} // Activate trial directly
+              onClick={() => {
+                const monthlyPlan = displayPlans.find((p) => p.id === "monthly") || displayPlans[0];
+                setConfirmingPlan(monthlyPlan);
+              }}
               className="w-full h-16 rounded-full bg-gradient-to-r from-zinc-100 to-white text-black hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-black flex flex-col items-center justify-center gap-0 shadow-[0_20px_50px_rgba(255,255,255,0.15)] ring-1 ring-white/50 group"
             >
               <div className="flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -422,7 +560,7 @@ export function PremiumPage() {
         )}
       </div>
 
-      {isPremium && (
+      {hasActiveSubscription && (
         <div className="bg-secondary/40 rounded-[32px] p-6 border border-border flex items-center gap-5 shadow-sm relative overflow-hidden group">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.02] to-transparent" />
           <div className="size-16 rounded-[24px] bg-primary text-primary-foreground flex items-center justify-center shadow-md relative z-10 transition-transform group-hover:scale-105 shrink-0">
@@ -436,44 +574,76 @@ export function PremiumPage() {
               Ativa <div className="size-2 rounded-full bg-emerald-600 animate-pulse" />
             </div>
             <div className="text-xs text-muted-foreground font-semibold mt-1">
-              Plano {subscription?.plan || "Premium"} · {subscription?.scans_credits} créditos
+              Plano{" "}
+              {subscription?.plan
+                ? displayPlans.find((p) => p.id === subscription.plan)?.label || subscription.plan
+                : "Premium"}{" "}
+              · {subscription?.scans_credits ?? 0} créditos
+              {subscription?.current_period_end && (
+                <span className="block text-[11px] text-muted-foreground/80 mt-0.5">
+                  Válido até {new Date(subscription.current_period_end).toLocaleDateString("pt-PT")}
+                </span>
+              )}
             </div>
           </div>
         </div>
       )}
 
       <div className="flex flex-col gap-4">
-        <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-          Escolha sua jornada
-        </h2>
+        <div className="flex items-center justify-between px-1">
+          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+            Escolha sua jornada
+          </h2>
+          {isCapacitor() && (
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground/70 bg-secondary/50 px-2.5 py-1 rounded-full border border-border/50">
+              <Globe className="size-3 text-primary" />
+              <span>Google Play Store (Moeda Local)</span>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 gap-3">
-          {PLANS.map((p) => {
+          {displayPlans.map((p) => {
             const active = selected === p.id;
+            const isCurrentActivePlan = hasActiveSubscription && activePlanId === p.id;
+
             return (
               <div
                 key={p.id}
                 onClick={() => {
                   if (loading) return;
-                  console.log("[PremiumPage] Card clicked:", p.id);
                   if (selected !== p.id) {
                     setSelected(p.id);
                   }
                 }}
                 className={`group relative cursor-pointer overflow-hidden rounded-[32px] border p-6 text-left transition-all duration-500 w-full ${
-                  active
-                    ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20"
-                    : "border-border bg-card hover:bg-secondary/40"
+                  isCurrentActivePlan
+                    ? "border-emerald-500/40 bg-emerald-500/5 shadow-sm ring-1 ring-emerald-500/30"
+                    : active
+                      ? "border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20"
+                      : "border-border bg-card hover:bg-secondary/40"
                 }`}
               >
-                {p.badge && (
+                {isCurrentActivePlan ? (
+                  <span className="absolute top-0 right-0 rounded-bl-[16px] bg-emerald-600 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-sm font-sans">
+                    Plano Ativo
+                  </span>
+                ) : p.badge ? (
                   <span className="absolute top-0 right-0 rounded-bl-[16px] bg-accent px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-sm font-sans">
                     {p.badge}
                   </span>
-                )}
+                ) : null}
+
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div
-                      className={`text-xs font-black uppercase tracking-tighter ${active ? "text-primary font-bold" : "text-muted-foreground"}`}
+                      className={`text-xs font-black uppercase tracking-tighter ${
+                        isCurrentActivePlan
+                          ? "text-emerald-400 font-bold"
+                          : active
+                            ? "text-primary font-bold"
+                            : "text-muted-foreground"
+                      }`}
                     >
                       {p.label}
                     </div>
@@ -484,11 +654,15 @@ export function PremiumPage() {
                       <span className="text-xs font-medium text-muted-foreground">{p.cycle}</span>
                     </div>
                   </div>
-                  {active && (
+                  {isCurrentActivePlan ? (
+                    <div className="size-8 rounded-full bg-emerald-600 flex items-center justify-center shadow-sm text-white">
+                      <Check className="size-5" strokeWidth={4} />
+                    </div>
+                  ) : active ? (
                     <div className="size-8 rounded-full bg-primary flex items-center justify-center shadow-sm text-primary-foreground">
                       <Check className="size-5" strokeWidth={4} />
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="grid grid-cols-2 gap-y-2 gap-x-4 mb-4">
@@ -497,7 +671,9 @@ export function PremiumPage() {
                       key={pk}
                       className="flex items-center gap-2 text-[11px] font-medium text-foreground/85"
                     >
-                      <div className="size-1.5 rounded-full bg-primary/40" />
+                      <div
+                        className={`size-1.5 rounded-full ${isCurrentActivePlan ? "bg-emerald-500" : "bg-primary/40"}`}
+                      />
                       <span className="line-clamp-1">{pk}</span>
                     </div>
                   ))}
@@ -505,35 +681,47 @@ export function PremiumPage() {
 
                 <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
                   <span className="text-xs text-muted-foreground font-medium">
-                    {p.trialDays} dias grátis · Cancele quando quiser
+                    {isCurrentActivePlan
+                      ? subscription?.current_period_end
+                        ? `Válido até ${new Date(subscription.current_period_end).toLocaleDateString("pt-PT")}`
+                        : "Assinatura ativa"
+                      : isEligibleForTrial && p.trialDays > 0
+                        ? `${p.trialDays} dias grátis · Cancele quando quiser`
+                        : "Renovação automática · Cancele quando quiser"}
                   </span>
-                  <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (loading) return;
-                      const hasActivePlan =
-                        subscription &&
-                        (subscription.status === "active" || subscription.status === "trialing");
 
-                      if (!hasActivePlan && p.trialDays) {
-                        setConfirmingPlan(p);
-                      } else {
-                        startCheckout(p.id, false);
-                      }
-                    }}
-                    disabled={loading === p.id}
-                    className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-sm ${
-                      active
-                        ? "bg-primary text-primary-foreground hover:bg-primary/95"
-                        : "bg-secondary text-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {loading === p.id ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      "Assinar Agora"
-                    )}
-                  </Button>
+                  {isCurrentActivePlan ? (
+                    <Button
+                      disabled
+                      className="h-11 px-6 rounded-full font-black text-[11px] uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 cursor-not-allowed opacity-90"
+                    >
+                      <Check className="size-4 mr-1.5 text-emerald-400" />
+                      Plano Atual
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlanAction(p);
+                      }}
+                      disabled={loading === p.id}
+                      className={`h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider transition-all duration-300 shadow-sm ${
+                        active
+                          ? "bg-primary text-primary-foreground hover:bg-primary/95"
+                          : "bg-secondary text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {loading === p.id ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : hasActiveSubscription ? (
+                        "Mudar de Plano"
+                      ) : isEligibleForTrial && p.trialDays > 0 ? (
+                        "Testar 7 Dias"
+                      ) : (
+                        "Assinar Agora"
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -553,7 +741,7 @@ export function PremiumPage() {
               </div>
               <div className="mt-1 flex items-baseline gap-1">
                 <span className="text-3xl font-display font-black tracking-tighter text-foreground">
-                  €9,99
+                  {displayCreditsPrice}
                 </span>
                 <span className="text-xs font-medium text-muted-foreground">/ pagamento único</span>
               </div>
@@ -626,11 +814,50 @@ export function PremiumPage() {
         </div>
       </div>
 
+      {/* Opção para restaurar compras existentes da Google Play / Stripe */}
+      <div className="flex flex-col items-center justify-center gap-2 pt-2">
+        <Button
+          variant="ghost"
+          disabled={restoringPurchases}
+          onClick={async () => {
+            if (restoringPurchases) return;
+            setRestoringPurchases(true);
+            try {
+              if (isCapacitor() && session?.access_token) {
+                const res = await restoreGooglePlayPurchases(session.access_token);
+                if (res.success) {
+                  toast.success(res.message);
+                  await refresh();
+                } else {
+                  toast.error(res.message);
+                }
+              } else {
+                await refresh();
+                toast.success("Assinaturas e créditos sincronizados com a conta!");
+              }
+            } catch (err: any) {
+              toast.error(err?.message || "Erro ao restaurar compras.");
+            } finally {
+              setRestoringPurchases(false);
+            }
+          }}
+          className="text-xs font-bold text-muted-foreground hover:text-foreground flex items-center gap-2 h-10 px-6 rounded-full hover:bg-secondary/40 transition-colors"
+        >
+          {restoringPurchases ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <RefreshCw className="size-4" />
+          )}
+          Restaurar Compras Anteriores
+        </Button>
+      </div>
+
       <Dialog open={!!confirmingPlan} onOpenChange={(open) => !open && setConfirmingPlan(null)}>
         <DialogContent className="max-w-md bg-card border border-border p-0 overflow-hidden rounded-[32px] text-foreground">
           <DialogHeader className="sr-only">
             <DialogTitle>Confirmar Ativação de Teste Grátis</DialogTitle>
           </DialogHeader>
+
           <div className="relative p-8 flex flex-col items-center text-center">
             <div className="absolute inset-x-0 top-0 h-40 bg-secondary/50" />
 
