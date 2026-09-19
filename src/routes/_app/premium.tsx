@@ -271,6 +271,7 @@ export function PremiumPage() {
       toast.error("Por favor, faça autenticação antes de prosseguir com a compra.");
       return;
     }
+
     setLoading(planId);
     try {
       if (isCapacitor()) {
@@ -281,16 +282,21 @@ export function PremiumPage() {
               ? "sar_scan_assinatura_anual"
               : "sar_scan_assinatura";
 
+        // Invoca a Bottom Sheet oficial da Google Play Store no celular
         const res = await requestGooglePlayPurchase(playProductId, session.access_token);
         if (res.success) {
-          toast.success("Assinatura ativada com sucesso através da Google Play!");
+          toast.success("Assinatura ativada com sucesso pela Google Play!");
           if (refresh) await refresh();
+          const planDef = PLANS.find((p) => p.id === planId) || PLANS[1];
+          setPurchasedPlan(planDef);
+          setShowSuccessModal(true);
         } else {
           toast.error(res.error || "A transação falhou ou foi cancelada na Google Play.");
         }
         return;
       }
 
+      // No site Web (Navegador): Redireciona para o Stripe Checkout Real
       const res = await createStripeCheckout({
         token: session.access_token,
         plan: planId,
@@ -300,7 +306,7 @@ export function PremiumPage() {
       if (res && res.url) {
         window.location.href = res.url;
       } else {
-        throw new Error("URL de checkout inválida");
+        throw new Error("URL de checkout do Stripe inválida.");
       }
     } catch (e: any) {
       toast.error(e.message || "Erro ao iniciar o checkout.");
@@ -314,18 +320,50 @@ export function PremiumPage() {
       toast.error("Por favor, faça autenticação antes de comprar créditos.");
       return;
     }
+
     setBuyingCredits(true);
     try {
-      const res = await requestGooglePlayPurchase("sar_scan_creditos", session.access_token);
+      if (isCapacitor()) {
+        // Invoca a Bottom Sheet oficial da Google Play Store para o pacote de 50 scans
+        const res = await requestGooglePlayPurchase("sar_scan_creditos", session.access_token);
+        if (res.success) {
+          toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");
+          if (refresh) await refresh();
+          setPurchasedPlan({
+            id: "monthly",
+            label: "50 Scans",
+            price: "€9,99",
+            priceNum: 9.99,
+            cycle: "único",
+            scans: 50,
+            trialDays: 0,
+            hint: "50 Scans",
+            aiAgent: true,
+            perks: ["50 Scans adicionados imediatamente"],
+            missing: [],
+          });
+          setShowSuccessModal(true);
+        } else {
+          toast.error(
+            res.error || "A transação de créditos falhou ou foi rejeitada pela Google Play.",
+          );
+        }
+        return;
+      }
 
-      if (res.success) {
-        toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");
-        if (refresh) await refresh();
+      // No site Web (Navegador): Redireciona para o Stripe Checkout
+      const res = await createStripeCheckout({
+        token: session.access_token,
+        plan: "monthly",
+      });
+
+      if (res && res.url) {
+        window.location.href = res.url;
       } else {
-        toast.error(res.error || "A transação de créditos falhou ou foi rejeitada pela Google.");
+        throw new Error("URL de checkout do Stripe inválida.");
       }
     } catch (e: any) {
-      toast.error(e.message || "Erro ao conectar com Google Play Store.");
+      toast.error(e.message || "Erro ao comprar créditos.");
     } finally {
       setBuyingCredits(false);
     }
