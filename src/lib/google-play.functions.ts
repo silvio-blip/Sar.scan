@@ -561,14 +561,14 @@ export async function requestGooglePlayPurchase(
             if (trialOffer) {
               console.log("[Play IAP] Oferta de teste gratuito encontrada:", trialOffer);
               selectedOfferToken = trialOffer.offerToken || selectedOfferToken;
-              finalProductId = trialOffer.planIdentifier || trialOffer.identifier || finalProductId;
-              planIdentifier = trialOffer.identifier || targetPlan;
+              finalProductId = trialOffer.identifier || finalProductId;
+              planIdentifier = trialOffer.planIdentifier || targetPlan;
             } else {
               // Fallback para primeira oferta do plano
               const firstOffer = candidates[0];
               selectedOfferToken = firstOffer.offerToken || selectedOfferToken;
-              finalProductId = firstOffer.planIdentifier || firstOffer.identifier || finalProductId;
-              planIdentifier = firstOffer.identifier || targetPlan;
+              finalProductId = firstOffer.identifier || finalProductId;
+              planIdentifier = firstOffer.planIdentifier || targetPlan;
             }
           } else {
             // Compra normal (sem teste): pega a oferta base
@@ -577,8 +577,8 @@ export async function requestGooglePlayPurchase(
               candidates[0];
             if (baseOffer) {
               selectedOfferToken = baseOffer.offerToken || selectedOfferToken;
-              finalProductId = baseOffer.planIdentifier || baseOffer.identifier || finalProductId;
-              planIdentifier = baseOffer.identifier || targetPlan;
+              finalProductId = baseOffer.identifier || finalProductId;
+              planIdentifier = baseOffer.planIdentifier || targetPlan;
             }
           }
         }
@@ -602,27 +602,126 @@ export async function requestGooglePlayPurchase(
       }
     }
 
-    // 3. Monta os parâmetros para NativePurchases.purchaseProduct
-    const purchaseOptions: any = {
-      productIdentifier: finalProductId,
-      productType: isSub ? PURCHASE_TYPE.SUBS : PURCHASE_TYPE.INAPP,
-      isConsumable: !isSub,
-      autoAcknowledgePurchases: true,
-    };
+    // 3. Monta e executa a chamada para NativePurchases.purchaseProduct com tentativa e fallbacks automáticos
+    const candidateProductIds: string[] = isSub
+      ? Array.from(new Set([finalProductId, productId, ...ALL_PLAY_SUBSCRIPTION_IDS]))
+      : Array.from(new Set([finalProductId, productId, ...ALL_PLAY_INAPP_IDS]));
 
-    if (isSub) {
-      purchaseOptions.planIdentifier = planIdentifier;
-      if (selectedOfferToken) {
-        purchaseOptions.offerToken = selectedOfferToken;
+    const candidatePlanIds: string[] = isSub
+      ? Array.from(
+          new Set([
+            planIdentifier,
+            targetPlan,
+            targetPlan === "semanal"
+              ? "sar_scan_assinatura_semanal"
+              : targetPlan === "anual"
+                ? "sar_scan_assinatura_anual"
+                : "sar_scan_assinatura_mensal",
+            targetPlan === "semanal" ? "p1w" : targetPlan === "anual" ? "p1y" : "p1m",
+            "base-plan",
+            "default-plan",
+            "default",
+          ]),
+        )
+      : [""];
+
+    let lastError: any = null;
+    let transaction: any = null;
+    let successfulProductId: string = finalProductId;
+
+    // Tenta primeiro com a melhor combinação encontrada
+    for (const testProdId of candidateProductIds) {
+      if (transaction) break;
+
+      if (isSub) {
+        for (const testPlanId of candidatePlanIds) {
+          const purchaseOptions: any = {
+            productIdentifier: testProdId,
+            productType: PURCHASE_TYPE.SUBS,
+            planIdentifier: testPlanId,
+            autoAcknowledgePurchases: true,
+          };
+          if (selectedOfferToken) {
+            purchaseOptions.offerToken = selectedOfferToken;
+          }
+
+          try {
+            console.log(
+              `[Play IAP] Tentando invocar Google Play com prodId=${testProdId}, planId=${testPlanId}...`,
+            );
+            transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+            successfulProductId = testProdId;
+            lastError = null;
+            break;
+          } catch (attemptErr: any) {
+            lastError = attemptErr;
+            const msg = attemptErr?.message || String(attemptErr);
+            // Se o usuário cancelou a compra manualmente na janela da Google Play, não tenta outros IDs
+            if (
+              msg.includes("User cancelled") ||
+              msg.includes("USER_CANCELED") ||
+              msg.includes("cancel") ||
+              msg.includes("Activity was cancelled") ||
+              msg.includes("User pressed back")
+            ) {
+              return {
+                success: false,
+                error: "Operação cancelada na Google Play.",
+                isCancelled: true,
+              };
+            }
+            console.debug(
+              `[Play IAP] Combinação prodId=${testProdId}, planId=${testPlanId} retornou:`,
+              msg,
+            );
+          }
+        }
+      } else {
+        // In-App (Créditos 50 scans)
+        const purchaseOptions: any = {
+          productIdentifier: testProdId,
+          productType: PURCHASE_TYPE.INAPP,
+          isConsumable: true,
+          autoAcknowledgePurchases: true,
+        };
+        if (selectedOfferToken) {
+          purchaseOptions.offerToken = selectedOfferToken;
+        }
+
+        try {
+          console.log(`[Play IAP] Tentando invocar Google Play in-app prodId=${testProdId}...`);
+          transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+          successfulProductId = testProdId;
+          lastError = null;
+          break;
+        } catch (attemptErr: any) {
+          lastError = attemptErr;
+          const msg = attemptErr?.message || String(attemptErr);
+          if (
+            msg.includes("User cancelled") ||
+            msg.includes("USER_CANCELED") ||
+            msg.includes("cancel") ||
+            msg.includes("Activity was cancelled") ||
+            msg.includes("User pressed back")
+          ) {
+            return {
+              success: false,
+              error: "Operação cancelada na Google Play.",
+              isCancelled: true,
+            };
+          }
+          console.debug(`[Play IAP] In-app prodId=${testProdId} retornou:`, msg);
+        }
       }
     }
 
-    console.log("[Play IAP] Disparando Bottom Sheet da Google Play com:", purchaseOptions);
-    const transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+    if (!transaction && lastError) {
+      throw lastError;
+    }
 
     console.log("[Play IAP] Transação oficial retornada pela Google Play:", transaction);
 
-    const purchaseToken = transaction.purchaseToken;
+    const purchaseToken = transaction?.purchaseToken;
     if (!purchaseToken) {
       return {
         success: false,
@@ -640,7 +739,7 @@ export async function requestGooglePlayPurchase(
     }
 
     // 5. Envia o token para validação no backend
-    const verification = await verifyPurchaseOnBackend(finalProductId, purchaseToken, token);
+    const verification = await verifyPurchaseOnBackend(successfulProductId, purchaseToken, token);
     return verification;
   } catch (err: any) {
     console.error("[Play IAP] Erro na Google Play Billing:", err);
@@ -742,13 +841,53 @@ export async function restoreGooglePlayPurchases(
     console.log("[Play IAP] Restaurando compras da Google Play...");
     await initializeGooglePlayIAP();
 
-    const restoreRes = await NativePurchases.restorePurchases();
-    console.log("[Play IAP] Resposta da restauração:", restoreRes);
+    let restoredCount = 0;
 
-    // Consulta compras ativas
+    // 1. Tenta restaurar recibos nativos
+    try {
+      await NativePurchases.restorePurchases();
+    } catch (restErr) {
+      console.warn("[Play IAP] Aviso em restorePurchases:", restErr);
+    }
+
+    // 2. Consulta assinaturas ativas na Google Play do dispositivo
+    try {
+      const { purchases } = await NativePurchases.getPurchases({
+        productType: PURCHASE_TYPE.SUBS,
+      });
+
+      if (purchases && purchases.length > 0) {
+        console.log("[Play IAP] Assinaturas ativas detectadas na Play Store:", purchases);
+        for (const p of purchases) {
+          if (p.purchaseToken && p.productIdentifier) {
+            const verifyRes = await verifyPurchaseOnBackend(
+              p.productIdentifier,
+              p.purchaseToken,
+              token,
+            );
+            if (verifyRes.success) {
+              restoredCount++;
+            }
+          }
+        }
+      }
+    } catch (getPurchasesErr) {
+      console.warn("[Play IAP] Aviso ao consultar getPurchases subs:", getPurchasesErr);
+    }
+
+    // 3. Sincroniza status no backend
+    await syncSubscriptionStatusOnBackend(token);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("auth:refresh"));
+    }
+
     return {
       success: true,
-      message: "Compras e assinaturas restauradas com sucesso na sua conta!",
+      message:
+        restoredCount > 0
+          ? `Sucesso! ${restoredCount} assinatura(s) ativa(s) da Google Play sincronizada(s) com a sua conta.`
+          : "Sincronização com a Google Play concluída.",
     };
   } catch (err: any) {
     console.error("[Play IAP] Erro ao restaurar compras:", err);
