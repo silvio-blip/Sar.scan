@@ -88,12 +88,24 @@ export const PLANS_DEF = [
     scans: 1200,
     trial_days: 0,
   },
+  {
+    id: "credits",
+    label: "sar.scan - Pacote 50 Scans",
+    amount: 999,
+    interval: "one_time",
+    scans: 50,
+    trial_days: 0,
+  },
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];
 
 async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promise<string> {
   const plan = PLANS_DEF.find((p) => p.id === planId);
   if (!plan) throw new Error(`Plano inválido: ${planId}`);
+
+  if (planId === "credits") {
+    return ensureValidCreditPrice(stripe);
+  }
 
   let existingTyped: {
     product_id?: string;
@@ -123,11 +135,13 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
         validPriceId = price.id;
         validProductId =
           typeof price.product === "string" ? price.product : (price.product as any)?.id;
-        console.log(`[Stripe] Using verified existing price ${validPriceId} for plan ${plan.id}`);
+        console.log(
+          `[Stripe] Usando preço verificado existente ${validPriceId} para o plano ${plan.id}`,
+        );
       }
     } catch {
       console.warn(
-        `[Stripe] Stored price ${existingTyped.price_id} does not exist in active Stripe account. Will regenerate.`,
+        `[Stripe] Preço armazenado ${existingTyped.price_id} não existe na conta Stripe ativa. Será recriado.`,
       );
     }
   }
@@ -136,19 +150,7 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
     return validPriceId;
   }
 
-  // 2. Check if product exists in active Stripe account
-  if (existingTyped?.product_id && !validProductId) {
-    try {
-      const prod = await stripe.products.retrieve(existingTyped.product_id);
-      if (prod && !prod.deleted) {
-        validProductId = prod.id;
-      }
-    } catch {
-      validProductId = null;
-    }
-  }
-
-  // 3. Search Stripe for existing products with metadata plan = plan.id or matching name
+  // 2. Search Stripe for existing products with metadata plan = plan.id or matching name
   if (!validProductId) {
     try {
       const existingProds = await stripe.products.list({ limit: 50, active: true });
@@ -157,16 +159,16 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
       );
       if (found) {
         validProductId = found.id;
-        console.log(`[Stripe] Found existing matching product in Stripe: ${found.id}`);
+        console.log(`[Stripe] Encontrado produto existente na conta Stripe: ${found.id}`);
       }
     } catch (searchErr) {
       console.warn("[Stripe] Could not list products:", searchErr);
     }
   }
 
-  // 4. Create product if still not found
+  // 3. Create product if still not found
   if (!validProductId) {
-    console.log(`[Stripe] Creating product in active Stripe account for plan: ${plan.id}`);
+    console.log(`[Stripe] Criando produto na conta Stripe para o plano: ${plan.id}`);
     const product = await stripe.products.create({
       name: plan.label,
       metadata: { plan: plan.id, scans: String(plan.scans) },
@@ -174,7 +176,7 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
     validProductId = product.id;
   }
 
-  // 5. Search if this product already has an active price with the correct amount
+  // 4. Search if this product already has an active price with the correct amount
   try {
     const existingPrices = await stripe.prices.list({
       product: validProductId,
@@ -189,15 +191,17 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
     );
     if (matchPrice) {
       validPriceId = matchPrice.id;
-      console.log(`[Stripe] Reusing active price from Stripe product: ${validPriceId}`);
+      console.log(`[Stripe] Reutilizando preço ativo do produto Stripe: ${validPriceId}`);
     }
   } catch (priceListErr) {
     console.warn("[Stripe] Could not list existing prices for product:", priceListErr);
   }
 
-  // 6. Create Price if needed
+  // 5. Create Price if needed
   if (!validPriceId) {
-    console.log(`[Stripe] Creating price in active Stripe account for plan: ${plan.id}`);
+    console.log(
+      `[Stripe] Criando preço de €${(plan.amount / 100).toFixed(2)} na conta Stripe para: ${plan.id}`,
+    );
     const price = await stripe.prices.create({
       product: validProductId,
       unit_amount: plan.amount,
@@ -208,7 +212,7 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
     validPriceId = price.id;
   }
 
-  // 7. Update Supabase stripe_products cache
+  // 6. Update Supabase stripe_products cache
   try {
     await (supabaseAdmin as any).from("stripe_products").upsert({
       plan: plan.id,
@@ -219,9 +223,104 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
       interval: plan.interval,
       updated_at: new Date().toISOString(),
     });
-    console.log(`[Stripe] Updated stripe_products cache with price: ${validPriceId}`);
+    console.log(`[Stripe] Tabela stripe_products atualizada com o preço: ${validPriceId}`);
   } catch (upsertErr) {
     console.warn("[Stripe] Non-blocking warning: failed to upsert to stripe_products:", upsertErr);
+  }
+
+  return validPriceId;
+}
+
+async function ensureValidCreditPrice(stripe: Stripe): Promise<string> {
+  const creditAmount = 999; // €9,99
+  let validPriceId: string | null = null;
+  let validProductId: string | null = null;
+
+  try {
+    const { data: existing } = await (supabaseAdmin as any)
+      .from("stripe_products")
+      .select("*")
+      .eq("plan", "credits")
+      .maybeSingle();
+
+    if (existing?.price_id) {
+      try {
+        const price = await stripe.prices.retrieve(existing.price_id);
+        if (price && price.active && !price.deleted && price.unit_amount === creditAmount) {
+          validPriceId = price.id;
+          validProductId =
+            typeof price.product === "string" ? price.product : (price.product as any)?.id;
+        }
+      } catch {
+        // Preço antigo
+      }
+    }
+  } catch (dbErr) {
+    console.warn("[Stripe Credits] Query warning:", dbErr);
+  }
+
+  if (validPriceId) return validPriceId;
+
+  // Busca ou cria produto
+  try {
+    const prods = await stripe.products.list({ limit: 50, active: true });
+    const found = prods.data.find(
+      (p) => p.metadata?.plan === "credits" || p.name.includes("50 Scans"),
+    );
+    if (found) {
+      validProductId = found.id;
+    }
+  } catch (e) {
+    console.warn("[Stripe Credits] List products error:", e);
+  }
+
+  if (!validProductId) {
+    const prod = await stripe.products.create({
+      name: "sar.scan - Pacote 50 Scans",
+      metadata: { plan: "credits", scans: "50" },
+    });
+    validProductId = prod.id;
+  }
+
+  // Preço one-time
+  try {
+    const prices = await stripe.prices.list({
+      product: validProductId,
+      active: true,
+      limit: 10,
+    });
+    const match = prices.data.find(
+      (p) => p.unit_amount === creditAmount && p.currency.toLowerCase() === "eur" && !p.recurring,
+    );
+    if (match) {
+      validPriceId = match.id;
+    }
+  } catch (e) {
+    console.warn("[Stripe Credits] List prices error:", e);
+  }
+
+  if (!validPriceId) {
+    const price = await stripe.prices.create({
+      product: validProductId,
+      unit_amount: creditAmount,
+      currency: "eur",
+      metadata: { plan: "credits" },
+    });
+    validPriceId = price.id;
+  }
+
+  try {
+    await (supabaseAdmin as any).from("stripe_products").upsert({
+      plan: "credits",
+      product_id: validProductId,
+      price_id: validPriceId,
+      amount: creditAmount,
+      currency: "eur",
+      interval: "one_time",
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    // Non-blocking
   }
 
   return validPriceId;
@@ -246,6 +345,37 @@ async function ensureValidCustomer(
     console.warn("[Stripe] Could not query subscriptions table for customer:", dbErr);
   }
 
+  // Tenta buscar também em stripe_customers ou stripe_customer se não encontrou em subscriptions
+  if (!customerId) {
+    try {
+      const { data: custRow } = await (supabaseAdmin as any)
+        .from("stripe_customers")
+        .select("customer_id, stripe_customer_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (custRow?.stripe_customer_id || custRow?.customer_id) {
+        customerId = custRow.stripe_customer_id || custRow.customer_id;
+      }
+    } catch {
+      // Ignora se tabela não existir
+    }
+  }
+
+  if (!customerId) {
+    try {
+      const { data: custRow2 } = await (supabaseAdmin as any)
+        .from("stripe_customer")
+        .select("customer_id, stripe_customer_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (custRow2?.stripe_customer_id || custRow2?.customer_id) {
+        customerId = custRow2.stripe_customer_id || custRow2.customer_id;
+      }
+    } catch {
+      // Ignora se tabela não existir
+    }
+  }
+
   // Verify that the customer actually exists in the active Stripe account
   if (customerId) {
     try {
@@ -255,13 +385,16 @@ async function ensureValidCustomer(
       }
     } catch {
       console.warn(
-        `[Stripe] Customer ${customerId} not found in active Stripe account. Generating new customer...`,
+        `[Stripe] Customer ${customerId} não existe na conta Stripe ativa atual. Gerando novo customer...`,
       );
       customerId = null;
     }
   }
 
   // Create new customer on Stripe
+  console.log(
+    `[Stripe] Criando novo cliente na Stripe para usuário ${user.id} (${user.email || "sem email"})...`,
+  );
   const newCust = await stripe.customers.create({
     email: user.email,
     metadata: { user_id: user.id },
@@ -311,7 +444,7 @@ export async function syncStripePlansInternal(data: { token: string }) {
   const isAdmin = !!(roles as { role: string }[] | null)?.some((r) => r.role === "admin");
   if (!isAdmin) throw new Error("Apenas admin pode sincronizar planos");
 
-  const { stripe } = await getStripe();
+  const { stripe } = await getStripe(true);
   const results: { plan: string; priceId: string }[] = [];
   for (const plan of PLANS_DEF) {
     const priceId = await ensureValidProductAndPrice(stripe, plan.id);
@@ -327,12 +460,48 @@ export async function createStripeCheckoutInternal(data: {
   origin?: string;
 }) {
   const user = await authUser(data.token);
-  const { stripe } = await getStripe(true);
+  const { stripe, secret } = await getStripe(true);
 
-  const priceId = await ensureValidProductAndPrice(stripe, data.plan);
-  const customerId = await ensureValidCustomer(stripe, user);
+  console.log(
+    `[Stripe Checkout] Inicializando checkout com credencial Stripe: ${secret.slice(0, 10)}...${secret.slice(-4)}`,
+  );
 
   const baseUrl = data.origin || process.env.PUBLIC_APP_URL || "";
+  const customerId = await ensureValidCustomer(stripe, user);
+
+  // Checkout para pacote de créditos (pagamento único)
+  if (data.plan === "credits") {
+    const priceId = await ensureValidCreditPrice(stripe);
+    const successUrl = baseUrl
+      ? `${baseUrl}/premium?success=1&plan=credits`
+      : `https://sarscan.app/premium?success=1&plan=credits`;
+    const cancelUrl = baseUrl
+      ? `${baseUrl}/premium?canceled=1`
+      : `https://sarscan.app/premium?canceled=1`;
+
+    console.log(
+      "[Stripe] Criando sessão de checkout para Créditos. Price:",
+      priceId,
+      "Customer:",
+      customerId,
+    );
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer: customerId,
+      line_items: [{ price: priceId, quantity: 1 }],
+      billing_address_collection: "auto",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      metadata: { user_id: user.id, plan: "credits", scans: "50" },
+    });
+
+    console.log("[Stripe] Sessão de Créditos criada:", session.id, "URL:", session.url);
+    return { url: session.url };
+  }
+
+  // Checkout para assinaturas recorrentes
+  const priceId = await ensureValidProductAndPrice(stripe, data.plan);
 
   console.log(
     "[Stripe] Creating checkout session. User:",

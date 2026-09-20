@@ -49,7 +49,14 @@ async function startServer() {
     next();
   });
 
-  app.use(express.json({ limit: "50mb" }));
+  app.use(
+    express.json({
+      limit: "50mb",
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
 
   // API Routes
 
@@ -417,22 +424,27 @@ O formato deve ser exatamente:
     }
   });
 
-  // Stripe Webhook
-  app.post(
-    "/api/public/stripe-webhook",
-    express.raw({ type: "application/json" }),
-    async (req, res) => {
-      try {
-        const sig = req.headers["stripe-signature"] as string;
-        const result = await handleStripeWebhook(req.body.toString(), sig);
-        res.send(result);
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : "Erro desconhecido";
-        console.error("[Webhook Error]", msg);
-        res.status(500).send(msg);
-      }
-    },
-  );
+  // Stripe Webhook (suporta múltiplos endpoints comuns)
+  const webhookHandler = async (req: any, res: any) => {
+    try {
+      const sig = req.headers["stripe-signature"] as string;
+      const rawPayload = req.rawBody
+        ? req.rawBody.toString("utf8")
+        : typeof req.body === "string"
+          ? req.body
+          : JSON.stringify(req.body);
+      const result = await handleStripeWebhook(rawPayload, sig);
+      res.json(result || { received: true });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      console.error("[Webhook Error]", msg);
+      res.status(400).send(msg);
+    }
+  };
+
+  app.post("/api/public/stripe-webhook", webhookHandler);
+  app.post("/api/stripe/webhook", webhookHandler);
+  app.post("/api/webhook/stripe", webhookHandler);
 
   // Vite integration
   if (process.env.NODE_ENV !== "production") {

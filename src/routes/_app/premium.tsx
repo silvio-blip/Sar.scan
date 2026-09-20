@@ -491,7 +491,7 @@ export function PremiumPage() {
       // No site Web (Navegador): Redireciona para o Stripe Checkout
       const res = await createStripeCheckout({
         token: session.access_token,
-        plan: "monthly",
+        plan: "credits",
       });
 
       if (res && res.url) {

@@ -34,7 +34,7 @@ export async function handleStripeWebhook(payload: string, signature: string | n
           .eq("user_id", userId)
           .maybeSingle();
 
-        const addedCredits = planScans(planId);
+        const addedCredits = planScans(planId) || (planId === "credits" ? 50 : 0);
         const currentCredits = (currentSub as any)?.scans_credits ?? 0;
         const newTotal = currentCredits + addedCredits;
 
@@ -42,27 +42,45 @@ export async function handleStripeWebhook(payload: string, signature: string | n
           `[Webhook] Adding ${addedCredits} credits to user ${userId}. Total: ${newTotal}`,
         );
 
-        // Determinar status inicial (se houver subscription info na sessão do Stripe)
-        const initialStatus = "active";
-        if (s.subscription && s.mode === "subscription") {
-          // No checkout completed, se for trial, o subscription.created logo virá ajustar.
-          // Mas podemos tentar inferir aqui.
+        if (planId === "credits") {
+          // Apenas adiciona créditos sem sobrescrever o plano principal
+          if (currentSub) {
+            await (supabaseAdmin as any)
+              .from("subscriptions")
+              .update({
+                scans_credits: newTotal,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", userId);
+          } else {
+            await (supabaseAdmin as any).from("subscriptions").insert({
+              user_id: userId,
+              status: "free",
+              plan: "free",
+              scans_credits: newTotal,
+              stripe_customer_id: s.customer,
+              ai_agent_enabled: false,
+              updated_at: new Date().toISOString(),
+            });
+          }
+        } else {
+          // Assinatura recorrente
+          const initialStatus = "active";
+          await (supabaseAdmin as any).from("subscriptions").upsert(
+            {
+              user_id: userId,
+              status: initialStatus,
+              plan: planId,
+              scans_credits: newTotal,
+              stripe_customer_id: s.customer,
+              stripe_subscription_id: s.subscription,
+              ai_agent_enabled: planId === "monthly" || planId === "yearly",
+              current_period_end: new Date(Date.now() + 32 * 86400000).toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id" },
+          );
         }
-
-        await (supabaseAdmin as any).from("subscriptions").upsert(
-          {
-            user_id: userId,
-            status: initialStatus,
-            plan: planId,
-            scans_credits: newTotal,
-            stripe_customer_id: s.customer,
-            stripe_subscription_id: s.subscription,
-            ai_agent_enabled: planId === "monthly" || planId === "yearly",
-            current_period_end: new Date(Date.now() + 32 * 86400000).toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" },
-        );
       }
       break;
     }
