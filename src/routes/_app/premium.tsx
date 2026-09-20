@@ -10,6 +10,7 @@ import {
   PLAY_PRODUCT_IDS,
   type PlayProductDetails,
   isCapacitor,
+  syncSubscriptionStatusOnBackend,
 } from "@/lib/google-play.functions";
 
 import { isInstalledApp } from "@/lib/utils";
@@ -156,15 +157,20 @@ export function PremiumPage() {
   // Preço do pacote de 50 scans (consumível)
   const displayCreditsPrice = "€9,99";
 
-  // Verifica se o usuário possui alguma assinatura ativa no momento
+  // Verifica se o usuário possui alguma assinatura ativa no momento e que esteja dentro do prazo de validade
   const hasActiveSubscription = useMemo(() => {
-    return Boolean(
-      subscription &&
-      (subscription.status === "active" ||
-        (subscription.status === "trialing" &&
-          subscription.trial_end &&
-          new Date(subscription.trial_end) > new Date())),
-    );
+    if (!subscription) return false;
+    const now = new Date();
+    if (subscription.status === "trialing") {
+      return Boolean(subscription.trial_end && new Date(subscription.trial_end) > now);
+    }
+    if (subscription.status === "active") {
+      if (subscription.current_period_end) {
+        return new Date(subscription.current_period_end) > now;
+      }
+      return true;
+    }
+    return false;
   }, [subscription]);
 
   // ID do plano atualmente ativo
@@ -314,6 +320,19 @@ export function PremiumPage() {
       navigate({ to: "/premium", search: {}, replace: true });
     }
   }, [location.search, refresh, navigate, selected, user, displayPlans]);
+
+  // Sincroniza ativamente o status da assinatura de forma garantida e em tempo real ao entrar no ecrã Premium
+  useEffect(() => {
+    if (session?.access_token) {
+      syncSubscriptionStatusOnBackend(session.access_token)
+        .then(() => {
+          if (refresh) refresh();
+        })
+        .catch((err) => {
+          console.warn("[Premium] Falha ao sincronizar ativamente no carregamento:", err);
+        });
+    }
+  }, [session?.access_token, refresh]);
 
   const current = displayPlans.find((p) => p.id === selected)!;
   const [buyingCredits, setBuyingCredits] = useState(false);

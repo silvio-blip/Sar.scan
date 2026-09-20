@@ -5,6 +5,7 @@ import {
   useState,
   useMemo,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
@@ -66,8 +67,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const lastSyncTimeRef = useRef<number>(0);
+  const isSyncingRef = useRef<boolean>(false);
+
   const loadUserData = async (uid: string) => {
     try {
+      // Evita loops infinitos e garante sincronização ativa direta (máximo uma chamada ativa a cada 30 segundos)
+      const nowTime = Date.now();
+      if (
+        session?.access_token &&
+        !isSyncingRef.current &&
+        nowTime - lastSyncTimeRef.current > 30000
+      ) {
+        isSyncingRef.current = true;
+        try {
+          await syncSubscriptionStatusOnBackend(session.access_token);
+          lastSyncTimeRef.current = Date.now();
+        } catch (syncErr) {
+          console.warn("[Auth] Falha ao sincronizar assinatura de forma ativa:", syncErr);
+        } finally {
+          isSyncingRef.current = false;
+        }
+      }
+
       const [{ data: prof }, { data: sub }, { data: roles }] = await Promise.all([
         supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
         supabase

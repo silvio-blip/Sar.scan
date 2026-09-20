@@ -67,13 +67,20 @@ export function AssinaturaPage() {
     }
   }, [session?.access_token, refresh]);
 
-  const hasActiveSub = Boolean(
-    subscription &&
-    (subscription.status === "active" ||
-      (subscription.status === "trialing" &&
-        subscription.trial_end &&
-        new Date(subscription.trial_end) > new Date())),
-  );
+  const hasActiveSub = useMemo(() => {
+    if (!subscription) return false;
+    const now = new Date();
+    if (subscription.status === "trialing") {
+      return Boolean(subscription.trial_end && new Date(subscription.trial_end) > now);
+    }
+    if (subscription.status === "active") {
+      if (subscription.current_period_end) {
+        return new Date(subscription.current_period_end) > now;
+      }
+      return true;
+    }
+    return false;
+  }, [subscription]);
 
   const isTrial = subscription?.status === "trialing";
   const rawPlan = subscription?.plan || null;
