@@ -420,8 +420,8 @@ export async function createStripeCheckoutInternal(data: {
   if (data.plan === "credits") {
     const priceId = await ensureValidCreditPrice(stripe);
     const successUrl = baseUrl
-      ? `${baseUrl}/premium?success=1&plan=credits`
-      : `https://sarscan.app/premium?success=1&plan=credits`;
+      ? `${baseUrl}/premium?success=1&plan=credits&session_id={CHECKOUT_SESSION_ID}`
+      : `https://sarscan.app/premium?success=1&plan=credits&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = baseUrl
       ? `${baseUrl}/premium?canceled=1`
       : `https://sarscan.app/premium?canceled=1`;
@@ -473,8 +473,8 @@ export async function createStripeCheckoutInternal(data: {
   }
 
   const successUrl = baseUrl
-    ? `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`
-    : `https://sarscan.app/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}`;
+    ? `${baseUrl}/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}&session_id={CHECKOUT_SESSION_ID}`
+    : `https://sarscan.app/premium?success=1&plan=${data.plan}${data.trial ? "&trial=1" : ""}&session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = baseUrl
     ? `${baseUrl}/premium?canceled=1`
     : `https://sarscan.app/premium?canceled=1`;
@@ -562,4 +562,109 @@ async function authUser(token: string): Promise<{ id: string; email?: string }> 
   }
 
   throw new Error("Unauthorized: Invalid session.");
+}
+
+export async function verifyStripeSessionInternal(token: string, sessionId: string) {
+  const user = await authUser(token);
+  if (!sessionId) {
+    throw new Error("Missing sessionId");
+  }
+
+  const { stripe } = await getStripe(true);
+  console.log(`[Stripe Verify] Verificando sessão ${sessionId} para usuário ${user.id}...`);
+
+  const session = await stripe.checkout.sessions.retrieve(sessionId, {
+    expand: ["subscription"],
+  });
+
+  if (!session) {
+    throw new Error("Sessão Stripe não encontrada");
+  }
+
+  // Verifica se o usuário da sessão bate com o usuário autenticado
+  const metaUserId = session.metadata?.user_id;
+  if (metaUserId && metaUserId !== user.id) {
+    console.warn(`[Stripe Verify] Mismatch de user_id: ${metaUserId} !== ${user.id}`);
+  }
+
+  const planId = (session.metadata?.plan || "monthly") as PlanId;
+  const isPaymentPaid = session.payment_status === "paid" || session.status === "complete";
+  const subObj = session.subscription as any;
+
+  if (planId === "credits") {
+    if (isPaymentPaid) {
+      const { data: currentSub } = await (supabaseAdmin as any)
+        .from("subscriptions")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const addedCredits = 50;
+      const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+      const newTotal = currentCredits + addedCredits;
+
+      console.log(
+        `[Stripe Verify] Creditando ${addedCredits} scans para ${user.id}. Total: ${newTotal}`,
+      );
+
+      if (currentSub) {
+        await (supabaseAdmin as any)
+          .from("subscriptions")
+          .update({
+            scans_credits: newTotal,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", user.id);
+      } else {
+        await (supabaseAdmin as any).from("subscriptions").insert({
+          user_id: user.id,
+          status: "free",
+          plan: "free",
+          scans_credits: newTotal,
+          stripe_customer_id: session.customer as string,
+          ai_agent_enabled: false,
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      return { success: true, plan: "credits", credits: newTotal };
+    }
+  } else {
+    // Assinatura
+    const subStatus = subObj?.status || (isPaymentPaid ? "active" : "active");
+    const subId = typeof session.subscription === "string" ? session.subscription : subObj?.id;
+
+    console.log(
+      `[Stripe Verify] Ativando assinatura plano ${planId} (status: ${subStatus}) para usuário ${user.id}`,
+    );
+
+    const { data: currentSub } = await (supabaseAdmin as any)
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const planCredits = planScans(planId);
+    const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+    const newTotal = currentCredits + planCredits;
+
+    await (supabaseAdmin as any).from("subscriptions").upsert(
+      {
+        user_id: user.id,
+        status: subStatus === "trialing" ? "trialing" : "active",
+        plan: planId,
+        scans_credits: newTotal,
+        stripe_customer_id: session.customer as string,
+        stripe_subscription_id: subId,
+        ai_agent_enabled: planId === "monthly" || planId === "yearly",
+        current_period_end: new Date(Date.now() + 32 * 86400000).toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
+
+    return { success: true, plan: planId, status: subStatus };
+  }
+
+  return { success: true };
 }

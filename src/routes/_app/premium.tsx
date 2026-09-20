@@ -334,6 +334,26 @@ export function PremiumPage() {
     const planFromUrl = search.get("plan") as PlanId | null;
 
     if (success) {
+      const sessionId = search.get("session_id");
+      if (sessionId && session?.access_token) {
+        fetch("/api/stripe/verify-session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ sessionId }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("[Stripe Return] Sessão verificada com sucesso:", data);
+            if (refresh) refresh();
+          })
+          .catch((err) => {
+            console.warn("[Stripe Return] Falha ao verificar sessão na volta:", err);
+          });
+      }
+
       // Find what plan we bought from URL first, then fallback to state
       const likelyPlanId = planFromUrl || selected;
       const likelyPlan = displayPlans.find((p) => p.id === likelyPlanId) || displayPlans[1];

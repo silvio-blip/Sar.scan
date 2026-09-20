@@ -8,7 +8,11 @@ import { loadEnv } from "./src/lib/env-loader.server";
 loadEnv();
 
 import { invokeEdgeInternal, checkEligibility, deductScan } from "./src/lib/edge-proxy.server";
-import { createStripeCheckoutInternal, syncStripePlansInternal } from "./src/lib/stripe.server";
+import {
+  createStripeCheckoutInternal,
+  syncStripePlansInternal,
+  verifyStripeSessionInternal,
+} from "./src/lib/stripe.server";
 import { handleStripeWebhook } from "./src/lib/stripe.webhook";
 import {
   verifyGooglePlayPurchaseInternal,
@@ -328,6 +332,20 @@ O formato deve ser exatamente:
       res.json(result);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Verify and instantly activate Stripe session upon return
+  app.post("/api/stripe/verify-session", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+      const { sessionId } = req.body;
+      const result = await verifyStripeSessionInternal(token, sessionId);
+      res.json(result);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Erro ao verificar sessão Stripe";
       res.status(500).json({ error: msg });
     }
   });

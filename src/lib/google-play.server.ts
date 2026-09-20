@@ -752,15 +752,21 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
     }
 
     if (stripeSubId) {
-      const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
-      if (stripeSub.cancel_at_period_end || stripeSub.status === "canceled") {
-        isCancelled = true;
-      }
-      if (stripeSub.status === "canceled" || stripeSub.status === "unpaid") {
-        newStatus = "free";
-        newPlan = null;
-        newAi = false;
-        needsUpdate = true;
+      try {
+        const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
+        if (stripeSub.cancel_at_period_end || stripeSub.status === "canceled") {
+          isCancelled = true;
+        }
+        if (stripeSub.status === "canceled" || stripeSub.status === "unpaid") {
+          newStatus = "free";
+          newPlan = null;
+          newAi = false;
+          needsUpdate = true;
+        }
+      } catch (retrieveErr: any) {
+        console.warn(
+          `[Subscription Sync] Assinatura ${stripeSubId} não encontrada na conta Stripe atual.`,
+        );
       }
     }
   } catch (stripeErr: any) {
