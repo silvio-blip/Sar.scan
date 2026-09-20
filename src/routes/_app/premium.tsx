@@ -52,6 +52,12 @@ export const Route = createFileRoute("/_app/premium")({ component: PremiumPage }
 
 type PlanId = "weekly" | "monthly" | "yearly";
 
+const PLAN_TIERS: Record<PlanId, number> = {
+  weekly: 1,
+  monthly: 2,
+  yearly: 3,
+};
+
 type PlanDef = {
   id: PlanId;
   label: string;
@@ -93,7 +99,7 @@ const PLANS: PlanDef[] = [
     priceNum: 19.99,
     cycle: "/mês",
     scans: 150,
-    trialDays: 7,
+    trialDays: 0,
     badge: "Popular",
     hint: "Mais escolhido",
     aiAgent: true,
@@ -113,7 +119,7 @@ const PLANS: PlanDef[] = [
     priceNum: 99.99,
     cycle: "/ano",
     scans: 1200,
-    trialDays: 7,
+    trialDays: 0,
     badge: "Melhor valor",
     hint: "Economize ~58%",
     aiAgent: true,
@@ -195,7 +201,7 @@ export function PremiumPage() {
       return;
     }
 
-    const chosenPlan = planId || "monthly";
+    const chosenPlan = planId || "weekly";
     setLoading(chosenPlan);
     try {
       const trialEnd = new Date();
@@ -326,6 +332,16 @@ export function PremiumPage() {
       return;
     }
 
+    // Se o usuário tentar fazer downgrade para um plano inferior ao ativo atual
+    if (hasActiveSubscription && activePlanId && PLAN_TIERS[planId] < PLAN_TIERS[activePlanId]) {
+      const activePlanLabel =
+        displayPlans.find((p) => p.id === activePlanId)?.label || activePlanId;
+      toast.error(
+        `Você já possui um plano superior ativo (${activePlanLabel}). Não é permitido fazer downgrade enquanto sua assinatura atual estiver ativa.`,
+      );
+      return;
+    }
+
     setLoading(planId);
     try {
       if (isCapacitor()) {
@@ -451,6 +467,15 @@ export function PremiumPage() {
       return;
     }
 
+    // Se é um plano inferior ao ativo atual, impede downgrade direto
+    if (hasActiveSubscription && activePlanId && PLAN_TIERS[p.id] < PLAN_TIERS[activePlanId]) {
+      const activeLabel = displayPlans.find((dp) => dp.id === activePlanId)?.label || activePlanId;
+      toast.error(
+        `Você já possui um plano superior ativo (${activeLabel}). Não é permitido fazer downgrade enquanto sua assinatura atual estiver ativa.`,
+      );
+      return;
+    }
+
     // Só mostra o modal de 7 dias se o usuário for elegível (primeira vez absoluta)
     if (isEligibleForTrial && p.trialDays > 0) {
       setConfirmingPlan(p);
@@ -486,8 +511,8 @@ export function PremiumPage() {
           >
             <Button
               onClick={() => {
-                const monthlyPlan = displayPlans.find((p) => p.id === "monthly") || displayPlans[0];
-                setConfirmingPlan(monthlyPlan);
+                const weeklyPlan = displayPlans.find((p) => p.id === "weekly") || displayPlans[0];
+                setConfirmingPlan(weeklyPlan);
               }}
               className="w-full h-16 rounded-full bg-gradient-to-r from-zinc-100 to-white text-black hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-black flex flex-col items-center justify-center gap-0 shadow-[0_20px_50px_rgba(255,255,255,0.15)] ring-1 ring-white/50 group"
             >
@@ -549,6 +574,8 @@ export function PremiumPage() {
           {displayPlans.map((p) => {
             const active = selected === p.id;
             const isCurrentActivePlan = hasActiveSubscription && activePlanId === p.id;
+            const isDowngrade =
+              hasActiveSubscription && activePlanId && PLAN_TIERS[p.id] < PLAN_TIERS[activePlanId];
 
             return (
               <div
@@ -641,6 +668,13 @@ export function PremiumPage() {
                       <Check className="size-4 mr-1.5 text-emerald-400" />
                       Plano Atual
                     </Button>
+                  ) : isDowngrade ? (
+                    <Button
+                      disabled
+                      className="h-11 px-6 rounded-full font-black text-[11px] uppercase tracking-wider bg-secondary text-muted-foreground border border-border cursor-not-allowed opacity-60"
+                    >
+                      Plano Superior Ativo
+                    </Button>
                   ) : (
                     <Button
                       onClick={(e) => {
@@ -657,7 +691,7 @@ export function PremiumPage() {
                       {loading === p.id ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : hasActiveSubscription ? (
-                        "Mudar de Plano"
+                        "Upgrade de Plano"
                       ) : isEligibleForTrial && p.trialDays > 0 ? (
                         "Testar 7 Dias"
                       ) : (
@@ -815,9 +849,26 @@ export function PremiumPage() {
             <h2 className="text-2xl font-display font-black tracking-tight text-foreground mb-2 uppercase">
               Comece 7 dias grátis
             </h2>
-            <p className="text-muted-foreground text-sm font-medium mb-8">
-              30 scans totais gratuitos para escanear alimentos por 7 dias.
+            <p className="text-muted-foreground text-sm font-medium mb-6">
+              Experimente todos os benefícios do plano {confirmingPlan?.label} totalmente grátis por{" "}
+              {confirmingPlan?.trialDays} dias!
             </p>
+
+            {/* List of perks for the plan */}
+            <div className="w-full text-left space-y-2 mb-6 p-4 rounded-2xl bg-secondary/20 border border-border">
+              <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">
+                Benefícios do plano:
+              </p>
+              {confirmingPlan?.perks.map((pk) => (
+                <div
+                  key={pk}
+                  className="flex items-center gap-2 text-xs font-semibold text-foreground/90"
+                >
+                  <div className="size-1.5 rounded-full bg-primary" />
+                  <span>{pk}</span>
+                </div>
+              ))}
+            </div>
 
             <div className="w-full space-y-3 mb-8">
               <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary/40 border border-border">
@@ -841,9 +892,9 @@ export function PremiumPage() {
             <div className="flex flex-col w-full gap-3">
               <Button
                 onClick={() => {
-                  const targetPlan = confirmingPlan?.id;
+                  const targetPlan = confirmingPlan?.id || "weekly";
                   setConfirmingPlan(null);
-                  activateFreeTrial(targetPlan);
+                  startCheckout(targetPlan, true);
                 }}
                 disabled={!!loading}
                 className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black text-sm shadow-md transition-all"

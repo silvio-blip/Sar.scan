@@ -277,14 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 2. Clear state immediately to stop all active subscribers/queries
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-    setSubscription(null);
-    setIsAdmin(false);
-
-    // 3. Clear Supabase auth keys from localStorage synchronously
+    // 2. Clear Supabase auth keys from localStorage synchronously
     try {
       if (typeof window !== "undefined" && window.localStorage) {
         for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -298,16 +291,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("[Auth] Error clearing storage on signOut:", storageErr);
     }
 
-    // 4. Trigger Supabase server signout in the background without blocking execution
+    // 3. Trigger Supabase server signout
     try {
-      supabase.auth.signOut().catch((e) => console.warn("[Auth] Background signOut:", e));
+      await supabase.auth.signOut();
     } catch (e) {
       console.warn("[Auth] SignOut call error:", e);
     }
 
-    // 5. Clean redirect to /login
+    // 4. Clean redirect to /login via full page navigation to reset state
     if (typeof window !== "undefined") {
-      window.location.replace("/login");
+      window.location.href = "/login";
     }
   }, []);
 

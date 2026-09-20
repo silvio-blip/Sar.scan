@@ -78,7 +78,7 @@ export const PLANS_DEF = [
     amount: 1999,
     interval: "month",
     scans: 150,
-    trial_days: 7,
+    trial_days: 0,
   },
   {
     id: "yearly",
@@ -86,7 +86,7 @@ export const PLANS_DEF = [
     amount: 9999,
     interval: "year",
     scans: 1200,
-    trial_days: 7,
+    trial_days: 0,
   },
 ] as const;
 export type PlanId = (typeof PLANS_DEF)[number]["id"];

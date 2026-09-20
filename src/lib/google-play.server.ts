@@ -521,7 +521,7 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
       status: "free",
       plan: null,
       ai_agent_enabled: false,
-      trial_end: null,
+      trial_end: currentSub.trial_end || new Date(0).toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", user.id)
