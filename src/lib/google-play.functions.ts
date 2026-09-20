@@ -79,6 +79,9 @@ function isTrialOfferIdentifier(offerId?: string | null): boolean {
   if (!offerId) return false;
   const lower = offerId.toLowerCase().trim();
   return (
+    lower === "77-dias-gratis" ||
+    lower === "77diasgratis" ||
+    lower === "77-dias-grátis" ||
     lower === "7-dias-gratis" ||
     lower === "7-dias-grátis" ||
     lower === "7-dias-de-graca" ||
@@ -92,7 +95,13 @@ function isTrialOfferIdentifier(offerId?: string | null): boolean {
     lower === "7 dias de graça" ||
     lower === "7 dias de graca" ||
     lower === "7-dias-de-gratis" ||
-    lower.includes("7") ||
+    lower === "teste-gratis" ||
+    lower === "teste-grátis" ||
+    lower === "testegratis" ||
+    lower === "free-trial" ||
+    lower.includes("77") ||
+    lower.includes("7-dias") ||
+    lower.includes("7dias") ||
     lower.includes("trial") ||
     lower.includes("gratis") ||
     lower.includes("grátis") ||
@@ -139,7 +148,9 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
           const isTrial =
             isTrialOfferIdentifier(prod.offerId) ||
             prod.price === 0 ||
-            (prod.introductoryPrice !== null && prod.introductoryPrice !== undefined);
+            (prod.introductoryPrice !== null &&
+              prod.introductoryPrice !== undefined &&
+              prod.introductoryPrice === 0);
 
           const details: PlayProductDetails = {
             productId: prod.identifier,
@@ -170,12 +181,19 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
             rawPlan === "semanal" ||
             rawId.includes("semanal")
           ) {
-            if (!results["weekly"] || (!results["weekly"].trialOfferToken && isTrial)) {
+            // Se for oferta base com preço real, prioriza para a exibição de valor
+            if (!results["weekly"] || (!isTrial && prod.price && prod.price > 0)) {
               results["weekly"] = {
                 ...details,
+                formattedPrice:
+                  (!isTrial && formatted) || results["weekly"]?.formattedPrice || formatted,
+                price: (!isTrial && prod.price) || results["weekly"]?.price || prod.price || 0,
                 trialOfferToken: isTrial ? prod.offerToken : results["weekly"]?.trialOfferToken,
                 baseOfferToken: !isTrial ? prod.offerToken : results["weekly"]?.baseOfferToken,
               };
+            } else if (isTrial && results["weekly"]) {
+              results["weekly"].trialOfferToken = prod.offerToken;
+              results["weekly"].hasFreeTrial = true;
             }
           } else if (
             rawId === PLAY_PRODUCT_IDS.monthly.toLowerCase() ||
@@ -297,19 +315,8 @@ export async function requestGooglePlayPurchase(
   try {
     const isSub = productId !== "sar_scan_creditos";
 
-    // Determina o ID do Plano Base configurado no Google Play Console
     let planIdentifier: string | undefined = purchaseOpts.customPlanId;
-    if (isSub && !planIdentifier) {
-      if (productId.includes("semanal")) {
-        planIdentifier = "semanal";
-      } else if (productId.includes("anual")) {
-        planIdentifier = "anual";
-      } else {
-        planIdentifier = "mensal";
-      }
-    }
-
-    let selectedOfferToken: string | undefined = undefined;
+    let selectedOfferToken: string | undefined = purchaseOpts.offerToken;
 
     // Verifica no banco de dados se o utilizador já possui assinatura ativa ou já utilizou o período de teste
     let eligibleForTrial = Boolean(purchaseOpts.isTrial);
@@ -345,8 +352,8 @@ export async function requestGooglePlayPurchase(
       }
     }
 
-    // Se for assinatura, busca os produtos e ofertas disponíveis para encontrar a oferta exata (ex: 7 dias grátis)
-    if (isSub) {
+    // Se for assinatura, busca os produtos e ofertas disponíveis para encontrar a oferta exata (ex: 7 dias grátis / 77-dias-gratis)
+    if (isSub && !selectedOfferToken) {
       try {
         const prodQuery = await NativePurchases.getProducts({
           productIdentifiers: [productId],
@@ -361,26 +368,31 @@ export async function requestGooglePlayPurchase(
           console.log("[Play IAP] Ofertas disponíveis para o produto:", prodQuery.products);
 
           if (eligibleForTrial) {
-            // Busca a oferta de 7 dias grátis configurada no Google Play Console
+            // Busca a oferta de 7 dias grátis configurada no Google Play Console (77-dias-gratis, 7-dias-gratis, etc.)
             const trialOffer = prodQuery.products.find((p) => {
               const isTrial =
                 isTrialOfferIdentifier(p.offerId) ||
                 isTrialOfferIdentifier(p.identifier) ||
                 p.price === 0 ||
-                (p.introductoryPrice !== null && p.introductoryPrice !== undefined);
+                (p.introductoryPrice !== null &&
+                  p.introductoryPrice !== undefined &&
+                  p.introductoryPrice === 0);
               return isTrial;
             });
 
             if (trialOffer && trialOffer.offerToken) {
-              console.log("[Play IAP] Oferta de Teste Grátis de 7 dias encontrada:", trialOffer);
+              console.log("[Play IAP] Oferta de Teste Grátis selecionada:", trialOffer);
               selectedOfferToken = trialOffer.offerToken;
-              if (trialOffer.identifier) {
-                planIdentifier = trialOffer.identifier;
+              if (trialOffer.planIdentifier) {
+                planIdentifier = trialOffer.planIdentifier;
               }
             } else {
-              // Fallback para a primeira oferta disponível caso não haja diferenciação explícita
-              console.log("[Play IAP] Usando oferta padrão disponível:", prodQuery.products[0]);
+              // Fallback para a primeira oferta disponível
+              console.log("[Play IAP] Usando primeira oferta disponível:", prodQuery.products[0]);
               selectedOfferToken = prodQuery.products[0].offerToken;
+              if (prodQuery.products[0].planIdentifier) {
+                planIdentifier = prodQuery.products[0].planIdentifier;
+              }
             }
           } else {
             // Compra regular (sem teste): seleciona oferta base padrão sem trial
@@ -389,8 +401,8 @@ export async function requestGooglePlayPurchase(
               prodQuery.products[0];
             if (baseOffer) {
               selectedOfferToken = baseOffer.offerToken;
-              if (baseOffer.identifier) {
-                planIdentifier = baseOffer.identifier;
+              if (baseOffer.planIdentifier) {
+                planIdentifier = baseOffer.planIdentifier;
               }
             }
           }

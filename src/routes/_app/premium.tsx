@@ -12,6 +12,7 @@ import {
   isCapacitor,
   syncSubscriptionStatusOnBackend,
 } from "@/lib/google-play.functions";
+import { Browser } from "@capacitor/browser";
 
 import { isInstalledApp, getApiUrl } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -467,25 +468,30 @@ export function PremiumPage() {
               ? PLAY_PRODUCT_IDS.yearly
               : PLAY_PRODUCT_IDS.monthly;
 
-        // Invoca a Bottom Sheet oficial da Google Play Store no celular
+        // Invoca a Bottom Sheet oficial da Google Play Store no celular (com oferta de 7 dias grátis se trial=true)
         const res = await requestGooglePlayPurchase(playProductId, session.access_token, {
           isTrial: trial,
         });
         if (res.success) {
           toast.success(
             trial
-              ? "Teste grátis de 7 dias ativado com sucesso pela Google Play!"
+              ? "Teste gratuito de 7 dias ativado com sucesso pela Google Play!"
               : "Assinatura ativada com sucesso pela Google Play!",
           );
           if (refresh) await refresh();
           const planDef = displayPlans.find((p) => p.id === planId) || displayPlans[1];
           setPurchasedPlan(planDef);
           setShowSuccessModal(true);
-        } else {
-          if (!res.isCancelled) {
-            toast.error(res.error || "A transação falhou na Google Play.");
-          }
+          return;
+        } else if (!res.isCancelled) {
+          toast.error(res.error || "Não foi possível concluir a transação na Google Play.");
         }
+        return;
+      }
+
+      // No site Web (Navegador): se for ativação de Teste Grátis de 7 dias, ativa na Web
+      if (trial) {
+        await activateFreeTrial(planId);
         return;
       }
 
@@ -536,12 +542,11 @@ export function PremiumPage() {
             missing: [],
           });
           setShowSuccessModal(true);
-        } else {
-          if (!res.isCancelled) {
-            toast.error(
-              res.error || "A transação de créditos falhou ou foi rejeitada pela Google Play.",
-            );
-          }
+          return;
+        } else if (!res.isCancelled) {
+          toast.error(
+            res.error || "Não foi possível concluir a compra de créditos na Google Play.",
+          );
         }
         return;
       }
