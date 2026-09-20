@@ -728,7 +728,12 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
     }
   }
 
-  // 4. Se for Stripe, verifica status no Stripe com a chave do banco (app_settings)
+  // 4. Se for Stripe, verifica status no Stripe com a chave do banco (app_settings) ou ambiente
+  let newCredits = currentSub.scans_credits ?? 0;
+  let trialEndVal = currentSub.trial_end;
+  let periodEndVal = currentSub.current_period_end;
+  let finalStripeSubId = currentSub.stripe_subscription_id;
+
   try {
     const { stripe } = await getStripe(true);
     let stripeSubId = currentSub.stripe_subscription_id;
@@ -742,6 +747,7 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
         const activeSub = subs.data.find((s) => s.status === "active" || s.status === "trialing");
         if (activeSub) {
           stripeSubId = activeSub.id;
+          finalStripeSubId = activeSub.id;
         }
       } catch (listErr: any) {
         console.warn(
@@ -757,7 +763,36 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
         if (stripeSub.cancel_at_period_end || stripeSub.status === "canceled") {
           isCancelled = true;
         }
-        if (stripeSub.status === "canceled" || stripeSub.status === "unpaid") {
+
+        if (stripeSub.status === "active" || stripeSub.status === "trialing") {
+          let detectedPlan = stripeSub.metadata?.plan;
+          if (!detectedPlan && stripeSub.items?.data?.[0]?.plan) {
+            const interval = stripeSub.items.data[0].plan.interval;
+            if (interval === "week") detectedPlan = "weekly";
+            else if (interval === "year") detectedPlan = "yearly";
+            else if (interval === "month") detectedPlan = "monthly";
+          }
+          detectedPlan = detectedPlan || currentSub.plan || "monthly";
+
+          newStatus = stripeSub.status;
+          newPlan = detectedPlan;
+          newAi = true;
+          finalStripeSubId = stripeSub.id;
+
+          if (stripeSub.trial_end) {
+            trialEndVal = new Date(stripeSub.trial_end * 1000).toISOString();
+          }
+          if (stripeSub.current_period_end) {
+            periodEndVal = new Date(stripeSub.current_period_end * 1000).toISOString();
+          }
+
+          const requiredPlanScans =
+            detectedPlan === "weekly" ? 30 : detectedPlan === "monthly" ? 150 : 1200;
+          if (newCredits < requiredPlanScans) {
+            newCredits = requiredPlanScans;
+          }
+          needsUpdate = true;
+        } else if (stripeSub.status === "canceled" || stripeSub.status === "unpaid") {
           newStatus = "free";
           newPlan = null;
           newAi = false;
@@ -783,6 +818,13 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
           status: newStatus,
           plan: newPlan,
           ai_agent_enabled: newAi,
+          scans_credits: newCredits,
+          stripe_subscription_id: finalStripeSubId,
+          stripe_customer_id: currentSub.stripe_customer_id,
+          play_purchase_token: currentSub.play_purchase_token,
+          play_product_id: currentSub.play_product_id,
+          trial_end: trialEndVal,
+          current_period_end: periodEndVal,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
