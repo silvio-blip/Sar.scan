@@ -646,6 +646,20 @@ export async function requestGooglePlayPurchase(
       }
     }
 
+    if (isSub && !selectedOfferToken) {
+      const cached =
+        cachedPlayPrices[targetPlan] ||
+        cachedPlayPrices[finalProductId] ||
+        cachedPlayPrices["weekly"] ||
+        cachedPlayPrices["monthly"] ||
+        cachedPlayPrices["yearly"];
+      if (cached) {
+        selectedOfferToken = eligibleForTrial
+          ? cached.trialOfferToken || cached.offerToken || cached.baseOfferToken
+          : cached.baseOfferToken || cached.offerToken;
+      }
+    }
+
     // 3. Monta as opções e executa a chamada nativa sem loops de re-tentativa
     let transaction: any = null;
     const successfulProductId: string = finalProductId;
@@ -668,7 +682,10 @@ export async function requestGooglePlayPurchase(
       try {
         transaction = await NativePurchases.purchaseProduct(purchaseOptions);
       } catch (attemptErr: any) {
-        console.log("[Play IAP] Retorno/Erro da chamada de compra:", attemptErr);
+        console.warn(
+          "[Play IAP] Falha na primeira tentativa com offerToken, tentando fallback simplificado...",
+          attemptErr,
+        );
         if (isUserCancellation(attemptErr)) {
           return {
             success: false,
@@ -676,7 +693,29 @@ export async function requestGooglePlayPurchase(
             isCancelled: true,
           };
         }
-        throw attemptErr;
+        // Fallback retry sem offerToken ou sem planIdentifier
+        try {
+          const fallbackOptions: any = {
+            productIdentifier: finalProductId,
+            productType: PURCHASE_TYPE.SUBS,
+            autoAcknowledgePurchases: true,
+          };
+          if (planIdentifier) {
+            fallbackOptions.planIdentifier = planIdentifier;
+          }
+          console.log("[Play IAP] Invocando fallback de compra Google Play:", fallbackOptions);
+          transaction = await NativePurchases.purchaseProduct(fallbackOptions);
+        } catch (fallbackErr: any) {
+          console.log("[Play IAP] Erro no fallback de compra:", fallbackErr);
+          if (isUserCancellation(fallbackErr)) {
+            return {
+              success: false,
+              error: "O plano não foi concluído.",
+              isCancelled: true,
+            };
+          }
+          throw fallbackErr;
+        }
       }
     } else {
       // In-App (Créditos 50 scans)
