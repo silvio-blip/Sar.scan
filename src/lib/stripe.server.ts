@@ -16,14 +16,12 @@ function cleanKey(val: string | undefined | null): string {
 
 async function loadKeys() {
   const settings = await getAppSettings();
-  const secret = cleanKey(settings.stripe_secret_key || process.env.STRIPE_SECRET_KEY);
-  const webhookSecret = cleanKey(
-    settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET,
-  );
+  const secret = cleanKey(settings.stripe_secret_key);
+  const webhookSecret = cleanKey(settings.stripe_webhook_secret);
 
   if (!secret) {
     throw new Error(
-      "Chave secreta da Stripe (stripe_secret_key) não encontrada na tabela app_settings.",
+      "Chave secreta da Stripe (stripe_secret_key) não encontrada na tabela app_settings do Supabase. Configure a chave na tabela para realizar pagamentos.",
     );
   }
   return { secret, webhookSecret };
