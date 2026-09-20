@@ -130,6 +130,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // 1.5. Se o registro gratuito já existe (criado pelo trigger do DB), mas o utilizador é novo e tem 0 créditos, inicializar com 3
+      if (
+        typedSub &&
+        (!typedSub.plan || typedSub.status === "free") &&
+        typedSub.scans_credits === 0
+      ) {
+        try {
+          const { data: usages } = await supabase
+            .from("scan_usage")
+            .select("count")
+            .eq("user_id", uid);
+          const totalScansMade = usages?.reduce((sum, item) => sum + (item.count || 0), 0) ?? 0;
+
+          if (totalScansMade === 0) {
+            console.log(
+              "[Auth] Novo utilizador com 0 scans detetado. Inicializando com 3 scans de boas-vindas...",
+            );
+            await supabase
+              .from("subscriptions")
+              .update({ scans_credits: 3, updated_at: new Date().toISOString() })
+              .eq("user_id", uid);
+            typedSub.scans_credits = 3;
+          }
+        } catch (initErr) {
+          console.error("[Auth] Erro ao inicializar 3 scans do utilizador novo:", initErr);
+        }
+      }
+
       // 2. Verificar se o período de teste de 7 dias expirou
       if (typedSub && typedSub.status === "trialing" && typedSub.trial_end) {
         const trialExpired = new Date(typedSub.trial_end) < new Date();

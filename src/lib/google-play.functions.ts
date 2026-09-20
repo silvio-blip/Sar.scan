@@ -195,6 +195,9 @@ function isTrialOfferIdentifier(offerId?: string | null): boolean {
   return (
     lower === "7-dias-gratis" ||
     lower === "7-dias-grátis" ||
+    lower.includes("7-dias-gratis") ||
+    lower.includes("7-dias-grátis") ||
+    lower.includes("7diasgratis") ||
     lower === "77-dias-gratis" ||
     lower === "77diasgratis" ||
     lower === "77-dias-grátis" ||
@@ -548,28 +551,79 @@ export async function requestGooglePlayPurchase(
           const candidates = prodQuery.products;
 
           if (eligibleForTrial) {
-            // Busca ativa por uma oferta de teste/trial gratuito
-            const trialOffer = candidates.find((p) => {
-              const offId = (p.offerId || "").toLowerCase();
-              return (
-                offId.includes("trial") ||
-                offId.includes("gratis") ||
-                offId.includes("grátis") ||
-                offId.includes("graca") ||
-                offId.includes("graça") ||
-                isTrialOfferIdentifier(offId) ||
-                p.price === 0 ||
-                (p.introductoryPrice !== null &&
-                  p.introductoryPrice !== undefined &&
-                  p.introductoryPrice === 0)
-              );
+            console.log(
+              "[Play IAP] Buscando oferta de teste gratuito (7-dias-gratis) nos candidatos:",
+              candidates.map((p) => ({
+                identifier: p.identifier,
+                planIdentifier: p.planIdentifier,
+                offerId: p.offerId,
+                price: p.price,
+                offerToken: p.offerToken ? "PRESENTE" : "AUSENTE",
+              })),
+            );
+
+            // Nível 1: Busca pelo ID exato da promoção configurada "7-dias-gratis" ou "7-dias-grátis"
+            let trialOffer = candidates.find((p) => {
+              const offId = (p.offerId || "").toLowerCase().trim();
+              return offId === "7-dias-gratis" || offId === "7-dias-grátis";
             });
 
+            // Nível 2: Busca por ID contendo sub-strings da promoção
+            if (!trialOffer) {
+              trialOffer = candidates.find((p) => {
+                const offId = (p.offerId || "").toLowerCase().trim();
+                return (
+                  offId.includes("7-dias-gratis") ||
+                  offId.includes("7-dias-grátis") ||
+                  offId.includes("7diasgratis") ||
+                  isTrialOfferIdentifier(offId)
+                );
+              });
+            }
+
+            // Nível 3: Busca por palavras-chave comuns de teste grátis
+            if (!trialOffer) {
+              trialOffer = candidates.find((p) => {
+                const offId = (p.offerId || "").toLowerCase().trim();
+                return (
+                  offId.includes("trial") ||
+                  offId.includes("gratis") ||
+                  offId.includes("grátis") ||
+                  offId.includes("graca") ||
+                  offId.includes("graça") ||
+                  offId.includes("free")
+                );
+              });
+            }
+
+            // Nível 4: Heurística para múltiplos candidatos - Qualquer oferta com offerId preenchido representa uma promoção
+            if (!trialOffer) {
+              trialOffer = candidates.find((p) => p.offerId && p.offerId.trim().length > 0);
+            }
+
+            // Nível 5: Busca por preço zero ou preço de introdução zero
+            if (!trialOffer) {
+              trialOffer = candidates.find((p) => {
+                return (
+                  p.price === 0 ||
+                  (p.introductoryPrice !== null &&
+                    p.introductoryPrice !== undefined &&
+                    p.introductoryPrice === 0)
+                );
+              });
+            }
+
             if (trialOffer) {
-              console.log("[Play IAP] Oferta de teste gratuito detectada e aplicada:", trialOffer);
+              console.log(
+                "[Play IAP] Oferta de teste gratuito detectada e aplicada com sucesso:",
+                trialOffer,
+              );
               selectedOfferToken = trialOffer.offerToken || selectedOfferToken;
               planIdentifier = trialOffer.planIdentifier || planIdentifier;
             } else {
+              console.warn(
+                "[Play IAP] Nenhuma oferta de teste encontrada pelos filtros. Utilizando fallbacks.",
+              );
               // Fallback seguro: tenta usar o token de trial do cache ou o primeiro disponível
               const cachedInfo = cachedPlayPrices[targetPlan] || cachedPlayPrices[finalProductId];
               if (cachedInfo?.trialOfferToken) {

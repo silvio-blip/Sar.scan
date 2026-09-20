@@ -234,7 +234,17 @@ export function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const canAccessAI = true;
+  const hasPlan =
+    subscription &&
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    (subscription.plan === "weekly" ||
+      subscription.plan === "monthly" ||
+      subscription.plan === "yearly" ||
+      subscription.plan === "semanal" ||
+      subscription.plan === "mensal" ||
+      subscription.plan === "anual");
+
+  const canAccessAI = Boolean(isAdmin || hasPlan);
 
   // Query AI message history
   const { data: rawAiMsgs, isLoading: loadingMsgs } = useQuery({
@@ -536,7 +546,7 @@ export function ChatPage() {
                 calcular macros, analisar pratos e montar estratégias alimentares personalizadas.
               </p>
               <p className="text-[10px] text-primary font-black uppercase tracking-widest pt-1">
-                Disponível nos planos Mensal e Anual
+                Disponível nos planos Semanal, Mensal e Anual
               </p>
             </div>
             <Button

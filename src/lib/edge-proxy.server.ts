@@ -111,28 +111,47 @@ async function groqCall(opts: { systemInstruction?: string; contents: GeminiCont
     }
   }
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages,
-      temperature: 0.7,
-      max_tokens: 1500,
-    }),
-  });
+  const groqModels = [
+    "llama-3.3-70b-versatile",
+    "llama-3.3-70b-specdec",
+    "llama-3.1-70b-versatile",
+    "llama3-70b-8192",
+    "llama-3.1-8b-instant",
+  ];
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API error (${response.status}): ${errText}`);
+  let lastError: any = null;
+  for (const model of groqModels) {
+    try {
+      console.log(`[Groq Call] Tentando modelo: ${model}`);
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0.7,
+          max_tokens: 1500,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Groq API error (${response.status}): ${errText}`);
+      }
+
+      const data = (await response.json()) as any;
+      const replyText = data.choices?.[0]?.message?.content || "";
+      return { text: replyText };
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Groq Call] Modelo ${model} falhou ou inacessível:`, err?.message || err);
+    }
   }
 
-  const data = (await response.json()) as any;
-  const replyText = data.choices?.[0]?.message?.content || "";
-  return { text: replyText };
+  throw lastError || new Error("Todos os modelos do Groq falharam.");
 }
 
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
@@ -156,6 +175,9 @@ async function geminiCall(opts: {
 
   const modelsToTry = [
     "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-flash-latest",
+    "gemini-3.1-pro-preview",
     "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
     "gemini-2.5-flash",
@@ -386,11 +408,14 @@ async function handleNutritionChat(body: Body) {
     ? `Dados do usuário: Nome: ${userProfile.nome || "Usuário"}, Peso: ${userProfile.peso || "Não informado"}kg, Altura: ${userProfile.altura || "Não informada"}cm, Objetivo: ${userProfile.objetivo || "Não informado"}, Dieta/Preferências: ${userProfile.dieta || "Não informado"}.`
     : "";
 
-  const systemInstruction = `Você é um nutricionista brasileiro amigável, especialista em saúde e bem-estar.
+  const systemInstruction = `Você é um nutricionista brasileiro e uma inteligência artificial ESTRITAMENTE focado em nutrição, dietas, alimentos, calorias e saúde metabólica.
 ${profileContext}
-Mantenha continuidade com o histórico da conversa. Responda de forma clara, acolhedora, precisa e motivadora em português.
-Se o usuário enviar uma foto de prato de comida ou alimento, analise detalhadamente os ingredientes, calorias estimadas e macronutrientes.
-Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, além da resposta explicativa, inclua no final da resposta um bloco JSON estruturado no formato exato (sem formatação markdown adicional ao redor):
+
+DIRETRIZES DE ESCOPO ABSOLUTAS (OBRIGATÓRIO):
+1. RESPOSTA EXCLUSIVA DE NUTRIÇÃO E SAÚDE: Você só está autorizado a responder a perguntas diretamente relacionadas a nutrição, alimentação, saúde metabólica, calorias, receitas e dietas. Se o usuário fizer qualquer pergunta fora deste escopo (por exemplo, sobre programação, matemática, história, notícias, entretenimento, curiosidades gerais, tradução ou qualquer outro assunto que não seja nutrição), responda de forma muito curta e direta: "Desculpe, fui projetado exclusivamente para ajudar com nutrição, dietas e saúde. Não posso responder a perguntas sobre outros assuntos." Não responda, sob hipótese alguma, a perguntas fora do tema.
+2. RESPOSTAS CURTAS, DIRETAS E CONCISAS: Seja extremamente direto e conciso. Se o usuário fizer uma pergunta simples ou curta, responda com um resumo rápido de poucas linhas ou um parágrafo breve e encerre. Evite gerar explicações longas, textos prolixos ou introduções e conclusões desnecessárias, a menos que uma análise altamente detalhada seja solicitada explicitamente. Poupe recursos e o tempo do utilizador.
+3. Se o usuário enviar uma foto de prato de comida ou alimento, analise detalhadamente os ingredientes, calorias estimadas e macronutrientes.
+4. Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, além da resposta explicativa breve, inclua no final da resposta um bloco JSON estruturado no formato exato (sem formatação markdown adicional ao redor):
 [APLICAR_MELHORIAS: {"meta": "...", "dieta": "..."}] com as atualizações sugeridas para o perfil do usuário.`;
 
   const contents: any[] = [];

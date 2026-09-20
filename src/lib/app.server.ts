@@ -148,7 +148,14 @@ O formato deve ser exatamente:
       });
 
       let aiResponse;
-      const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+      const modelsToTry = [
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest",
+        "gemini-3.1-pro-preview",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+      ];
       let lastError: any = null;
 
       for (const m of modelsToTry) {

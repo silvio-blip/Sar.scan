@@ -251,44 +251,6 @@ export function PremiumPage() {
   // Elegível para teste grátis apenas se nunca usou teste, não tem assinatura ativa e não é premium
   const isEligibleForTrial = !hasUsedTrial && !hasActiveSubscription && !isPremium;
 
-  const activateFreeTrial = async (planId?: PlanId) => {
-    if (!user) {
-      toast.error("Por favor, faça autenticação antes de ativar o teste.");
-      return;
-    }
-
-    if (hasUsedTrial) {
-      toast.error("Você já utilizou o seu teste gratuito de 7 dias.");
-      return;
-    }
-
-    const chosenPlan = planId || "weekly";
-    setLoading(chosenPlan);
-    try {
-      const trialEnd = new Date();
-      trialEnd.setDate(trialEnd.getDate() + 7);
-
-      const { error } = await supabase.from("subscriptions").upsert({
-        user_id: user.id,
-        status: "trialing",
-        trial_end: trialEnd.toISOString(),
-        plan: chosenPlan,
-        ai_agent_enabled: true,
-        scans_credits: 30,
-      });
-
-      if (error) throw error;
-
-      toast.success("Teste grátis de 7 dias ativado! Você recebeu 30 scans gratuitos.");
-      if (refresh) await refresh();
-      navigate({ to: "/scanner" });
-    } catch (e: any) {
-      toast.error(e.message || "Erro ao ativar teste grátis.");
-    } finally {
-      setLoading(null);
-    }
-  };
-
   const triggerAppReturnDeepLinks = useCallback(() => {
     console.log("[DeepLink] Iniciando redirecionamento para o App...");
     try {
@@ -506,13 +468,7 @@ export function PremiumPage() {
         return;
       }
 
-      // No site Web (Navegador): se for ativação de Teste Grátis de 7 dias, ativa na Web
-      if (trial) {
-        await activateFreeTrial(planId);
-        return;
-      }
-
-      // No site Web (Navegador): Redireciona para o Stripe Checkout Real
+      // No site Web (Navegador): Redireciona para o Stripe Checkout Real (incluindo trial se aplicável)
       const res = await createStripeCheckout({
         token: session.access_token,
         plan: planId,
