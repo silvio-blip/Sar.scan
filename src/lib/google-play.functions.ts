@@ -726,6 +726,7 @@ export async function requestGooglePlayPurchase(
     return verification;
   } catch (err: any) {
     console.error("[Play IAP] Erro na Google Play Billing:", err);
+    const errorMessage = err?.message || err?.error || String(err);
 
     if (isUserCancellation(err)) {
       return { success: false, error: "O plano não foi concluído.", isCancelled: true };
