@@ -41,12 +41,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const rawBody = await getRawBody(req);
     const sig = (req.headers["stripe-signature"] as string) || null;
     console.log(
-      `[Vercel /api/public/stripe-webhook] Recebido webhook do Stripe (bytes: ${rawBody.length})`,
+      `[Vercel /api/stripe/webhook] Recebido webhook do Stripe (bytes: ${rawBody.length})`,
     );
     const result = await handleStripeWebhook(rawBody, sig);
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error("[Vercel /api/public/stripe-webhook error]:", error.message || error);
+    console.error("[Vercel /api/stripe/webhook error]:", error.message || error);
     return res.status(500).json({ error: error.message || "Erro interno no webhook" });
   }
 }

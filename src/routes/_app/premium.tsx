@@ -13,7 +13,7 @@ import {
   syncSubscriptionStatusOnBackend,
 } from "@/lib/google-play.functions";
 
-import { isInstalledApp } from "@/lib/utils";
+import { isInstalledApp, getApiUrl } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -137,6 +137,7 @@ const PLANS: PlanDef[] = [
 
 export function PremiumPage() {
   const { user, session, isPremium, isAdmin, subscription, refresh } = useAuth();
+  const [confirmedCredits, setConfirmedCredits] = useState<number | null>(null);
   const [selected, setSelected] = useState<PlanId>("monthly");
   const [loading, setLoading] = useState<PlanId | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -368,7 +369,7 @@ export function PremiumPage() {
               headers.Authorization = `Bearer ${session.access_token}`;
             }
 
-            const res = await fetch("/api/stripe/verify-session", {
+            const res = await fetch(getApiUrl("/api/stripe/verify-session"), {
               method: "POST",
               headers,
               body: JSON.stringify({ sessionId }),
@@ -377,6 +378,13 @@ export function PremiumPage() {
             if (res.ok) {
               const data = await res.json();
               console.log("[Stripe Return] Sessão confirmada com sucesso:", data);
+              if (data.credits !== undefined && data.credits !== null) {
+                setConfirmedCredits(data.credits);
+              }
+              if (data.plan) {
+                const foundPlan = displayPlans.find((p) => p.id === data.plan);
+                if (foundPlan) setPurchasedPlan(foundPlan);
+              }
               toast.success("Pagamento confirmado! Plano e créditos ativados.");
             } else {
               const errData = await res.json().catch(() => ({}));
@@ -1075,7 +1083,7 @@ export function PremiumPage() {
                 {[
                   {
                     icon: Sparkles,
-                    text: `${subscription?.scans_credits ?? purchasedPlan?.scans ?? 50} scans totais disponíveis`,
+                    text: `${confirmedCredits ?? subscription?.scans_credits ?? purchasedPlan?.scans ?? 50} scans totais disponíveis`,
                   },
                   {
                     icon: Bot,

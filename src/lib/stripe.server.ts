@@ -489,6 +489,7 @@ export async function createStripeCheckoutInternal(data: {
     success_url: successUrl,
     cancel_url: cancelUrl,
     metadata: { user_id: user.id, plan: data.plan, is_trial: data.trial ? "true" : "false" },
+    client_reference_id: user.id,
   };
 
   try {
@@ -605,14 +606,52 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
   if (!targetUserId && session.metadata?.user_id) {
     targetUserId = session.metadata.user_id;
   }
+  if (!targetUserId && session.client_reference_id) {
+    targetUserId = session.client_reference_id;
+  }
+  if (!targetUserId) {
+    const customerEmail = session.customer_details?.email || session.customer_email;
+    if (customerEmail) {
+      const cleanEmail = customerEmail.trim().toLowerCase();
+      const { data: prof } = await (supabaseAdmin as any)
+        .from("profiles")
+        .select("id")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+      if (prof?.id) targetUserId = prof.id;
+      if (!targetUserId) {
+        try {
+          const { data: usersData } = await (supabaseAdmin as any).auth.admin.listUsers();
+          const found = usersData?.users?.find(
+            (u: any) => u.email?.toLowerCase().trim() === cleanEmail,
+          );
+          if (found?.id) targetUserId = found.id;
+        } catch (err) {
+          console.debug("[Stripe Verify] Fallback listUsers lookup failed:", err);
+        }
+      }
+    }
+  }
 
   if (!targetUserId) {
     throw new Error("Não foi possível identificar o usuário da sessão Stripe");
   }
 
-  const planId = (session.metadata?.plan || "monthly") as PlanId;
-  const isComplete = session.status === "complete" || session.payment_status === "paid";
   const subObj = session.subscription as any;
+  let planId = session.metadata?.plan as PlanId;
+  if (!planId) {
+    if (session.mode === "payment") {
+      planId = "credits" as any;
+    } else if (subObj) {
+      const interval = subObj.items?.data?.[0]?.plan?.interval || subObj.plan?.interval;
+      if (interval === "week") planId = "weekly";
+      else if (interval === "year") planId = "yearly";
+      else if (interval === "month") planId = "monthly";
+    }
+  }
+  if (!planId) planId = "monthly";
+
+  const isComplete = session.status === "complete" || session.payment_status === "paid";
   const customerId =
     typeof session.customer === "string" ? session.customer : (session.customer as any)?.id || null;
 
@@ -627,6 +666,35 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
     .maybeSingle();
 
   const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+  const subId =
+    typeof session.subscription === "string" ? session.subscription : subObj?.id || null;
+
+  // Idempotência: caso já tenha sido processada para evitar duplicar créditos
+  const isAlreadyProcessed =
+    session.metadata?.processed === "true" ||
+    (Boolean(subId) && currentSub?.stripe_subscription_id === subId && currentSub?.plan === planId);
+
+  if (isAlreadyProcessed && currentSub) {
+    console.log(
+      `[Stripe Verify] Sessão ${sessionId} já processada para usuário ${targetUserId}. Retornando status existente.`,
+    );
+    return {
+      success: true,
+      plan: currentSub.plan || planId,
+      status: currentSub.status || "active",
+      credits: currentSub.scans_credits ?? getPlanScans(planId),
+      trial: currentSub.status === "trialing",
+    };
+  }
+
+  // Tenta marcar sessão como processada na Stripe em background
+  try {
+    await stripe.checkout.sessions.update(sessionId, {
+      metadata: { ...session.metadata, processed: "true" },
+    });
+  } catch (mErr) {
+    console.debug("[Stripe Verify] Nota: metadata update ignorado:", mErr);
+  }
 
   if (planId === "credits") {
     const addedCredits = 50;
@@ -670,8 +738,6 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
       (planId === "weekly" && !currentSub?.trial_end);
 
     const subStatus = isTrial ? "trialing" : subObj?.status === "active" ? "active" : "active";
-    const subId =
-      typeof session.subscription === "string" ? session.subscription : subObj?.id || null;
     const planCredits = getPlanScans(planId);
     const newTotal = currentCredits + planCredits;
 

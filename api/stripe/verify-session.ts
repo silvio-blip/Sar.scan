@@ -1,23 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { loadEnv } from "../../src/lib/env-loader.server.js";
-import { handleStripeWebhook } from "../../src/lib/stripe.webhook.js";
+import { verifyStripeSessionInternal } from "../../src/lib/stripe.server.js";
 
 // Ensure environment variables are loaded
 loadEnv();
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-async function getRawBody(req: VercelRequest): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-  }
-  return Buffer.concat(chunks);
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS Headers
@@ -38,15 +24,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const rawBody = await getRawBody(req);
-    const sig = (req.headers["stripe-signature"] as string) || null;
-    console.log(
-      `[Vercel /api/public/stripe-webhook] Recebido webhook do Stripe (bytes: ${rawBody.length})`,
-    );
-    const result = await handleStripeWebhook(rawBody, sig);
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+    const { sessionId } = req.body || {};
+
+    if (!sessionId) {
+      return res.status(400).json({ error: "O parâmetro sessionId é obrigatório." });
+    }
+
+    console.log(`[Vercel /api/stripe/verify-session] Verificando sessão: ${sessionId}`);
+    const result = await verifyStripeSessionInternal(token, sessionId);
     return res.status(200).json(result);
   } catch (error: any) {
-    console.error("[Vercel /api/public/stripe-webhook error]:", error.message || error);
-    return res.status(500).json({ error: error.message || "Erro interno no webhook" });
+    console.error("[Vercel /api/stripe/verify-session error]:", error);
+    return res.status(500).json({ error: error.message || "Erro ao verificar sessão Stripe" });
   }
 }

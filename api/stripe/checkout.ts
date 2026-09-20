@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { loadEnv } from "../../src/lib/env-loader.server.js";
 import { createStripeCheckoutInternal } from "../../src/lib/stripe.server.js";
+
+loadEnv();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Add CORS headers
@@ -17,7 +20,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
   try {
-    const result = await createStripeCheckoutInternal(req.body);
+    const origin =
+      req.body?.origin ||
+      req.headers.origin ||
+      (req.headers.referer ? new URL(req.headers.referer as string).origin : "") ||
+      "";
+    const result = await createStripeCheckoutInternal({
+      ...req.body,
+      origin: origin || undefined,
+    });
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Internal Server Error" });

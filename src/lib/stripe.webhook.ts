@@ -3,7 +3,7 @@ import { getStripe, PLANS_DEF } from "./stripe.server.js";
 
 console.log("[Webhook] Module Loading...");
 
-export async function handleStripeWebhook(payload: string, signature: string | null) {
+export async function handleStripeWebhook(payload: string | Buffer, signature: string | null) {
   const { stripe, webhookSecret } = await getStripe();
 
   let event: any;
@@ -11,13 +11,15 @@ export async function handleStripeWebhook(payload: string, signature: string | n
     if (webhookSecret && signature) {
       event = await stripe.webhooks.constructEventAsync(payload, signature, webhookSecret);
     } else {
-      event = typeof payload === "string" ? JSON.parse(payload) : payload;
+      const rawStr = typeof payload === "string" ? payload : payload.toString("utf8");
+      event = JSON.parse(rawStr);
     }
   } catch (e: any) {
     console.error(`[Webhook] Signature verification warning: ${e.message}`);
     // If webhook secret isn't configured or matches loosely, parse event payload
     try {
-      event = typeof payload === "string" ? JSON.parse(payload) : payload;
+      const rawStr = typeof payload === "string" ? payload : payload.toString("utf8");
+      event = JSON.parse(rawStr);
     } catch {
       throw new Error(`Webhook payload parsing error: ${e.message}`);
     }
@@ -54,13 +56,24 @@ export async function handleStripeWebhook(payload: string, signature: string | n
     }
 
     if (email) {
+      const cleanEmail = email.trim().toLowerCase();
       const { data: prof } = await (supabaseAdmin as any)
         .from("profiles")
         .select("id")
-        .eq("email", email.trim().toLowerCase())
+        .eq("email", cleanEmail)
         .maybeSingle();
 
       if (prof?.id) return prof.id;
+
+      try {
+        const { data: usersData } = await (supabaseAdmin as any).auth.admin.listUsers();
+        const found = usersData?.users?.find(
+          (u: any) => u.email?.toLowerCase().trim() === cleanEmail,
+        );
+        if (found?.id) return found.id;
+      } catch (uErr) {
+        console.warn("[Webhook] Fallback listUsers falhou:", uErr);
+      }
     }
 
     return null;
@@ -94,12 +107,17 @@ export async function handleStripeWebhook(payload: string, signature: string | n
           .eq("user_id", userId)
           .maybeSingle();
 
+        const subId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id;
         const addedCredits = planScans(planId);
         const currentCredits = (currentSub as any)?.scans_credits ?? 0;
-        const newTotal = currentCredits + addedCredits;
+        const alreadyCredited =
+          Boolean(subId) &&
+          currentSub?.stripe_subscription_id === subId &&
+          currentSub?.plan === planId;
+        const newTotal = alreadyCredited ? currentCredits : currentCredits + addedCredits;
 
         console.log(
-          `[Webhook] Adicionando ${addedCredits} scans para usuário ${userId}. Total: ${newTotal}`,
+          `[Webhook] Adicionando ${addedCredits} scans para usuário ${userId}. Total: ${newTotal} (já creditado: ${alreadyCredited})`,
         );
 
         if (planId === "credits" || s.mode === "payment") {
