@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createStripeCheckoutInternal } from "../../src/lib/stripe.server.js";
+import { verifyStripeSessionInternal } from "../../src/lib/stripe.server.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Add CORS headers
+  // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader(
@@ -16,18 +16,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
   try {
-    const origin =
-      req.body?.origin ||
-      req.headers.origin ||
-      (req.headers.referer ? new URL(req.headers.referer as string).origin : "") ||
-      "";
-    const result = await createStripeCheckoutInternal({
-      ...req.body,
-      origin: origin || undefined,
-    });
+    const authHeader = (req.headers.authorization as string) || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+    const { sessionId } = req.body || {};
+
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId is required" });
+    }
+
+    const result = await verifyStripeSessionInternal(token, sessionId);
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    console.error("[Vercel /api/stripe/verify-session Error]", error);
+    res.status(500).json({ error: error.message || "Erro ao verificar sessão Stripe" });
   }
 }

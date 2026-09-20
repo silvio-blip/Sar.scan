@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { createStripeCheckoutInternal } from "../../src/lib/stripe.server.js";
+import { reactivateSubscriptionInternal } from "../../src/lib/google-play.server.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Add CORS headers
+  // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader(
@@ -16,18 +16,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
   try {
-    const origin =
-      req.body?.origin ||
-      req.headers.origin ||
-      (req.headers.referer ? new URL(req.headers.referer as string).origin : "") ||
-      "";
-    const result = await createStripeCheckoutInternal({
-      ...req.body,
-      origin: origin || undefined,
-    });
+    const authHeader = (req.headers.authorization as string) || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+
+    const result = await reactivateSubscriptionInternal({ token });
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ error: error.message || "Internal Server Error" });
+    const msg = error?.message || "Erro ao reativar assinatura";
+    if (msg.startsWith("Unauthorized")) {
+      return res.status(401).json({ error: msg });
+    }
+    console.error("[Vercel /api/subscriptions/reactivate Error]", error);
+    res.status(500).json({ error: msg });
   }
 }
