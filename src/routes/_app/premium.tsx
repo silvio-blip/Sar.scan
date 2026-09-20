@@ -6,6 +6,7 @@ import {
   initializeGooglePlayIAP,
   requestGooglePlayPurchase,
   fetchGooglePlayPrices,
+  useGooglePlayPrices,
   restoreGooglePlayPurchases,
   PLAY_PRODUCT_IDS,
   type PlayProductDetails,
@@ -151,36 +152,39 @@ export function PremiumPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [playPrices, setPlayPrices] = useState<Record<string, PlayProductDetails>>({});
-
-  useEffect(() => {
-    if (isCapacitor()) {
-      fetchGooglePlayPrices()
-        .then((prices) => {
-          if (prices && Object.keys(prices).length > 0) {
-            console.log("[Premium] Preços dinâmicos da Google Play Store carregados:", prices);
-            setPlayPrices(prices);
-          }
-        })
-        .catch((err) => {
-          console.warn("[Premium] Falha ao obter preços da Google Play:", err);
-        });
-    }
-  }, []);
+  // Preços dinâmicos da Google Play Store (atualizados em tempo real do Google Play Console)
+  const { prices: playPrices, isScanning: isScanningPlayPrices } = useGooglePlayPrices();
 
   // Planos em tempo real com preços dinâmicos da Google Play (no APK) ou Stripe (na Web)
   const displayPlans = useMemo(() => {
     return PLANS.map((p) => {
-      const playData =
-        playPrices[p.id] ||
-        playPrices[PLAY_PRODUCT_IDS[p.id]] ||
-        (p.id === "weekly"
-          ? playPrices["semanal"]
-          : p.id === "yearly"
-            ? playPrices["anual"]
-            : playPrices["mensal"]);
+      let playData: PlayProductDetails | undefined;
 
-      if (playData && playData.formattedPrice) {
+      if (p.id === "weekly") {
+        playData =
+          playPrices["weekly"] ||
+          playPrices["semanal"] ||
+          playPrices[PLAY_PRODUCT_IDS.weekly] ||
+          playPrices["sar_scan_assinatura_semanal"] ||
+          playPrices["sar_scan_semanal"];
+      } else if (p.id === "yearly") {
+        playData =
+          playPrices["yearly"] ||
+          playPrices["anual"] ||
+          playPrices[PLAY_PRODUCT_IDS.yearly] ||
+          playPrices["sar_scan_assinatura_anual"] ||
+          playPrices["sar_scan_anual"];
+      } else {
+        playData =
+          playPrices["monthly"] ||
+          playPrices["mensal"] ||
+          playPrices[PLAY_PRODUCT_IDS.monthly] ||
+          playPrices["sar_scan_assinatura"] ||
+          playPrices["sar_scan_assinatura_mensal"] ||
+          playPrices["sar_scan_mensal"];
+      }
+
+      if (isCapacitor() && playData && playData.formattedPrice) {
         return {
           ...p,
           price: playData.formattedPrice,
@@ -193,8 +197,17 @@ export function PremiumPage() {
 
   // Preço do pacote de 50 scans (consumível)
   const displayCreditsPrice = useMemo(() => {
-    const creditsData = playPrices["credits"] || playPrices[PLAY_PRODUCT_IDS.credits];
-    return creditsData?.formattedPrice || "€9,99";
+    const creditsData =
+      playPrices["credits"] ||
+      playPrices[PLAY_PRODUCT_IDS.credits] ||
+      playPrices["sar_scan_creditos"] ||
+      playPrices["sar_scan_credits"] ||
+      playPrices["creditos"] ||
+      playPrices["sar_scan_50_creditos"];
+    if (isCapacitor() && creditsData?.formattedPrice) {
+      return creditsData.formattedPrice;
+    }
+    return "€9,99";
   }, [playPrices]);
 
   // Verifica se o usuário possui alguma assinatura ativa no momento e que esteja dentro do prazo de validade

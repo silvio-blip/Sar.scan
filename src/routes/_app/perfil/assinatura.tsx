@@ -29,6 +29,7 @@ import {
   isCapacitor,
   getStoredPlayPrices,
   syncGooglePlayPrices,
+  useGooglePlayPrices,
   cancelSubscriptionOnBackend,
   reactivateSubscriptionOnBackend,
   syncSubscriptionStatusOnBackend,
@@ -48,6 +49,7 @@ export function AssinaturaPage() {
   const [syncing, setSyncing] = useState(false);
   const [remoteCancelled, setRemoteCancelled] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const { prices: playPrices } = useGooglePlayPrices();
 
   // Sincroniza o status mais recente junto à Play Store / Stripe ao carregar a página
   useEffect(() => {
@@ -108,11 +110,33 @@ export function AssinaturaPage() {
       };
     }
 
+    const weeklyPrice =
+      (isCapacitor() &&
+        (playPrices["weekly"]?.formattedPrice ||
+          playPrices["semanal"]?.formattedPrice ||
+          playPrices[PLAY_PRODUCT_IDS.weekly]?.formattedPrice)) ||
+      "€4,99";
+
+    const yearlyPrice =
+      (isCapacitor() &&
+        (playPrices["yearly"]?.formattedPrice ||
+          playPrices["anual"]?.formattedPrice ||
+          playPrices[PLAY_PRODUCT_IDS.yearly]?.formattedPrice)) ||
+      "€99,99";
+
+    const monthlyPrice =
+      (isCapacitor() &&
+        (playPrices["monthly"]?.formattedPrice ||
+          playPrices["mensal"]?.formattedPrice ||
+          playPrices[PLAY_PRODUCT_IDS.monthly]?.formattedPrice ||
+          playPrices["sar_scan_assinatura"]?.formattedPrice)) ||
+      "€19,99";
+
     if (planType === "weekly") {
       return {
         title: "sar.scan Semanal",
         description: "30 scans por semana + registro rápido.",
-        priceText: "€4,99/semana",
+        priceText: `${weeklyPrice}/semana`,
         period: "Renovação semanal",
         badge: "Semanal",
         color: "text-primary",
@@ -123,7 +147,7 @@ export function AssinaturaPage() {
       return {
         title: "sar.scan Anual",
         description: "1.200 scans por ano + IA Nutricionista liberada.",
-        priceText: "€99,99/ano",
+        priceText: `${yearlyPrice}/ano`,
         period: "Renovação anual",
         badge: "Mais Popular",
         color: "text-primary",
@@ -134,12 +158,12 @@ export function AssinaturaPage() {
     return {
       title: "sar.scan Mensal",
       description: "150 scans por mês + IA Nutricionista liberada.",
-      priceText: "€19,99/mês",
+      priceText: `${monthlyPrice}/mês`,
       period: "Renovação mensal",
       badge: "Mensal",
       color: "text-primary",
     };
-  }, [planType, subscription?.status]);
+  }, [planType, subscription?.status, playPrices]);
 
   // Formatação de datas
   const periodEndFormatted = useMemo(() => {

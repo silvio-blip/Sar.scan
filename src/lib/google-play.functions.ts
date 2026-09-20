@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { getApiUrl } from "./utils";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
@@ -100,6 +101,24 @@ export const isCapacitor = (): boolean => {
   }
 };
 
+const PLAY_PRICES_STORAGE_KEY = "sar_scan_google_play_prices_cache";
+
+function getCachedPricesFromStorage(): Record<string, PlayProductDetails> {
+  if (typeof window === "undefined") return {};
+  try {
+    const stored = localStorage.getItem(PLAY_PRICES_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.debug("[Play IAP] Erro ao ler cache de preços:", e);
+  }
+  return {};
+}
+
+// In-memory cache for fetched Play Store product pricing and offers
+let cachedPlayPrices: Record<string, PlayProductDetails> = getCachedPricesFromStorage();
+
 /**
  * Initialize Google Play In-App Purchase.
  */
@@ -109,14 +128,14 @@ export async function initializeGooglePlayIAP(): Promise<void> {
   }
 
   try {
-    console.log("[Play IAP] Initializing Native Google Play Billing...");
+    console.log("[Play IAP] Inicializando Native Google Play Billing e varrendo preços...");
+    fetchGooglePlayPrices().catch((e) =>
+      console.warn("[Play IAP] Falha na varredura inicial de preços:", e),
+    );
   } catch (error) {
     console.error("[Play IAP] Error during IAP initialization:", error);
   }
 }
-
-// In-memory cache for fetched Play Store product pricing and offers
-let cachedPlayPrices: Record<string, PlayProductDetails> = {};
 
 function isTrialOfferIdentifier(offerId?: string | null): boolean {
   if (!offerId) return false;
@@ -163,7 +182,7 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
     return cachedPlayPrices;
   }
 
-  const results: Record<string, PlayProductDetails> = {};
+  const results: Record<string, PlayProductDetails> = { ...cachedPlayPrices };
 
   try {
     // 1. Consulta assinaturas configuradas na Google Play
@@ -215,13 +234,16 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
           // Mapeia para chaves de plano padronizadas
           const rawId = (prod.identifier || "").toLowerCase();
           const rawPlan = (prod.planIdentifier || "").toLowerCase();
+          const rawTitle = (prod.title || "").toLowerCase();
 
           if (
             rawId === PLAY_PRODUCT_IDS.weekly.toLowerCase() ||
             rawPlan === "semanal" ||
             rawId.endsWith("_semanal") ||
             rawId.includes("semanal") ||
-            rawPlan.includes("semanal")
+            rawPlan.includes("semanal") ||
+            rawTitle.includes("semanal") ||
+            rawTitle.includes("semana")
           ) {
             if (!results["weekly"] || (!isTrial && prod.price && prod.price > 0)) {
               results["weekly"] = {
@@ -241,7 +263,9 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
             rawPlan === "anual" ||
             rawId.endsWith("_anual") ||
             rawId.includes("anual") ||
-            rawPlan.includes("anual")
+            rawPlan.includes("anual") ||
+            rawTitle.includes("anual") ||
+            rawTitle.includes("ano")
           ) {
             results["yearly"] = details;
           } else if (
@@ -250,7 +274,10 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
             rawId === "sar_scan_assinatura" ||
             rawId.includes("mensal") ||
             rawId.includes("assinatura") ||
-            rawPlan.includes("mensal")
+            rawPlan.includes("mensal") ||
+            rawTitle.includes("mensal") ||
+            rawTitle.includes("mês") ||
+            rawTitle.includes("mes")
           ) {
             results["monthly"] = details;
           }
@@ -300,7 +327,23 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
     }
 
     cachedPlayPrices = { ...cachedPlayPrices, ...results };
-    console.log("[Play IAP] Tabela de preços consolidada da Google Play:", results);
+
+    // Persiste no localStorage do dispositivo para carregamento instantâneo nas próximas aberturas
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(PLAY_PRICES_STORAGE_KEY, JSON.stringify(cachedPlayPrices));
+        window.dispatchEvent(
+          new CustomEvent("sarscan_play_prices_updated", { detail: cachedPlayPrices }),
+        );
+      }
+    } catch (saveErr) {
+      console.debug("[Play IAP] Falha ao persistir cache de preços:", saveErr);
+    }
+
+    console.log(
+      "[Play IAP] Tabela de preços atualizada com dados do Google Play Console:",
+      results,
+    );
     return results;
   } catch (err) {
     console.error("[Play IAP] Erro geral ao obter preços da Google Play:", err);
@@ -312,7 +355,61 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
  * Retorna os preços em cache da Google Play Store.
  */
 export function getStoredPlayPrices(): Record<string, PlayProductDetails> {
+  if (Object.keys(cachedPlayPrices).length === 0) {
+    cachedPlayPrices = getCachedPricesFromStorage();
+  }
   return cachedPlayPrices;
+}
+
+/**
+ * React Hook para obter e reagir em tempo real aos preços oficiais do Google Play Console.
+ */
+export function useGooglePlayPrices() {
+  const [prices, setPrices] = useState<Record<string, PlayProductDetails>>(() =>
+    getStoredPlayPrices(),
+  );
+  const [isScanning, setIsScanning] = useState(false);
+
+  useEffect(() => {
+    const handlePricesUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<Record<string, PlayProductDetails>>;
+      if (customEvent?.detail) {
+        setPrices({ ...customEvent.detail });
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("sarscan_play_prices_updated", handlePricesUpdated);
+    }
+
+    if (isCapacitor()) {
+      setIsScanning(true);
+      fetchGooglePlayPrices()
+        .then((updated) => {
+          if (updated && Object.keys(updated).length > 0) {
+            setPrices({ ...updated });
+          }
+        })
+        .catch((err) => {
+          console.warn("[useGooglePlayPrices] Falha ao varrer preços:", err);
+        })
+        .finally(() => {
+          setIsScanning(false);
+        });
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("sarscan_play_prices_updated", handlePricesUpdated);
+      }
+    };
+  }, []);
+
+  return {
+    prices,
+    isScanning,
+    refreshPrices: fetchGooglePlayPrices,
+  };
 }
 
 /**
