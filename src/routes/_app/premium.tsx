@@ -368,7 +368,7 @@ export function PremiumPage() {
               headers.Authorization = `Bearer ${session.access_token}`;
             }
 
-            const res = await fetch(getApiUrl("/api/stripe/verify-session"), {
+            const res = await fetch("/api/stripe/verify-session", {
               method: "POST",
               headers,
               body: JSON.stringify({ sessionId }),
@@ -378,10 +378,6 @@ export function PremiumPage() {
               const data = await res.json();
               console.log("[Stripe Return] Sessão confirmada com sucesso:", data);
               toast.success("Pagamento confirmado! Plano e créditos ativados.");
-              if (data?.credits && likelyPlan) {
-                likelyPlan.scans = data.credits;
-                setPurchasedPlan({ ...likelyPlan, scans: data.credits });
-              }
             } else {
               const errData = await res.json().catch(() => ({}));
               console.warn("[Stripe Return] Erro na resposta da verificação:", errData);
@@ -1079,7 +1075,7 @@ export function PremiumPage() {
                 {[
                   {
                     icon: Sparkles,
-                    text: `${Math.max(subscription?.scans_credits ?? 0, purchasedPlan?.scans ?? 30)} scans totais disponíveis`,
+                    text: `${subscription?.scans_credits ?? purchasedPlan?.scans ?? 50} scans totais disponíveis`,
                   },
                   {
                     icon: Bot,

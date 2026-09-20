@@ -779,11 +779,11 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
           newAi = true;
           finalStripeSubId = stripeSub.id;
 
-          if ((stripeSub as any).trial_end) {
-            trialEndVal = new Date((stripeSub as any).trial_end * 1000).toISOString();
+          if (stripeSub.trial_end) {
+            trialEndVal = new Date(stripeSub.trial_end * 1000).toISOString();
           }
-          if ((stripeSub as any).current_period_end) {
-            periodEndVal = new Date((stripeSub as any).current_period_end * 1000).toISOString();
+          if (stripeSub.current_period_end) {
+            periodEndVal = new Date(stripeSub.current_period_end * 1000).toISOString();
           }
 
           const requiredPlanScans =

@@ -48,7 +48,7 @@ export function getApiUrl(path: string): string {
   // Como o WebView local do celular não possui um servidor backend rodando na porta 80 do aparelho,
   // direcionamos as chamadas para o backend na nuvem onde as APIs (/api/*) e Webhooks estão disponíveis.
   const remoteProductionApi =
-    "https://ais-pre-54ehh7ab2tw2wz6535wh2k-96926789601.europe-west2.run.app";
+    "https://ais-pre-ngxxvimnf4y47ehcqvxib7-112028348065.europe-west2.run.app";
   return `${remoteProductionApi}${cleanPath}`;
 }
 
