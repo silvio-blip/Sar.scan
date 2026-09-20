@@ -46,6 +46,61 @@ function AdminPage() {
   const [rBonus, setRBonus] = useState(0);
   const [rSending, setRSending] = useState(false);
 
+  const [campEnabled, setCampEnabled] = useState(false);
+  const [campStart, setCampStart] = useState("");
+  const [campEnd, setCampEnd] = useState("");
+  const [campScans, setCampScans] = useState(0);
+  const [campAiDays, setCampAiDays] = useState(0);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const { isLoading: loadingSettings } = useQuery({
+    queryKey: ["admin_campaign_settings"],
+    enabled: isAdmin,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("app_settings")
+        .select("key, value")
+        .in("key", [
+          "campaign_enabled",
+          "campaign_start_date",
+          "campaign_end_date",
+          "campaign_bonus_scans",
+          "campaign_free_ai_days",
+        ]);
+      if (data) {
+        data.forEach((row) => {
+          if (row.key === "campaign_enabled") setCampEnabled(row.value === "true");
+          if (row.key === "campaign_start_date") setCampStart(row.value || "");
+          if (row.key === "campaign_end_date") setCampEnd(row.value || "");
+          if (row.key === "campaign_bonus_scans") setCampScans(parseInt(row.value) || 0);
+          if (row.key === "campaign_free_ai_days") setCampAiDays(parseInt(row.value) || 0);
+        });
+      }
+      return data ?? [];
+    },
+  });
+
+  const saveCampaignSettings = async () => {
+    setSavingSettings(true);
+    try {
+      const rows = [
+        { key: "campaign_enabled", value: String(campEnabled) },
+        { key: "campaign_start_date", value: campStart },
+        { key: "campaign_end_date", value: campEnd },
+        { key: "campaign_bonus_scans", value: String(campScans) },
+        { key: "campaign_free_ai_days", value: String(campAiDays) },
+      ];
+      const { error } = await supabase.from("app_settings").upsert(rows, { onConflict: "key" });
+      if (error) throw error;
+      qc.invalidateQueries({ queryKey: ["admin_campaign_settings"] });
+      toast.success("Configurações da campanha salvas com sucesso!");
+    } catch (e: any) {
+      toast.error("Erro ao salvar configurações: " + e.message);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const { data: users, isLoading: queryLoading } = useQuery({
     queryKey: ["admin_users"],
     enabled: isAdmin,
@@ -220,6 +275,104 @@ function AdminPage() {
             </div>
           </Card>
         </div>
+
+        {/* Campaign Settings Dashboard */}
+        <Card className="bg-card rounded-[28px] p-6 space-y-5 border border-border/45 shadow-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary via-emerald-400 to-accent" />
+
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+              <Gift className="size-4.5 stroke-[2.5]" />
+            </div>
+            <div>
+              <h2 className="text-sm font-display font-black text-foreground uppercase tracking-wider">
+                Campanha de Boas-Vindas
+              </h2>
+              <p className="text-[10px] text-muted-foreground font-semibold">
+                Ofereça bônus de scans e acesso ao Chatbot IA para novos utilizadores
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            {/* Enabled Switch */}
+            <div className="flex items-center justify-between bg-secondary/30 p-3 rounded-2xl border border-border/30">
+              <div className="space-y-0.5">
+                <span className="text-xs font-black text-foreground">Campanha Ativa</span>
+                <p className="text-[9px] text-muted-foreground font-semibold leading-none">
+                  Ativar bônus para registos novos
+                </p>
+              </div>
+              <Switch checked={campEnabled} onCheckedChange={setCampEnabled} />
+            </div>
+
+            {/* Start Date */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                Data de Início da Campanha
+              </Label>
+              <Input
+                type="datetime-local"
+                value={campStart}
+                onChange={(e) => setCampStart(e.target.value)}
+                className="h-11 rounded-xl bg-secondary/40 border-border/60 text-xs font-semibold focus-visible:ring-primary/20 text-foreground"
+              />
+            </div>
+
+            {/* End Date */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                Data de Fim da Campanha
+              </Label>
+              <Input
+                type="datetime-local"
+                value={campEnd}
+                onChange={(e) => setCampEnd(e.target.value)}
+                className="h-11 rounded-xl bg-secondary/40 border-border/60 text-xs font-semibold focus-visible:ring-primary/20 text-foreground"
+              />
+            </div>
+
+            {/* Bonus Scans */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                Scans Extra Recebidos (Além dos 3 base)
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                value={campScans}
+                onChange={(e) => setCampScans(parseInt(e.target.value) || 0)}
+                className="h-11 rounded-xl bg-secondary/40 border-border/60 text-xs font-semibold focus-visible:ring-primary/20 text-foreground"
+              />
+            </div>
+
+            {/* AI Agent Duration Days */}
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1">
+                Dias de Acesso Gratuito à IA
+              </Label>
+              <Input
+                type="number"
+                min={0}
+                value={campAiDays}
+                onChange={(e) => setCampAiDays(parseInt(e.target.value) || 0)}
+                className="h-11 rounded-xl bg-secondary/40 border-border/60 text-xs font-semibold focus-visible:ring-primary/20 text-foreground"
+              />
+            </div>
+
+            <Button
+              onClick={saveCampaignSettings}
+              disabled={savingSettings}
+              className="w-full h-11.5 mt-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-wider text-[10px] flex items-center justify-center shadow-md cursor-pointer"
+            >
+              {savingSettings ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                "Salvar Configurações da Campanha"
+              )}
+            </Button>
+          </div>
+        </Card>
 
         {/* Search Panel */}
         <Card className="bg-card rounded-[28px] p-5 space-y-3.5 border border-border/45 shadow-sm">

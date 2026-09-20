@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Crown,
+  Gift,
   Lock,
   ArrowLeft,
   Sparkles,
@@ -76,7 +77,15 @@ const QUICK_PROMPTS = [
 export function ChatPage() {
   const router = useRouter();
   const navigate = useNavigate();
-  const { user, profile, subscription, isAdmin } = useAuth();
+  const {
+    user,
+    profile,
+    subscription,
+    isAdmin,
+    canAccessAI,
+    isCampaignAiActive,
+    campaignAiExpirationDate,
+  } = useAuth();
   const qc = useQueryClient();
 
   const handleGoBack = () => {
@@ -233,18 +242,6 @@ export function ChatPage() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const hasPlan =
-    subscription &&
-    (subscription.status === "active" || subscription.status === "trialing") &&
-    (subscription.plan === "weekly" ||
-      subscription.plan === "monthly" ||
-      subscription.plan === "yearly" ||
-      subscription.plan === "semanal" ||
-      subscription.plan === "mensal" ||
-      subscription.plan === "anual");
-
-  const canAccessAI = Boolean(isAdmin || hasPlan);
 
   // Query AI message history
   const { data: rawAiMsgs, isLoading: loadingMsgs } = useQuery({
@@ -529,6 +526,30 @@ export function ChatPage() {
           )}
         </div>
       </header>
+
+      {/* Campaign Expiry Banner */}
+      {isCampaignAiActive && campaignAiExpirationDate && (
+        <div className="bg-gradient-to-r from-primary/10 via-accent/5 to-primary/5 border-b border-primary/25 px-4 py-2.5 flex items-center justify-between gap-3 text-xs z-10 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Gift className="size-4 text-primary shrink-0 animate-bounce" />
+            <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">
+              Acesso de bónus ativo! Chatbot IA gratuito expira em:{" "}
+              <strong className="text-foreground font-bold">
+                {campaignAiExpirationDate.toLocaleString("pt-PT", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </strong>
+            </p>
+          </div>
+          <Badge className="bg-primary/20 hover:bg-primary/35 text-primary text-[10px] font-black border-none shrink-0 py-0.5 px-2">
+            CAMPANHA
+          </Badge>
+        </div>
+      )}
 
       {/* Main Container */}
       {!canAccessAI ? (

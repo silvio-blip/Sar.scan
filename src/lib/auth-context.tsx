@@ -39,6 +39,7 @@ type Subscription = {
   plan: "weekly" | "monthly" | "yearly" | null;
   scans_credits: number;
   ai_agent_enabled: boolean;
+  campaign_applied?: boolean;
 };
 
 type AuthCtx = {
@@ -50,6 +51,15 @@ type AuthCtx = {
   isPremium: boolean;
   isUnlimited: boolean;
   canAccessAI: boolean;
+  isCampaignAiActive: boolean;
+  campaignAiExpirationDate: Date | null;
+  campaignSettings: {
+    enabled: boolean;
+    startDate: string;
+    endDate: string;
+    bonusScans: number;
+    freeAiDays: number;
+  };
   loading: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -65,12 +75,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [campaignSettings, setCampaignSettings] = useState({
+    enabled: false,
+    startDate: "",
+    endDate: "",
+    bonusScans: 0,
+    freeAiDays: 0,
+  });
   const [loading, setLoading] = useState(true);
 
   const lastSyncTimeRef = useRef<number>(0);
   const isSyncingRef = useRef<boolean>(false);
+  const isExecutingRef = useRef<boolean>(false);
+  const hasPendingRef = useRef<boolean>(false);
 
   const loadUserData = async (uid: string) => {
+    if (isExecutingRef.current) {
+      hasPendingRef.current = true;
+      return;
+    }
+    isExecutingRef.current = true;
+
     try {
       // Evita loops infinitos e garante sincronização ativa direta (máximo uma chamada ativa a cada 30 segundos)
       const nowTime = Date.now();
@@ -97,6 +122,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ]);
 
       let typedSub = sub as Subscription | null;
+
+      // Buscar Configurações da Campanha
+      let campEnabled = false;
+      let campStart = "";
+      let campEnd = "";
+      let campBonus = 0;
+      let campAiDays = 0;
+
+      try {
+        const { data: settings } = await supabase
+          .from("app_settings")
+          .select("key, value")
+          .in("key", [
+            "campaign_enabled",
+            "campaign_start_date",
+            "campaign_end_date",
+            "campaign_bonus_scans",
+            "campaign_free_ai_days",
+          ]);
+        if (settings) {
+          settings.forEach((r) => {
+            if (r.key === "campaign_enabled") campEnabled = r.value === "true";
+            if (r.key === "campaign_start_date") campStart = r.value;
+            if (r.key === "campaign_end_date") campEnd = r.value;
+            if (r.key === "campaign_bonus_scans") campBonus = parseInt(r.value) || 0;
+            if (r.key === "campaign_free_ai_days") campAiDays = parseInt(r.value) || 0;
+          });
+          setCampaignSettings({
+            enabled: campEnabled,
+            startDate: campStart,
+            endDate: campEnd,
+            bonusScans: campBonus,
+            freeAiDays: campAiDays,
+          });
+        }
+      } catch (err) {
+        console.warn("[Auth] Erro ao carregar configurações de campanha:", err);
+      }
 
       // 1. Novo utilizador logado pela primeira vez: criar registro gratuito
       if (!typedSub) {
@@ -155,6 +218,105 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (initErr) {
           console.error("[Auth] Erro ao inicializar 3 scans do utilizador novo:", initErr);
+        }
+      }
+
+      // 1.7. Verificar se o utilizador é elegível para a campanha de novos utilizadores
+      if (typedSub && campEnabled && campStart && campEnd && campBonus > 0) {
+        const profileCreatedAt = prof?.created_at || new Date().toISOString();
+
+        const parseDateResilient = (dateStr: string | null | undefined): number => {
+          if (!dateStr) return 0;
+          if (
+            dateStr.includes("T") &&
+            !dateStr.endsWith("Z") &&
+            !dateStr.includes("+") &&
+            !dateStr.includes("-")
+          ) {
+            return new Date(dateStr + ":00Z").getTime();
+          }
+          return new Date(dateStr).getTime();
+        };
+
+        const regTime = parseDateResilient(profileCreatedAt);
+        const startTime = parseDateResilient(campStart);
+        const endTime = parseDateResilient(campEnd);
+        const isLocallyApplied = localStorage.getItem(`camp_applied_${uid}`) === "true";
+
+        // Query DB rewards to see if we already applied this campaign to this user
+        let isDbCampaignApplied = false;
+        try {
+          const { data: existingRewards } = await supabase
+            .from("rewards")
+            .select("id")
+            .eq("user_id", uid)
+            .eq("titulo", "Bónus de Registo a Tempo: Campanha Especial")
+            .limit(1);
+          if (existingRewards && existingRewards.length > 0) {
+            isDbCampaignApplied = true;
+          }
+        } catch (dbCheckErr) {
+          console.warn("[Auth] Erro ao verificar recompensa existente no banco:", dbCheckErr);
+        }
+
+        if (
+          regTime >= startTime &&
+          regTime <= endTime &&
+          !isDbCampaignApplied &&
+          !isLocallyApplied
+        ) {
+          console.log(
+            `[Auth] Utilizador elegível para a campanha de novos utilizadores! Aplicando +${campBonus} scans de bônus.`,
+          );
+          try {
+            const finalCredits = (typedSub.scans_credits ?? 3) + campBonus;
+
+            // Update only scans_credits in subscriptions table (no campaign_applied column exists)
+            const { error: updateError } = await supabase
+              .from("subscriptions")
+              .update({
+                scans_credits: finalCredits,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", uid);
+
+            if (updateError) {
+              console.error(
+                "[Auth] Erro ao salvar scans_credits na campanha:",
+                updateError.message,
+              );
+            }
+
+            // Create a reward in rewards table so it appears beautifully in the rewards page
+            try {
+              await supabase.from("rewards").insert({
+                user_id: uid,
+                titulo: "Bónus de Registo a Tempo: Campanha Especial",
+                descricao: `Parabéns por se registar a tempo da nossa Campanha de Lançamento! Recebeu +${campBonus} scans adicionais e o Chatbot IA Nutricionista foi desbloqueado gratuitamente por ${campAiDays} dias.`,
+                bonus_scans: campBonus,
+                bonus_aplicado: true,
+                lida: false,
+                created_at: new Date().toISOString(),
+              });
+              console.log(
+                "[Auth] Recompensa de Registo a Tempo criada com sucesso na tabela rewards.",
+              );
+            } catch (rewErr) {
+              console.error("[Auth] Erro ao criar registro na tabela de recompensas:", rewErr);
+            }
+
+            typedSub.scans_credits = finalCredits;
+            typedSub.campaign_applied = true;
+            localStorage.setItem(`camp_applied_${uid}`, "true");
+          } catch (campErr) {
+            console.error("[Auth] Erro ao aplicar bônus de campanha:", campErr);
+            // Fallback: apply locally anyway so the current session displays the 25 scans correctly!
+            typedSub.scans_credits = (typedSub.scans_credits ?? 3) + campBonus;
+            typedSub.campaign_applied = true;
+          }
+        } else if (isDbCampaignApplied || isLocallyApplied) {
+          // If already applied, reflect it in virtual typedSub property
+          typedSub.campaign_applied = true;
         }
       }
 
@@ -232,6 +394,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err) {
       console.error("[Auth] Error loading user data:", err);
+    } finally {
+      isExecutingRef.current = false;
+      if (hasPendingRef.current) {
+        hasPendingRef.current = false;
+        setTimeout(() => {
+          loadUserData(uid);
+        }, 150);
+      }
     }
   };
 
@@ -361,10 +531,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isPremium = isAdmin || isPremiumBase;
   const isUnlimited = isAdmin;
 
-  // New logic: Weekly plan does NOT get AI Agent access. Only Monthly and Yearly (or manual enabled)
-  const rawPlan = subscription?.plan || null;
-  const plan = rawPlan ? rawPlan.replace("_cancelled", "") : null;
-  const canAccessAI = true;
+  // Verify if campaign-based free AI is active for this user
+  const isCampaignAiActive = useMemo(() => {
+    if (!profile || !campaignSettings.enabled) return false;
+    if (!campaignSettings.startDate || !campaignSettings.endDate) return false;
+
+    const parseDateResilient = (dateStr: string | null | undefined): number => {
+      if (!dateStr) return 0;
+      if (
+        dateStr.includes("T") &&
+        !dateStr.endsWith("Z") &&
+        !dateStr.includes("+") &&
+        !dateStr.includes("-")
+      ) {
+        return new Date(dateStr + ":00Z").getTime();
+      }
+      return new Date(dateStr).getTime();
+    };
+
+    const regTime = parseDateResilient(profile.created_at);
+    const startTime = parseDateResilient(campaignSettings.startDate);
+    const endTime = parseDateResilient(campaignSettings.endDate);
+
+    if (regTime >= startTime && regTime <= endTime) {
+      const msSinceReg = Date.now() - regTime;
+      const daysSinceReg = msSinceReg / (1000 * 60 * 60 * 24);
+      return daysSinceReg <= (campaignSettings.freeAiDays || 7);
+    }
+    return false;
+  }, [profile, campaignSettings]);
+
+  // Calculate precise expiration date of campaign free AI access
+  const campaignAiExpirationDate = useMemo(() => {
+    if (!profile || !campaignSettings.enabled) return null;
+    if (!campaignSettings.startDate || !campaignSettings.endDate) return null;
+
+    const parseDateResilient = (dateStr: string | null | undefined): number => {
+      if (!dateStr) return 0;
+      if (
+        dateStr.includes("T") &&
+        !dateStr.endsWith("Z") &&
+        !dateStr.includes("+") &&
+        !dateStr.includes("-")
+      ) {
+        return new Date(dateStr + ":00Z").getTime();
+      }
+      return new Date(dateStr).getTime();
+    };
+
+    const regTime = parseDateResilient(profile.created_at);
+    const startTime = parseDateResilient(campaignSettings.startDate);
+    const endTime = parseDateResilient(campaignSettings.endDate);
+
+    if (regTime >= startTime && regTime <= endTime) {
+      const expiryTime = regTime + (campaignSettings.freeAiDays || 7) * 24 * 60 * 60 * 1000;
+      return new Date(expiryTime);
+    }
+    return null;
+  }, [profile, campaignSettings]);
+
+  // AI Chat is gated for free users, UNLESS they are Admin, have an active Premium plan, or are in an active Campaign Free AI window
+  const hasPlan =
+    subscription &&
+    (subscription.status === "active" || subscription.status === "trialing") &&
+    (subscription.plan === "weekly" ||
+      subscription.plan === "monthly" ||
+      subscription.plan === "yearly" ||
+      subscription.plan === "semanal" ||
+      subscription.plan === "mensal" ||
+      subscription.plan === "anual");
+
+  const canAccessAI = Boolean(isAdmin || hasPlan || isCampaignAiActive);
 
   const value = useMemo(
     () => ({
@@ -376,6 +613,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isPremium,
       isUnlimited,
       canAccessAI,
+      isCampaignAiActive,
+      campaignAiExpirationDate,
+      campaignSettings,
       loading,
       refresh,
       signOut,
@@ -389,6 +629,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isPremium,
       isUnlimited,
       canAccessAI,
+      isCampaignAiActive,
+      campaignAiExpirationDate,
+      campaignSettings,
       loading,
       refresh,
       signOut,

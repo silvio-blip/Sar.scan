@@ -84,7 +84,7 @@ const PLANS: PlanDef[] = [
     priceNum: 4.99,
     cycle: "/semana",
     scans: 30,
-    trialDays: 7,
+    trialDays: 0,
     hint: "Ideal para experimentar",
     aiAgent: true,
     perks: [
@@ -248,8 +248,8 @@ export function PremiumPage() {
     );
   }, [user, subscription]);
 
-  // Elegível para teste grátis apenas se nunca usou teste, não tem assinatura ativa e não é premium
-  const isEligibleForTrial = !hasUsedTrial && !hasActiveSubscription && !isPremium;
+  // Elegível para teste grátis desativado permanentemente
+  const isEligibleForTrial = false;
 
   const triggerAppReturnDeepLinks = useCallback(() => {
     console.log("[DeepLink] Iniciando redirecionamento para o App...");

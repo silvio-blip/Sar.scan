@@ -1,12 +1,23 @@
 import { createFileRoute, useNavigate, Navigate } from "@tanstack/react-router";
-import React, { useState, type FormEvent } from "react";
+import React, { useState, type FormEvent, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { Loader2, TrendingDown, Minus, TrendingUp, Sparkles, ArrowRight } from "lucide-react";
+import {
+  Loader2,
+  TrendingDown,
+  Minus,
+  TrendingUp,
+  Sparkles,
+  ArrowRight,
+  Gift,
+  Crown,
+  Check,
+  AlertCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { SarLogo } from "@/components/sar-logo";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 export const Route = createFileRoute("/onboarding")({ component: OnboardingPage });
 
@@ -27,13 +38,51 @@ const objetivos = [
 ] as const;
 
 function OnboardingPage() {
-  const { user, profile, refresh, loading: authLoading } = useAuth();
+  const { user, profile, refresh, loading: authLoading, campaignSettings } = useAuth();
   const nav = useNavigate();
   const [idade, setIdade] = useState("");
   const [peso, setPeso] = useState("");
   const [altura, setAltura] = useState("");
   const [objetivo, setObjetivo] = useState<"perder" | "manter" | "ganhar">("manter");
   const [loading, setLoading] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  // Direct campaign settings state for failsafe checking
+  const [isCampaignActive, setIsCampaignActive] = useState(false);
+  const [bonusScansCount, setBonusScansCount] = useState(10);
+  const [freeAiDaysCount, setFreeAiDaysCount] = useState(7);
+
+  useEffect(() => {
+    const fetchCampaign = async () => {
+      try {
+        const { data: settings } = await supabase
+          .from("app_settings")
+          .select("key, value")
+          .in("key", ["campaign_enabled", "campaign_bonus_scans", "campaign_free_ai_days"]);
+        if (settings) {
+          let enabled = false;
+          let bonus = 10;
+          let aiDays = 7;
+          settings.forEach((r) => {
+            if (r.key === "campaign_enabled") enabled = r.value === "true";
+            if (r.key === "campaign_bonus_scans") bonus = parseInt(r.value) || 0;
+            if (r.key === "campaign_free_ai_days") aiDays = parseInt(r.value) || 0;
+          });
+          setIsCampaignActive(enabled);
+          setBonusScansCount(bonus);
+          setFreeAiDaysCount(aiDays);
+
+          // Show the campaign celebration modal immediately if the campaign is active
+          if (enabled && bonus > 0) {
+            setShowCelebration(true);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to fetch campaign settings directly in onboarding:", e);
+      }
+    };
+    fetchCampaign();
+  }, []);
 
   if (authLoading)
     return (
@@ -248,6 +297,91 @@ function OnboardingPage() {
           </form>
         </div>
       </motion.div>
+
+      {/* Celebration Modal */}
+      <AnimatePresence>
+        {showCelebration && (
+          <div className="fixed inset-0 bg-background/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              transition={{ type: "spring", duration: 0.5 }}
+              className="relative w-full max-w-md bg-card border border-border/60 rounded-[32px] p-8 shadow-2xl overflow-hidden flex flex-col items-center text-center z-50"
+            >
+              <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary via-emerald-400 to-accent" />
+
+              <motion.div
+                initial={{ scale: 0, rotate: -20 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.15 }}
+                className="size-20 rounded-[24px] bg-primary/15 text-primary flex items-center justify-center mb-6 shadow-inner"
+              >
+                <Gift className="size-10 text-primary" />
+              </motion.div>
+
+              <h2 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-foreground uppercase mb-2">
+                Conseguiu a tempo! 🎉
+              </h2>
+              <p className="text-xs text-muted-foreground font-semibold leading-relaxed max-w-sm mb-6">
+                Parabéns! O seu registo foi realizado durante o nosso período de campanha especial
+                de boas-vindas. Ativámos bónus exclusivos na sua conta:
+              </p>
+
+              {/* Bonus highlights container */}
+              <div className="w-full space-y-3.5 mb-8 text-left">
+                {/* Extra Scans */}
+                <div className="bg-secondary/40 border border-border/40 rounded-2xl p-4 flex items-center gap-4">
+                  <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                    <Sparkles className="size-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black text-foreground">
+                      Scans de Alimentos Ativados
+                    </div>
+                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                      Recebeu{" "}
+                      <strong className="text-foreground font-bold">
+                        +{bonusScansCount} scans de bónus
+                      </strong>{" "}
+                      além dos 3 de oferta base. Começa com{" "}
+                      <strong className="text-primary font-extrabold">
+                        {3 + bonusScansCount} scans!
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Free AI chat agent */}
+                <div className="bg-secondary/40 border border-border/40 rounded-2xl p-4 flex items-center gap-4">
+                  <div className="size-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent shrink-0">
+                    <Crown className="size-5" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-black text-foreground">
+                      Acesso Gratuito ao Chatbot IA
+                    </div>
+                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                      Desbloqueámos o Nutricionista IA por{" "}
+                      <strong className="text-foreground font-bold">
+                        {freeAiDaysCount} dias grátis
+                      </strong>{" "}
+                      (até 30 mensagens diárias) para guiar a sua alimentação saudável!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                onClick={() => setShowCelebration(false)}
+                className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-[0.15em] text-xs shadow-lg shadow-primary/10 transition-all active:scale-[0.98]"
+              >
+                Garantir Bónus & Definir Metas
+              </Button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
