@@ -217,17 +217,19 @@ export function PremiumPage() {
     return subscription.plan as PlanId;
   }, [hasActiveSubscription, subscription?.plan]);
 
-  // Verifica se o usuário já utilizou o teste grátis ou já fez alguma compra
+  // Verifica se o usuário já utilizou o teste grátis ou já fez alguma compra (na Stripe ou Google Play)
   const hasUsedTrial = useMemo(() => {
-    if (!user) return false;
+    if (!user || !subscription) return false;
     return Boolean(
-      subscription &&
-      (subscription.status === "active" ||
-        subscription.status === "expired" ||
-        Boolean(subscription.trial_end) ||
-        (subscription.plan !== null &&
-          subscription.plan !== undefined &&
-          subscription.plan !== "free")),
+      subscription.status === "active" ||
+      subscription.status === "trialing" ||
+      subscription.status === "expired" ||
+      Boolean(subscription.trial_end) ||
+      Boolean(subscription.stripe_subscription_id) ||
+      Boolean(subscription.play_purchase_token) ||
+      (subscription.plan !== null &&
+        subscription.plan !== undefined &&
+        subscription.plan !== "free"),
     );
   }, [user, subscription]);
 
@@ -264,7 +266,7 @@ export function PremiumPage() {
 
       toast.success("Teste grátis de 7 dias ativado! Você recebeu 30 scans gratuitos.");
       if (refresh) await refresh();
-      navigate({ to: "/scan" });
+      navigate({ to: "/scanner" });
     } catch (e: any) {
       toast.error(e.message || "Erro ao ativar teste grátis.");
     } finally {
@@ -1102,7 +1104,7 @@ export function PremiumPage() {
                 <Button
                   onClick={() => {
                     setShowSuccessModal(false);
-                    navigate({ to: "/scan" });
+                    navigate({ to: "/scanner" });
                   }}
                   className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-[0_20px_40px_rgba(255,255,255,0.1)] transition-all group"
                 >

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { NativePurchases, PURCHASE_TYPE, type Product } from "@capgo/native-purchases";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Interface representing the purchase result from Google Play billing.
@@ -310,6 +311,40 @@ export async function requestGooglePlayPurchase(
 
     let selectedOfferToken: string | undefined = undefined;
 
+    // Verifica no banco de dados se o utilizador já possui assinatura ativa ou já utilizou o período de teste
+    let eligibleForTrial = Boolean(purchaseOpts.isTrial);
+    if (eligibleForTrial && token) {
+      try {
+        const { data: userAuth } = await supabase.auth.getUser(token);
+        const userId = userAuth?.user?.id;
+        if (userId) {
+          const { data: dbSub } = await supabase
+            .from("subscriptions")
+            .select("status, plan, trial_end, stripe_subscription_id, play_purchase_token")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+          if (
+            dbSub &&
+            (dbSub.status === "active" ||
+              dbSub.status === "trialing" ||
+              dbSub.status === "expired" ||
+              Boolean(dbSub.trial_end) ||
+              Boolean(dbSub.stripe_subscription_id) ||
+              Boolean(dbSub.play_purchase_token) ||
+              (dbSub.plan && dbSub.plan !== "free"))
+          ) {
+            console.log(
+              "[Play IAP] Utilizador já possui assinatura ou teste no banco de dados. Forçando plano base pago.",
+            );
+            eligibleForTrial = false;
+          }
+        }
+      } catch (dbCheckErr) {
+        console.warn("[Play IAP] Verificação de elegibilidade no banco:", dbCheckErr);
+      }
+    }
+
     // Se for assinatura, busca os produtos e ofertas disponíveis para encontrar a oferta exata (ex: 7 dias grátis)
     if (isSub) {
       try {
@@ -325,7 +360,7 @@ export async function requestGooglePlayPurchase(
         ) {
           console.log("[Play IAP] Ofertas disponíveis para o produto:", prodQuery.products);
 
-          if (purchaseOpts.isTrial) {
+          if (eligibleForTrial) {
             // Busca a oferta de 7 dias grátis configurada no Google Play Console
             const trialOffer = prodQuery.products.find((p) => {
               const isTrial =
