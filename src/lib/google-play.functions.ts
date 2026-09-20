@@ -191,40 +191,7 @@ export function isUserCancellation(err: any): boolean {
 
 function isTrialOfferIdentifier(offerId?: string | null): boolean {
   if (!offerId) return false;
-  const lower = offerId.toLowerCase().trim();
-  return (
-    lower === "7-dias-gratis" ||
-    lower === "7-dias-grátis" ||
-    lower.includes("7-dias-gratis") ||
-    lower.includes("7-dias-grátis") ||
-    lower.includes("7diasgratis") ||
-    lower === "77-dias-gratis" ||
-    lower === "77diasgratis" ||
-    lower === "77-dias-grátis" ||
-    lower === "7-dias-de-graca" ||
-    lower === "7-dias-de-graça" ||
-    lower === "7dias" ||
-    lower === "7-dias" ||
-    lower === "7_dias_gratis" ||
-    lower === "7_dias_de_graca" ||
-    lower === "7 dias" ||
-    lower === "7 dias gratis" ||
-    lower === "7 dias de graça" ||
-    lower === "7 dias de graca" ||
-    lower === "7-dias-de-gratis" ||
-    lower === "teste-gratis" ||
-    lower === "teste-grátis" ||
-    lower === "testegratis" ||
-    lower === "free-trial" ||
-    lower.includes("7-dias") ||
-    lower.includes("7dias") ||
-    lower.includes("trial") ||
-    lower.includes("gratis") ||
-    lower.includes("grátis") ||
-    lower.includes("graça") ||
-    lower.includes("graca") ||
-    lower.includes("free")
-  );
+  return offerId.trim() === "7-dias-gratis";
 }
 
 /**
@@ -550,9 +517,9 @@ export async function requestGooglePlayPurchase(
           // Como consultamos apenas finalProductId, todos os candidatos pertencem estritamente a este produto
           const candidates = prodQuery.products;
 
-          if (eligibleForTrial) {
+          if (eligibleForTrial && finalProductId === "sar_scan_assinatura_semanal") {
             console.log(
-              "[Play IAP] Buscando oferta de teste gratuito (7-dias-gratis) nos candidatos:",
+              "[Play IAP] Buscando estritamente a oferta com ID exato '7-dias-gratis' nos candidatos:",
               candidates.map((p) => ({
                 identifier: p.identifier,
                 planIdentifier: p.planIdentifier,
@@ -562,56 +529,11 @@ export async function requestGooglePlayPurchase(
               })),
             );
 
-            // Nível 1: Busca pelo ID exato da promoção configurada "7-dias-gratis" ou "7-dias-grátis"
-            let trialOffer = candidates.find((p) => {
-              const offId = (p.offerId || "").toLowerCase().trim();
-              return offId === "7-dias-gratis" || offId === "7-dias-grátis";
+            // Busca pelo ID exato da promoção configurada "7-dias-gratis"
+            const trialOffer = candidates.find((p) => {
+              const offId = (p.offerId || "").trim();
+              return offId === "7-dias-gratis";
             });
-
-            // Nível 2: Busca por ID contendo sub-strings da promoção
-            if (!trialOffer) {
-              trialOffer = candidates.find((p) => {
-                const offId = (p.offerId || "").toLowerCase().trim();
-                return (
-                  offId.includes("7-dias-gratis") ||
-                  offId.includes("7-dias-grátis") ||
-                  offId.includes("7diasgratis") ||
-                  isTrialOfferIdentifier(offId)
-                );
-              });
-            }
-
-            // Nível 3: Busca por palavras-chave comuns de teste grátis
-            if (!trialOffer) {
-              trialOffer = candidates.find((p) => {
-                const offId = (p.offerId || "").toLowerCase().trim();
-                return (
-                  offId.includes("trial") ||
-                  offId.includes("gratis") ||
-                  offId.includes("grátis") ||
-                  offId.includes("graca") ||
-                  offId.includes("graça") ||
-                  offId.includes("free")
-                );
-              });
-            }
-
-            // Nível 4: Heurística para múltiplos candidatos - Qualquer oferta com offerId preenchido representa uma promoção
-            if (!trialOffer) {
-              trialOffer = candidates.find((p) => p.offerId && p.offerId.trim().length > 0);
-            }
-
-            // Nível 5: Busca por preço zero ou preço de introdução zero
-            if (!trialOffer) {
-              trialOffer = candidates.find((p) => {
-                return (
-                  p.price === 0 ||
-                  (p.introductoryPrice !== null &&
-                    p.introductoryPrice !== undefined &&
-                    p.introductoryPrice === 0)
-                );
-              });
-            }
 
             if (trialOffer) {
               console.log(
@@ -622,7 +544,7 @@ export async function requestGooglePlayPurchase(
               planIdentifier = trialOffer.planIdentifier || planIdentifier;
             } else {
               console.warn(
-                "[Play IAP] Nenhuma oferta de teste encontrada pelos filtros. Utilizando fallbacks.",
+                "[Play IAP] Nenhuma oferta encontrada com ID exato '7-dias-gratis'. Utilizando os fallbacks de segurança.",
               );
               // Fallback seguro: tenta usar o token de trial do cache ou o primeiro disponível
               const cachedInfo = cachedPlayPrices[targetPlan] || cachedPlayPrices[finalProductId];
@@ -635,11 +557,11 @@ export async function requestGooglePlayPurchase(
               }
             }
           } else {
-            // Compra normal (sem teste): pega a oferta base/padrão que não contenha trial
+            // Compra normal (sem teste) ou planos sem oferta específica de teste: pega a oferta base/padrão
             const baseOffer =
               candidates.find((p) => {
                 const offId = (p.offerId || "").toLowerCase();
-                return !offId && !isTrialOfferIdentifier(offId);
+                return !offId;
               }) || candidates[0];
 
             if (baseOffer) {
