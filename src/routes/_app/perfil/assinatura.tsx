@@ -94,7 +94,16 @@ export function AssinaturaPage() {
   );
 
   const isGooglePlaySub = Boolean(
-    hasActiveSub && !subscription?.stripe_subscription_id && !subscription?.stripe_customer_id,
+    hasActiveSub &&
+    ((subscription as any)?.play_purchase_token ||
+      (subscription as any)?.play_product_id ||
+      (!subscription?.stripe_subscription_id &&
+        !subscription?.stripe_customer_id &&
+        isCapacitor())),
+  );
+
+  const isStripeSub = Boolean(
+    hasActiveSub && (subscription?.stripe_subscription_id || subscription?.stripe_customer_id),
   );
 
   // Informações amigáveis do plano
@@ -189,37 +198,18 @@ export function AssinaturaPage() {
 
     setCancelling(true);
     try {
-      const sku = planType
-        ? PLAY_PRODUCT_IDS[planType as keyof typeof PLAY_PRODUCT_IDS]
-        : undefined;
-
-      // 1. Se for Google Play ou estiver no app nativo, abre a tela de gerenciamento de assinaturas
-      if (isGooglePlaySub || isCapacitor()) {
-        await openPlayStoreSubscriptionManager(sku);
-      }
-
-      // 2. Registra a intenção de cancelamento no backend/Supabase
+      // 1. Registra a intenção de cancelamento no backend/Supabase (executa Stripe e Google Play S2S)
       const res = await cancelSubscriptionOnBackend(session.access_token, immediate);
       if (res.success) {
-        toast.success(res.message);
+        toast.success(res.message || "Assinatura cancelada com sucesso.");
         setShowCancelDialog(false);
-        setRemoteCancelled(false);
+        setRemoteCancelled(true);
         await refresh();
       } else {
-        if (isGooglePlaySub || isCapacitor()) {
-          toast.info("Acesse a Google Play Store para gerenciar ou cancelar sua renovação.");
-          setShowCancelDialog(false);
-        } else {
-          toast.error(res.message);
-        }
+        toast.error(res.message || "Erro ao solicitar cancelamento.");
       }
     } catch (err: any) {
-      if (isGooglePlaySub || isCapacitor()) {
-        toast.info("Acesse a Google Play Store para gerenciar ou cancelar sua renovação.");
-        setShowCancelDialog(false);
-      } else {
-        toast.error(err.message || "Erro ao solicitar cancelamento.");
-      }
+      toast.error(err.message || "Erro ao solicitar cancelamento.");
     } finally {
       setCancelling(false);
     }
@@ -382,11 +372,17 @@ export function AssinaturaPage() {
           </div>
         </div>
 
-        {/* Provedor de Pagamento (Discreto e em conformidade com as políticas) */}
+        {/* Provedor de Pagamento e Plataforma de Origem */}
         <div className="bg-secondary/30 rounded-2xl p-3 flex items-center justify-between border border-border/40 text-xs">
-          <span className="text-muted-foreground font-semibold">Status do Faturamento:</span>
+          <span className="text-muted-foreground font-semibold">Provedor de Pagamento:</span>
           <span className="font-bold text-foreground flex items-center gap-1">
-            Faturamento Digital Verificado
+            {isGooglePlaySub
+              ? "Google Play Billing (Android)"
+              : isStripeSub
+                ? "Stripe / Cartão de Crédito"
+                : isTrial
+                  ? "Período de Testes (7 dias)"
+                  : "Conta Padrão Gratuita"}
           </span>
         </div>
       </Card>

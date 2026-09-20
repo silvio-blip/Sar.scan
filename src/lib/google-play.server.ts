@@ -208,6 +208,7 @@ export async function verifyGooglePlayPurchaseInternal(data: {
     }
 
     const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+    const expiryMillis = Number((googleApiResponseData as any)?.expiryTimeMillis || 0);
 
     if (
       data.productId === "sar_scan_assinatura" ||
@@ -216,6 +217,10 @@ export async function verifyGooglePlayPurchaseInternal(data: {
       // Monthly recurrence plan grants 150 scans and opens AI Nutrition
       const addedCredits = 150;
       const newTotal = currentCredits + addedCredits;
+      const periodEnd =
+        expiryMillis > Date.now()
+          ? new Date(expiryMillis).toISOString()
+          : new Date(Date.now() + 30 * 86400000).toISOString();
 
       const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
         {
@@ -224,7 +229,9 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "monthly",
           scans_credits: newTotal,
           ai_agent_enabled: true,
-          current_period_end: new Date(Date.now() + 30 * 86400000).toISOString(),
+          current_period_end: periodEnd,
+          play_purchase_token: data.purchaseToken,
+          play_product_id: data.productId,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
@@ -250,15 +257,24 @@ export async function verifyGooglePlayPurchaseInternal(data: {
       // Weekly recurrence plan grants 30 scans
       const addedCredits = 30;
       const newTotal = currentCredits + addedCredits;
+      const isTrial = (googleApiResponseData as any)?.paymentState === 2 || !currentSub?.trial_end;
+      const periodEnd =
+        expiryMillis > Date.now()
+          ? new Date(expiryMillis).toISOString()
+          : new Date(Date.now() + 7 * 86400000).toISOString();
+      const trialEnd = isTrial ? new Date(Date.now() + 7 * 86400000).toISOString() : null;
 
       const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
         {
           user_id: user.id,
-          status: "active",
+          status: isTrial ? "trialing" : "active",
           plan: "weekly",
           scans_credits: newTotal,
           ai_agent_enabled: false,
-          current_period_end: new Date(Date.now() + 7 * 86400000).toISOString(),
+          current_period_end: periodEnd,
+          trial_end: trialEnd,
+          play_purchase_token: data.purchaseToken,
+          play_product_id: data.productId,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
@@ -277,13 +293,17 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         productId: data.productId,
         creditsGranted: addedCredits,
         totalCredits: newTotal,
-        subscriptionStatus: "active",
+        subscriptionStatus: isTrial ? "trialing" : "active",
         details: googleApiResponseData,
       };
     } else if (data.productId === "sar_scan_assinatura_anual") {
       // Yearly recurrence plan grants 1200 scans and opens AI Nutrition
       const addedCredits = 1200;
       const newTotal = currentCredits + addedCredits;
+      const periodEnd =
+        expiryMillis > Date.now()
+          ? new Date(expiryMillis).toISOString()
+          : new Date(Date.now() + 365 * 86400000).toISOString();
 
       const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
         {
@@ -292,7 +312,9 @@ export async function verifyGooglePlayPurchaseInternal(data: {
           plan: "yearly",
           scans_credits: newTotal,
           ai_agent_enabled: true,
-          current_period_end: new Date(Date.now() + 365 * 86400000).toISOString(),
+          current_period_end: periodEnd,
+          play_purchase_token: data.purchaseToken,
+          play_product_id: data.productId,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" },
@@ -330,6 +352,10 @@ export async function verifyGooglePlayPurchaseInternal(data: {
             trial_end: (currentSub as any)?.trial_end ?? null,
             current_period_end: (currentSub as any)?.current_period_end ?? null,
             ai_agent_enabled: (currentSub as any)?.ai_agent_enabled ?? false,
+            play_purchase_token: (currentSub as any)?.play_purchase_token ?? null,
+            play_product_id: (currentSub as any)?.play_product_id ?? null,
+            stripe_subscription_id: (currentSub as any)?.stripe_subscription_id ?? null,
+            stripe_customer_id: (currentSub as any)?.stripe_customer_id ?? null,
             updated_at: new Date().toISOString(),
           },
           { onConflict: "user_id" },

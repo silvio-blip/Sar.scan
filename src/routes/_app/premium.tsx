@@ -498,7 +498,9 @@ export function PremiumPage() {
           setPurchasedPlan(planDef);
           setShowSuccessModal(true);
           return;
-        } else if (!res.isCancelled) {
+        } else if (res.isCancelled) {
+          toast.info("O plano não foi concluído.");
+        } else {
           toast.error(res.error || "Não foi possível concluir a transação na Google Play.");
         }
         return;
@@ -558,7 +560,9 @@ export function PremiumPage() {
           });
           setShowSuccessModal(true);
           return;
-        } else if (!res.isCancelled) {
+        } else if (res.isCancelled) {
+          toast.info("A compra de créditos não foi concluída.");
+        } else {
           toast.error(
             res.error || "Não foi possível concluir a compra de créditos na Google Play.",
           );

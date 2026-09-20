@@ -137,15 +137,67 @@ export async function initializeGooglePlayIAP(): Promise<void> {
   }
 }
 
+export function isUserCancellation(err: any): boolean {
+  if (!err) return false;
+  if (err.isCancelled === true) return true;
+  if (
+    err.code === 1 ||
+    err.code === "1" ||
+    err.responseCode === 1 ||
+    err.responseCode === "1" ||
+    err.errorCode === 1 ||
+    err.errorCode === "1"
+  ) {
+    return true;
+  }
+
+  const str = (
+    (typeof err === "string" ? err : "") +
+    " " +
+    (err.message || "") +
+    " " +
+    (err.errorMessage || "") +
+    " " +
+    (err.error || "") +
+    " " +
+    (err.code || "") +
+    " " +
+    (err.description || "") +
+    " " +
+    JSON.stringify(err)
+  ).toLowerCase();
+
+  return (
+    str.includes("cancel") ||
+    str.includes("user_canceled") ||
+    str.includes("user_cancelled") ||
+    str.includes("user canceled") ||
+    str.includes("user cancelled") ||
+    str.includes("user pressed back") ||
+    str.includes("activity was cancelled") ||
+    str.includes("activity was canceled") ||
+    str.includes("result_canceled") ||
+    str.includes("result_cancelled") ||
+    str.includes("not purchased") ||
+    str.includes("dismiss") ||
+    str.includes("closed") ||
+    str.includes("billingresponsecode.user_canceled") ||
+    str.includes("responsecode: 1") ||
+    str.includes('"code":1') ||
+    str.includes('"code":"1"') ||
+    str.includes('"responsecode":1')
+  );
+}
+
 function isTrialOfferIdentifier(offerId?: string | null): boolean {
   if (!offerId) return false;
   const lower = offerId.toLowerCase().trim();
   return (
+    lower === "7-dias-gratis" ||
+    lower === "7-dias-grátis" ||
     lower === "77-dias-gratis" ||
     lower === "77diasgratis" ||
     lower === "77-dias-grátis" ||
-    lower === "7-dias-gratis" ||
-    lower === "7-dias-grátis" ||
     lower === "7-dias-de-graca" ||
     lower === "7-dias-de-graça" ||
     lower === "7dias" ||
@@ -161,7 +213,6 @@ function isTrialOfferIdentifier(offerId?: string | null): boolean {
     lower === "teste-grátis" ||
     lower === "testegratis" ||
     lower === "free-trial" ||
-    lower.includes("77") ||
     lower.includes("7-dias") ||
     lower.includes("7dias") ||
     lower.includes("trial") ||
@@ -458,41 +509,10 @@ export async function requestGooglePlayPurchase(
     let finalProductId: string = productId;
     let selectedOfferToken: string | undefined = purchaseOpts.offerToken;
 
-    // 1. Verifica elegibilidade para teste grátis (7 dias)
-    let eligibleForTrial = Boolean(purchaseOpts.isTrial);
-    if (eligibleForTrial && token) {
-      try {
-        const { data: userAuth } = await supabase.auth.getUser(token);
-        const userId = userAuth?.user?.id;
-        if (userId) {
-          const { data: dbSub } = await supabase
-            .from("subscriptions")
-            .select("status, plan, trial_end, stripe_subscription_id, play_purchase_token")
-            .eq("user_id", userId)
-            .maybeSingle();
+    // 1. Elegibilidade para teste grátis (7 dias): respeita a solicitação de teste vinda do utilizador
+    const eligibleForTrial = Boolean(purchaseOpts.isTrial);
 
-          if (
-            dbSub &&
-            (dbSub.status === "active" ||
-              dbSub.status === "trialing" ||
-              dbSub.status === "expired" ||
-              Boolean(dbSub.trial_end) ||
-              Boolean(dbSub.stripe_subscription_id) ||
-              Boolean(dbSub.play_purchase_token) ||
-              (dbSub.plan && dbSub.plan !== "free"))
-          ) {
-            console.log(
-              "[Play IAP] Utilizador já possui assinatura ou teste no banco de dados. Forçando plano base pago.",
-            );
-            eligibleForTrial = false;
-          }
-        }
-      } catch (dbCheckErr) {
-        console.warn("[Play IAP] Verificação de elegibilidade no banco:", dbCheckErr);
-      }
-    }
-
-    // 2. Consulta à Google Play para identificar com precisão o produto e a oferta
+    // 2. Consulta à Google Play para identificar com precisão o produto e a oferta correspondente
     if (isSub) {
       try {
         const queryIds = Array.from(new Set([productId, ...ALL_PLAY_SUBSCRIPTION_IDS]));
@@ -546,9 +566,12 @@ export async function requestGooglePlayPurchase(
           const candidates = matchingProducts.length > 0 ? matchingProducts : prodQuery.products;
 
           if (eligibleForTrial) {
-            // Busca oferta com 7 dias grátis
+            // Busca a oferta de 7 dias grátis configurada na Google Play Console (ex: "7-dias-gratis")
             const trialOffer = candidates.find((p) => {
+              const offId = (p.offerId || "").toLowerCase();
               return (
+                offId === "7-dias-gratis" ||
+                offId === "7-dias-grátis" ||
                 isTrialOfferIdentifier(p.offerId) ||
                 isTrialOfferIdentifier(p.identifier) ||
                 p.price === 0 ||
@@ -559,19 +582,27 @@ export async function requestGooglePlayPurchase(
             });
 
             if (trialOffer) {
-              console.log("[Play IAP] Oferta de teste gratuito encontrada:", trialOffer);
+              console.log(
+                "[Play IAP] Oferta de teste gratuito (7-dias-gratis) selecionada:",
+                trialOffer,
+              );
               selectedOfferToken = trialOffer.offerToken || selectedOfferToken;
               finalProductId = trialOffer.identifier || finalProductId;
               planIdentifier = trialOffer.planIdentifier || targetPlan;
             } else {
-              // Fallback para primeira oferta do plano
-              const firstOffer = candidates[0];
-              selectedOfferToken = firstOffer.offerToken || selectedOfferToken;
-              finalProductId = firstOffer.identifier || finalProductId;
-              planIdentifier = firstOffer.planIdentifier || targetPlan;
+              // Verifica se temos o trialOfferToken em cache
+              const cachedWeekly = cachedPlayPrices["weekly"] || cachedPlayPrices[productId];
+              if (cachedWeekly?.trialOfferToken) {
+                selectedOfferToken = cachedWeekly.trialOfferToken;
+              } else {
+                const firstOffer = candidates[0];
+                selectedOfferToken = firstOffer.offerToken || selectedOfferToken;
+                finalProductId = firstOffer.identifier || finalProductId;
+                planIdentifier = firstOffer.planIdentifier || targetPlan;
+              }
             }
           } else {
-            // Compra normal (sem teste): pega a oferta base
+            // Compra normal (sem teste): pega a oferta base sem trial
             const baseOffer =
               candidates.find((p) => !p.offerId || !isTrialOfferIdentifier(p.offerId)) ||
               candidates[0];
@@ -602,121 +633,73 @@ export async function requestGooglePlayPurchase(
       }
     }
 
-    // 3. Monta e executa a chamada para NativePurchases.purchaseProduct com tentativa e fallbacks automáticos
-    const candidateProductIds: string[] = isSub
-      ? Array.from(new Set([finalProductId, productId, ...ALL_PLAY_SUBSCRIPTION_IDS]))
-      : Array.from(new Set([finalProductId, productId, ...ALL_PLAY_INAPP_IDS]));
-
-    const candidatePlanIds: string[] = isSub
-      ? Array.from(
-          new Set([
-            planIdentifier,
-            targetPlan,
-            targetPlan === "semanal"
-              ? "sar_scan_assinatura_semanal"
-              : targetPlan === "anual"
-                ? "sar_scan_assinatura_anual"
-                : "sar_scan_assinatura_mensal",
-            targetPlan === "semanal" ? "p1w" : targetPlan === "anual" ? "p1y" : "p1m",
-            "base-plan",
-            "default-plan",
-            "default",
-          ]),
-        )
-      : [""];
-
-    let lastError: any = null;
+    // 3. Monta as opções e executa a chamada nativa sem loops de re-tentativa
     let transaction: any = null;
-    let successfulProductId: string = finalProductId;
+    const successfulProductId: string = finalProductId;
 
-    // Tenta primeiro com a melhor combinação encontrada
-    for (const testProdId of candidateProductIds) {
-      if (transaction) break;
+    if (isSub) {
+      const purchaseOptions: any = {
+        productIdentifier: finalProductId,
+        productType: PURCHASE_TYPE.SUBS,
+        planIdentifier: planIdentifier,
+        autoAcknowledgePurchases: true,
+      };
+      if (selectedOfferToken) {
+        purchaseOptions.offerToken = selectedOfferToken;
+      }
 
-      if (isSub) {
-        for (const testPlanId of candidatePlanIds) {
-          const purchaseOptions: any = {
-            productIdentifier: testProdId,
-            productType: PURCHASE_TYPE.SUBS,
-            planIdentifier: testPlanId,
-            autoAcknowledgePurchases: true,
+      console.log(
+        `[Play IAP] Invocando Google Play com prodId=${finalProductId}, planId=${planIdentifier}, offerToken=${selectedOfferToken ? "PRESENTE" : "NENHUM"}`,
+      );
+
+      try {
+        transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+      } catch (attemptErr: any) {
+        console.log("[Play IAP] Retorno/Erro da chamada de compra:", attemptErr);
+        if (isUserCancellation(attemptErr)) {
+          return {
+            success: false,
+            error: "O plano não foi concluído.",
+            isCancelled: true,
           };
-          if (selectedOfferToken) {
-            purchaseOptions.offerToken = selectedOfferToken;
-          }
+        }
+        throw attemptErr;
+      }
+    } else {
+      // In-App (Créditos 50 scans)
+      const purchaseOptions: any = {
+        productIdentifier: finalProductId,
+        productType: PURCHASE_TYPE.INAPP,
+        isConsumable: true,
+        autoAcknowledgePurchases: true,
+      };
+      if (selectedOfferToken) {
+        purchaseOptions.offerToken = selectedOfferToken;
+      }
 
-          try {
-            console.log(
-              `[Play IAP] Tentando invocar Google Play com prodId=${testProdId}, planId=${testPlanId}...`,
-            );
-            transaction = await NativePurchases.purchaseProduct(purchaseOptions);
-            successfulProductId = testProdId;
-            lastError = null;
-            break;
-          } catch (attemptErr: any) {
-            lastError = attemptErr;
-            const msg = attemptErr?.message || String(attemptErr);
-            // Se o usuário cancelou a compra manualmente na janela da Google Play, não tenta outros IDs
-            if (
-              msg.includes("User cancelled") ||
-              msg.includes("USER_CANCELED") ||
-              msg.includes("cancel") ||
-              msg.includes("Activity was cancelled") ||
-              msg.includes("User pressed back")
-            ) {
-              return {
-                success: false,
-                error: "Operação cancelada na Google Play.",
-                isCancelled: true,
-              };
-            }
-            console.debug(
-              `[Play IAP] Combinação prodId=${testProdId}, planId=${testPlanId} retornou:`,
-              msg,
-            );
-          }
-        }
-      } else {
-        // In-App (Créditos 50 scans)
-        const purchaseOptions: any = {
-          productIdentifier: testProdId,
-          productType: PURCHASE_TYPE.INAPP,
-          isConsumable: true,
-          autoAcknowledgePurchases: true,
-        };
-        if (selectedOfferToken) {
-          purchaseOptions.offerToken = selectedOfferToken;
-        }
+      console.log(`[Play IAP] Invocando Google Play in-app prodId=${finalProductId}...`);
 
-        try {
-          console.log(`[Play IAP] Tentando invocar Google Play in-app prodId=${testProdId}...`);
-          transaction = await NativePurchases.purchaseProduct(purchaseOptions);
-          successfulProductId = testProdId;
-          lastError = null;
-          break;
-        } catch (attemptErr: any) {
-          lastError = attemptErr;
-          const msg = attemptErr?.message || String(attemptErr);
-          if (
-            msg.includes("User cancelled") ||
-            msg.includes("USER_CANCELED") ||
-            msg.includes("cancel") ||
-            msg.includes("Activity was cancelled") ||
-            msg.includes("User pressed back")
-          ) {
-            return {
-              success: false,
-              error: "Operação cancelada na Google Play.",
-              isCancelled: true,
-            };
-          }
-          console.debug(`[Play IAP] In-app prodId=${testProdId} retornou:`, msg);
+      try {
+        transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+      } catch (attemptErr: any) {
+        console.log("[Play IAP] Retorno/Erro da chamada in-app:", attemptErr);
+        if (isUserCancellation(attemptErr)) {
+          return {
+            success: false,
+            error: "A compra não foi concluída.",
+            isCancelled: true,
+          };
         }
+        throw attemptErr;
       }
     }
 
-    if (!transaction && lastError) {
-      throw lastError;
+    if (!transaction) {
+      return {
+        success: false,
+        error: "O plano não foi concluído.",
+        isCancelled: true,
+      };
     }
 
     console.log("[Play IAP] Transação oficial retornada pela Google Play:", transaction);
@@ -744,18 +727,8 @@ export async function requestGooglePlayPurchase(
   } catch (err: any) {
     console.error("[Play IAP] Erro na Google Play Billing:", err);
 
-    const errorMessage = err?.message || String(err);
-    if (
-      errorMessage.includes("User cancelled") ||
-      errorMessage.includes("USER_CANCELED") ||
-      errorMessage.includes("cancel") ||
-      errorMessage.includes("Purchase is not purchased") ||
-      errorMessage.includes("Purchases is not purchased") ||
-      errorMessage.includes("Activity was cancelled") ||
-      errorMessage.includes("User pressed back") ||
-      errorMessage.includes("RESULT_CANCELED")
-    ) {
-      return { success: false, error: "Operação cancelada na Google Play.", isCancelled: true };
+    if (isUserCancellation(err)) {
+      return { success: false, error: "O plano não foi concluído.", isCancelled: true };
     }
 
     if (errorMessage.includes("ITEM_ALREADY_OWNED")) {
