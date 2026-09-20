@@ -116,7 +116,7 @@ async function ensureValidProductAndPrice(stripe: Stripe, planId: PlanId): Promi
   if (existingTyped?.price_id) {
     try {
       const price = await stripe.prices.retrieve(existingTyped.price_id);
-      if (price && price.active && !price.deleted && price.unit_amount === plan.amount) {
+      if (price && price.active && !(price as any).deleted && price.unit_amount === plan.amount) {
         validPriceId = price.id;
         validProductId =
           typeof price.product === "string" ? price.product : (price.product as any)?.id;
@@ -231,7 +231,7 @@ async function ensureValidCreditPrice(stripe: Stripe): Promise<string> {
     if (existing?.price_id) {
       try {
         const price = await stripe.prices.retrieve(existing.price_id);
-        if (price && price.active && !price.deleted && price.unit_amount === creditAmount) {
+        if (price && price.active && !(price as any).deleted && price.unit_amount === creditAmount) {
           validPriceId = price.id;
           validProductId =
             typeof price.product === "string" ? price.product : (price.product as any)?.id;
