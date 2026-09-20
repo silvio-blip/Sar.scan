@@ -528,65 +528,36 @@ export async function requestGooglePlayPurchase(
     // 2. Consulta à Google Play para identificar com precisão o produto e a oferta correspondente
     if (isSub) {
       try {
-        const queryIds = Array.from(new Set([finalProductId, ...ALL_PLAY_SUBSCRIPTION_IDS]));
+        // Consultamos EXCLUSIVAMENTE o ID do produto final selecionado para evitar contaminações ou sobreposições
         const prodQuery = await NativePurchases.getProducts({
-          productIdentifiers: queryIds,
+          productIdentifiers: [finalProductId],
           productType: PURCHASE_TYPE.SUBS,
         });
 
-        console.log("[Play IAP] Produtos encontrados no Google Play:", prodQuery?.products);
+        console.log(
+          "[Play IAP] Produto encontrado no Google Play para esta compra:",
+          prodQuery?.products,
+        );
 
         if (
           prodQuery?.products &&
           Array.isArray(prodQuery.products) &&
           prodQuery.products.length > 0
         ) {
-          // Filtra produtos que correspondem ao plano desejado (semanal, mensal ou anual)
-          const matchingProducts = prodQuery.products.filter((p) => {
-            const rawId = (p.identifier || "").toLowerCase();
-            const rawPlan = (p.planIdentifier || "").toLowerCase();
-            const title = (p.title || "").toLowerCase();
-
-            if (targetPlan === "semanal") {
-              return (
-                rawId.includes("semanal") ||
-                rawPlan.includes("semanal") ||
-                title.includes("semanal") ||
-                title.includes("semana") ||
-                rawId === PLAY_PRODUCT_IDS.weekly.toLowerCase()
-              );
-            }
-            if (targetPlan === "anual") {
-              return (
-                rawId.includes("anual") ||
-                rawPlan.includes("anual") ||
-                title.includes("anual") ||
-                title.includes("ano") ||
-                rawId === PLAY_PRODUCT_IDS.yearly.toLowerCase()
-              );
-            }
-            // Mensal (padrão)
-            return (
-              rawId.includes("mensal") ||
-              rawPlan.includes("mensal") ||
-              title.includes("mensal") ||
-              title.includes("mês") ||
-              rawId === "sar_scan_assinatura" ||
-              rawId === PLAY_PRODUCT_IDS.monthly.toLowerCase()
-            );
-          });
-
-          const candidates = matchingProducts.length > 0 ? matchingProducts : prodQuery.products;
+          // Como consultamos apenas finalProductId, todos os candidatos pertencem estritamente a este produto
+          const candidates = prodQuery.products;
 
           if (eligibleForTrial) {
-            // Busca a oferta de 7 dias grátis configurada na Google Play Console (ex: "7-dias-gratis")
+            // Busca ativa por uma oferta de teste/trial gratuito
             const trialOffer = candidates.find((p) => {
               const offId = (p.offerId || "").toLowerCase();
               return (
-                offId === "7-dias-gratis" ||
-                offId === "7-dias-grátis" ||
-                isTrialOfferIdentifier(p.offerId) ||
-                isTrialOfferIdentifier(p.identifier) ||
+                offId.includes("trial") ||
+                offId.includes("gratis") ||
+                offId.includes("grátis") ||
+                offId.includes("graca") ||
+                offId.includes("graça") ||
+                isTrialOfferIdentifier(offId) ||
                 p.price === 0 ||
                 (p.introductoryPrice !== null &&
                   p.introductoryPrice !== undefined &&
@@ -595,34 +566,32 @@ export async function requestGooglePlayPurchase(
             });
 
             if (trialOffer) {
-              console.log(
-                "[Play IAP] Oferta de teste gratuito (7-dias-gratis) selecionada:",
-                trialOffer,
-              );
+              console.log("[Play IAP] Oferta de teste gratuito detectada e aplicada:", trialOffer);
               selectedOfferToken = trialOffer.offerToken || selectedOfferToken;
-              finalProductId = trialOffer.identifier || finalProductId;
-              planIdentifier = trialOffer.planIdentifier || targetPlan;
+              planIdentifier = trialOffer.planIdentifier || planIdentifier;
             } else {
-              // Verifica se temos o trialOfferToken em cache
-              const cachedWeekly = cachedPlayPrices["weekly"] || cachedPlayPrices[productId];
-              if (cachedWeekly?.trialOfferToken) {
-                selectedOfferToken = cachedWeekly.trialOfferToken;
+              // Fallback seguro: tenta usar o token de trial do cache ou o primeiro disponível
+              const cachedInfo = cachedPlayPrices[targetPlan] || cachedPlayPrices[finalProductId];
+              if (cachedInfo?.trialOfferToken) {
+                selectedOfferToken = cachedInfo.trialOfferToken;
               } else {
                 const firstOffer = candidates[0];
                 selectedOfferToken = firstOffer.offerToken || selectedOfferToken;
-                finalProductId = firstOffer.identifier || finalProductId;
-                planIdentifier = firstOffer.planIdentifier || targetPlan;
+                planIdentifier = firstOffer.planIdentifier || planIdentifier;
               }
             }
           } else {
-            // Compra normal (sem teste): pega a oferta base sem trial
+            // Compra normal (sem teste): pega a oferta base/padrão que não contenha trial
             const baseOffer =
-              candidates.find((p) => !p.offerId || !isTrialOfferIdentifier(p.offerId)) ||
-              candidates[0];
+              candidates.find((p) => {
+                const offId = (p.offerId || "").toLowerCase();
+                return !offId && !isTrialOfferIdentifier(offId);
+              }) || candidates[0];
+
             if (baseOffer) {
+              console.log("[Play IAP] Oferta de compra padrão aplicada:", baseOffer);
               selectedOfferToken = baseOffer.offerToken || selectedOfferToken;
-              finalProductId = baseOffer.identifier || finalProductId;
-              planIdentifier = baseOffer.planIdentifier || targetPlan;
+              planIdentifier = baseOffer.planIdentifier || planIdentifier;
             }
           }
         }
