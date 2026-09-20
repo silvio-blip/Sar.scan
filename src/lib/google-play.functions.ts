@@ -503,10 +503,23 @@ export async function requestGooglePlayPurchase(
 
   try {
     const isSub = productId !== "sar_scan_creditos" && productId !== PLAY_PRODUCT_IDS.credits;
-    const targetPlan = (purchaseOpts.customPlanId || getBasePlanId(productId)).toLowerCase();
+    let targetPlan = (purchaseOpts.customPlanId || getBasePlanId(productId)).toLowerCase();
+
+    let finalProductId = productId;
+    if (isSub) {
+      if (productId === "weekly" || productId.includes("semanal") || targetPlan === "semanal") {
+        finalProductId = PLAY_PRODUCT_IDS.weekly; // "sar_scan_assinatura_semanal"
+        targetPlan = "semanal";
+      } else if (productId === "yearly" || productId.includes("anual") || targetPlan === "anual") {
+        finalProductId = PLAY_PRODUCT_IDS.yearly; // "sar_scan_assinatura_anual"
+        targetPlan = "anual";
+      } else {
+        finalProductId = PLAY_PRODUCT_IDS.monthly; // "sar_scan_assinatura"
+        targetPlan = "mensal";
+      }
+    }
 
     let planIdentifier: string = targetPlan;
-    let finalProductId: string = productId;
     let selectedOfferToken: string | undefined = purchaseOpts.offerToken;
 
     // 1. Elegibilidade para teste grátis (7 dias): respeita a solicitação de teste vinda do utilizador
@@ -515,7 +528,7 @@ export async function requestGooglePlayPurchase(
     // 2. Consulta à Google Play para identificar com precisão o produto e a oferta correspondente
     if (isSub) {
       try {
-        const queryIds = Array.from(new Set([productId, ...ALL_PLAY_SUBSCRIPTION_IDS]));
+        const queryIds = Array.from(new Set([finalProductId, ...ALL_PLAY_SUBSCRIPTION_IDS]));
         const prodQuery = await NativePurchases.getProducts({
           productIdentifiers: queryIds,
           productType: PURCHASE_TYPE.SUBS,
