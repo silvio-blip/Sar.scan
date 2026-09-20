@@ -467,10 +467,12 @@ export function PremiumPage() {
             : planId === "yearly"
               ? PLAY_PRODUCT_IDS.yearly
               : PLAY_PRODUCT_IDS.monthly;
+        const basePlan = planId === "weekly" ? "semanal" : planId === "yearly" ? "anual" : "mensal";
 
         // Invoca a Bottom Sheet oficial da Google Play Store no celular (com oferta de 7 dias grátis se trial=true)
         const res = await requestGooglePlayPurchase(playProductId, session.access_token, {
           isTrial: trial,
+          customPlanId: basePlan,
         });
         if (res.success) {
           toast.success(
