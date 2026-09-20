@@ -14,37 +14,23 @@ function cleanKey(val: string | undefined | null): string {
   return s;
 }
 
-async function loadKeys(forceRefresh = false) {
-  const settings = await getAppSettings(forceRefresh);
-  const secret = cleanKey(
-    settings.stripe_secret_key ||
-      settings.STRIPE_SECRET_KEY ||
-      settings.stripeSecretKey ||
-      settings.stripe_key ||
-      settings.STRIPE_KEY ||
-      settings.stripe_secret ||
-      settings.STRIPE_SECRET ||
-      process.env.STRIPE_SECRET_KEY ||
-      "",
-  );
+async function loadKeys() {
+  const settings = await getAppSettings();
+  const secret = cleanKey(settings.stripe_secret_key || process.env.STRIPE_SECRET_KEY);
   const webhookSecret = cleanKey(
-    settings.stripe_webhook_secret ||
-      settings.STRIPE_WEBHOOK_SECRET ||
-      settings.stripeWebhookSecret ||
-      process.env.STRIPE_WEBHOOK_SECRET ||
-      "",
+    settings.stripe_webhook_secret || process.env.STRIPE_WEBHOOK_SECRET,
   );
 
   if (!secret) {
     throw new Error(
-      "Chave secreta da Stripe (stripe_secret_key) não encontrada na tabela app_settings ou variáveis de ambiente.",
+      "Chave secreta da Stripe (stripe_secret_key) não encontrada na tabela app_settings.",
     );
   }
   return { secret, webhookSecret };
 }
 
 export async function getStripe(forceRefresh = false) {
-  const { secret, webhookSecret } = await loadKeys(forceRefresh);
+  const { secret, webhookSecret } = await loadKeys();
 
   if (
     _cached &&
@@ -56,7 +42,7 @@ export async function getStripe(forceRefresh = false) {
   }
 
   console.log(
-    `[Stripe Server] Inicializando cliente Stripe com a chave do banco (${secret.slice(0, 8)}...${secret.slice(-4)})`,
+    `[Stripe Server] Inicializando cliente Stripe com a chave de app_settings (${secret.slice(0, 8)}...${secret.slice(-4)})`,
   );
   const stripe = new Stripe(secret, { apiVersion: "2024-12-18.acacia" as any });
   _cached = { stripe, secret, webhookSecret };
@@ -342,41 +328,10 @@ async function ensureValidCustomer(
     const subTyped = sub as { stripe_customer_id: string } | null;
     customerId = subTyped?.stripe_customer_id || null;
   } catch (dbErr) {
-    console.warn("[Stripe] Could not query subscriptions table for customer:", dbErr);
+    console.warn("[Stripe] Failed to query subscriptions table for customer:", dbErr);
   }
 
-  // Tenta buscar também em stripe_customers ou stripe_customer se não encontrou em subscriptions
-  if (!customerId) {
-    try {
-      const { data: custRow } = await (supabaseAdmin as any)
-        .from("stripe_customers")
-        .select("customer_id, stripe_customer_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (custRow?.stripe_customer_id || custRow?.customer_id) {
-        customerId = custRow.stripe_customer_id || custRow.customer_id;
-      }
-    } catch {
-      // Ignora se tabela não existir
-    }
-  }
-
-  if (!customerId) {
-    try {
-      const { data: custRow2 } = await (supabaseAdmin as any)
-        .from("stripe_customer")
-        .select("customer_id, stripe_customer_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (custRow2?.stripe_customer_id || custRow2?.customer_id) {
-        customerId = custRow2.stripe_customer_id || custRow2.customer_id;
-      }
-    } catch {
-      // Ignora se tabela não existir
-    }
-  }
-
-  // Verify that the customer actually exists in the active Stripe account
+  // Verifica se o customerId ainda existe na conta Stripe ativa
   if (customerId) {
     try {
       const cust = await stripe.customers.retrieve(customerId);
@@ -384,17 +339,11 @@ async function ensureValidCustomer(
         return customerId;
       }
     } catch {
-      console.warn(
-        `[Stripe] Customer ${customerId} não existe na conta Stripe ativa atual. Gerando novo customer...`,
-      );
       customerId = null;
     }
   }
 
-  // Create new customer on Stripe
-  console.log(
-    `[Stripe] Criando novo cliente na Stripe para usuário ${user.id} (${user.email || "sem email"})...`,
-  );
+  // Cria novo customer na conta Stripe ativa
   const newCust = await stripe.customers.create({
     email: user.email,
     metadata: { user_id: user.id },
