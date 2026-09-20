@@ -133,59 +133,113 @@ export function ChatPage() {
   });
   const [planStatuses, setPlanStatuses] = useState<Record<string, "accepted" | "rejected">>({});
 
-  const parsePlanFromContent = (content: string) => {
+  const parsePlanFromContent = (content: string, msgId: string) => {
+    const statusMatch = content.match(/\[PLAN_STATUS:(accepted|rejected)\]/);
+    const parsedStatus = statusMatch ? (statusMatch[1] as "accepted" | "rejected") : null;
+    const status = planStatuses[msgId] || parsedStatus;
+
     const match = content.match(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s);
-    if (!match) return { cleanContent: content, plan: null };
-    const cleanContent = content.replace(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s, "").trim();
+    if (!match) {
+      const cleanContent = content.replace(/\[PLAN_STATUS:[^\]]+\]/g, "").trim();
+      return { cleanContent, plan: null, status };
+    }
+    const cleanContent = content
+      .replace(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s, "")
+      .replace(/\[PLAN_STATUS:[^\]]+\]/g, "")
+      .trim();
     try {
       const plan = JSON.parse(match[1]);
-      return { cleanContent, plan };
+      return { cleanContent, plan, status };
     } catch {
-      return { cleanContent, plan: null };
+      return { cleanContent, plan: null, status };
     }
   };
 
-  const handleAcceptPlan = async (msgId: string, plan: { meta?: string; dieta?: string }) => {
+  const handleAcceptPlan = async (
+    msgId: string,
+    msgContent: string,
+    plan: { meta?: string; dieta?: string },
+  ) => {
     if (!user) return;
     try {
-      const updateData: any = {};
-      if (plan.meta) updateData.meta = plan.meta;
-      if (plan.dieta) updateData.dieta = plan.dieta;
-
-      const { error } = await supabase.from("profiles").update(updateData).eq("id", user.id);
-
-      if (error) throw error;
-
       setPlanStatuses((prev) => ({ ...prev, [msgId]: "accepted" }));
+
+      let objetivoValue: "perder" | "manter" | "ganhar" | undefined;
+      const metaLower = (plan.meta || "").toLowerCase();
+      if (
+        metaLower.includes("perder") ||
+        metaLower.includes("emagrecer") ||
+        metaLower.includes("secar") ||
+        metaLower.includes("gordura")
+      ) {
+        objetivoValue = "perder";
+      } else if (
+        metaLower.includes("ganhar") ||
+        metaLower.includes("massa") ||
+        metaLower.includes("hipertrofia") ||
+        metaLower.includes("superávit") ||
+        metaLower.includes("superavit")
+      ) {
+        objetivoValue = "ganhar";
+      } else if (metaLower.includes("manter") || metaLower.includes("manutenção")) {
+        objetivoValue = "manter";
+      }
+
+      if (objetivoValue) {
+        await supabase.from("profiles").update({ objetivo: objetivoValue }).eq("id", user.id);
+      }
+
+      const res = await fetch(getApiUrl("/api/edge"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "update-plan-status",
+          body: { msg_id: msgId, status: "accepted", user_id: user.id },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
+
       toast.success("Plano nutricional aplicado com sucesso ao seu perfil!");
+      await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
       await qc.invalidateQueries({ queryKey: ["user_profile", user.id] });
     } catch (e: any) {
       toast.error(e?.message || "Erro ao aplicar plano.");
     }
   };
 
-  const handleRejectPlan = (msgId: string) => {
-    setPlanStatuses((prev) => ({ ...prev, [msgId]: "rejected" }));
-    toast.info("Plano nutricional recusado.");
+  const handleRejectPlan = async (msgId: string, msgContent: string) => {
+    if (!user) return;
+    try {
+      setPlanStatuses((prev) => ({ ...prev, [msgId]: "rejected" }));
+
+      const res = await fetch(getApiUrl("/api/edge"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "update-plan-status",
+          body: { msg_id: msgId, status: "rejected", user_id: user.id },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
+
+      toast.info("Plano nutricional recusado.");
+      await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
+    } catch (e: any) {
+      toast.error(e?.message || "Erro ao recusar plano.");
+    }
   };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Subscription validation: weekly, monthly, yearly, annual or admin can access AI chat
-  const canAccessAI =
-    isAdmin ||
-    ((subscription?.status === "active" || subscription?.status === "trialing") &&
-      ((subscription?.plan || "").replace("_cancelled", "") === "weekly" ||
-        (subscription?.plan || "").replace("_cancelled", "") === "monthly" ||
-        (subscription?.plan || "").replace("_cancelled", "") === "yearly" ||
-        (subscription?.plan || "").replace("_cancelled", "") === "annual" ||
-        !subscription?.plan));
+  const canAccessAI = true;
 
   // Query AI message history
   const { data: rawAiMsgs, isLoading: loadingMsgs } = useQuery({
     queryKey: ["ai_chat", user?.id],
-    enabled: !!user && canAccessAI,
+    enabled: !!user,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("chat_messages")
@@ -197,6 +251,8 @@ export function ChatPage() {
     },
   });
 
+  const planKey = (subscription?.plan || "free").replace("_cancelled", "").toLowerCase();
+
   // Query usage count for limited plans
   const { data: usageInfo, refetch: refetchUsage } = useQuery({
     queryKey: ["chat_usage", user?.id],
@@ -204,18 +260,15 @@ export function ChatPage() {
     queryFn: async () => {
       if (isAdmin) return { count: 0, limit: -1, plan: "admin" };
 
-      const planKey = (subscription?.plan || "free").replace("_cancelled", "");
-      let limit = 50;
-      let isDaily = true;
+      let limit = 30;
       if (planKey === "yearly" || planKey === "annual") {
-        limit = 150;
-        isDaily = true;
-      } else if (planKey === "weekly") {
-        limit = 50;
-        isDaily = false;
+        limit = 100;
       } else if (planKey === "monthly") {
         limit = 50;
-        isDaily = true;
+      } else if (planKey === "weekly") {
+        limit = 30;
+      } else {
+        limit = 30;
       }
 
       const { data: usageData } = await supabase
@@ -226,7 +279,7 @@ export function ChatPage() {
 
       let currentUsage = usageData?.usage_count ?? 0;
 
-      if (usageData?.last_message_at && isDaily) {
+      if (usageData?.last_message_at) {
         const lastDate = new Date(usageData.last_message_at).toDateString();
         if (lastDate !== new Date().toDateString()) {
           currentUsage = 0;
@@ -294,7 +347,7 @@ export function ChatPage() {
       id: tempId,
       user_id: user.id,
       role: "user",
-      content: text + (selectedImage ? " 📷 [Imagem enviada]" : ""),
+      content: text + (selectedImage ? `\n[IMAGE:${selectedImage}]` : ""),
       created_at: new Date().toISOString(),
       is_sending: true,
     };
@@ -340,7 +393,7 @@ export function ChatPage() {
 
         const planKey = (subscription?.plan || "free").replace("_cancelled", "");
         let currentCount = usageData?.usage_count ?? 0;
-        if (usageData?.last_message_at && planKey !== "weekly") {
+        if (usageData?.last_message_at) {
           const lastDate = new Date(usageData.last_message_at).toDateString();
           if (lastDate !== new Date().toDateString()) {
             currentCount = 0;
@@ -397,7 +450,12 @@ export function ChatPage() {
       className="flex flex-col h-[100dvh] w-full bg-background text-foreground overflow-hidden"
     >
       {/* Header */}
-      <header className="px-3 sm:px-4 py-3 bg-card/95 backdrop-blur-md border-b border-border/80 flex items-center justify-between shrink-0 z-20 gap-2">
+      <header
+        style={{
+          paddingTop: "max(0.75rem, env(safe-area-inset-top, 24px))",
+        }}
+        className="px-3 sm:px-4 pb-3 bg-card/95 backdrop-blur-md border-b border-border/80 flex items-center justify-between shrink-0 z-20 gap-2"
+      >
         <div className="flex items-center gap-2.5 min-w-0">
           <Button
             variant="ghost"
@@ -563,11 +621,33 @@ export function ChatPage() {
                       }`}
                     >
                       {isUser ? (
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        <div className="space-y-2">
+                          {(() => {
+                            const imgMatch = msg.content.match(/\[IMAGE:(data:image\/[^\]]+)\]/);
+                            const cleanText = msg.content
+                              .replace(/\[IMAGE:data:image\/[^\]]+\]/g, "")
+                              .replace("📷 [Imagem enviada]", "")
+                              .trim();
+                            return (
+                              <>
+                                {imgMatch && (
+                                  <img
+                                    src={imgMatch[1]}
+                                    alt="Prato enviado"
+                                    className="rounded-xl max-h-52 w-full object-cover shadow-sm border border-white/20 mb-1"
+                                  />
+                                )}
+                                {cleanText && <p className="whitespace-pre-wrap">{cleanText}</p>}
+                              </>
+                            );
+                          })()}
+                        </div>
                       ) : (
                         (() => {
-                          const { cleanContent, plan } = parsePlanFromContent(msg.content);
-                          const status = planStatuses[msg.id];
+                          const { cleanContent, plan, status } = parsePlanFromContent(
+                            msg.content,
+                            msg.id,
+                          );
                           return (
                             <div className="space-y-3">
                               <div className="prose prose-xs sm:prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-foreground">
@@ -603,7 +683,7 @@ export function ChatPage() {
                                     <div className="grid grid-cols-2 gap-2 pt-1">
                                       <Button
                                         size="sm"
-                                        onClick={() => handleAcceptPlan(msg.id, plan)}
+                                        onClick={() => handleAcceptPlan(msg.id, msg.content, plan)}
                                         className="h-8 rounded-lg bg-primary text-primary-foreground font-bold text-xs shadow-sm hover:bg-primary/95"
                                       >
                                         Aceitar Plano
@@ -611,7 +691,7 @@ export function ChatPage() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => handleRejectPlan(msg.id)}
+                                        onClick={() => handleRejectPlan(msg.id, msg.content)}
                                         className="h-8 rounded-lg border-border text-xs font-bold hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
                                       >
                                         Recusar

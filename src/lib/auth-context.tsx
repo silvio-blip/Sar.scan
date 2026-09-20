@@ -336,11 +336,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // New logic: Weekly plan does NOT get AI Agent access. Only Monthly and Yearly (or manual enabled)
   const rawPlan = subscription?.plan || null;
   const plan = rawPlan ? rawPlan.replace("_cancelled", "") : null;
-  const canAccessAI =
-    isAdmin ||
-    (isPremiumBase &&
-      plan !== "weekly" &&
-      (plan === "monthly" || plan === "yearly" || subscription?.ai_agent_enabled || !plan)); // Allow access if plan is missing but status is active (admin manual toggle)
+  const canAccessAI = true;
 
   const value = useMemo(
     () => ({

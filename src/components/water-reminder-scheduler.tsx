@@ -112,6 +112,8 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
             allowWhileIdle: true,
           },
           sound: "default",
+          smallIcon: "ic_stat_droplet",
+          iconColor: "#10b981",
         };
       });
 
@@ -192,6 +194,8 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
               body: "Teste de notificação nativa offline bem sucedido!",
               schedule: { at: new Date(Date.now() + 3000) },
               sound: "default",
+              smallIcon: "ic_stat_droplet",
+              iconColor: "#10b981",
             },
           ],
         });

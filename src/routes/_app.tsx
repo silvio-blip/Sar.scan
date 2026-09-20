@@ -278,6 +278,7 @@ function AppLayout() {
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
         style={{
+          paddingTop: isChatRoute ? "0px" : "max(1.75rem, env(safe-area-inset-top, 28px))",
           paddingBottom: isChatRoute
             ? "0px"
             : "max(var(--main-padding-bottom, 120px), calc(var(--main-padding-bottom, 120px) + env(safe-area-inset-bottom, 0px)))",

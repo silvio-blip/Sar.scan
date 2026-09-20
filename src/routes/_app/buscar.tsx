@@ -117,10 +117,10 @@ export function BuscarPage() {
   };
 
   return (
-    <div className="space-y-6 pb-20 select-none transform-gpu">
+    <div className="space-y-6 pb-20 select-none transform-gpu pt-safe pt-3">
       {/* Sticky Top Header & Search Bar */}
-      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md pt-2 pb-4 space-y-4 border-b border-border/40">
-        <div className="flex flex-col gap-1.5">
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 pb-4 space-y-4 border-b border-border/40">
+        <div className="flex flex-col gap-1.5 px-4 sm:px-6">
           <h1 className="text-3xl font-display font-black tracking-tight text-foreground">
             Buscar Alimento
           </h1>
@@ -130,7 +130,7 @@ export function BuscarPage() {
         </div>
 
         {/* Search Input Box */}
-        <div className="bg-secondary/60 rounded-[24px] flex items-center gap-3.5 px-4 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
+        <div className="mx-4 sm:mx-6 bg-secondary/60 rounded-[24px] flex items-center gap-3.5 px-4 py-3.5 border border-border/80 shadow-inner group focus-within:ring-2 ring-primary/20 transition-all">
           <Search
             className="size-5 text-muted-foreground group-focus-within:text-primary transition-colors shrink-0"
             strokeWidth={2.5}

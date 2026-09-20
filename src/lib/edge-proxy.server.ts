@@ -83,6 +83,58 @@ async function getGeminiKey() {
   );
 }
 
+async function getGroqKey() {
+  const settings = await getAppSettings();
+  const rawKey = settings.GROQ_API_KEY || settings.groq_api_key || process.env.GROQ_API_KEY;
+  return cleanApiKey(rawKey);
+}
+
+async function groqCall(opts: { systemInstruction?: string; contents: GeminiContent[] }) {
+  const apiKey = await getGroqKey();
+  if (!apiKey) throw new Error("Groq API key not configured");
+
+  const messages: Array<{ role: string; content: string }> = [];
+  if (opts.systemInstruction) {
+    messages.push({ role: "system", content: opts.systemInstruction });
+  }
+
+  for (const c of opts.contents) {
+    const role = c.role === "model" ? "assistant" : "user";
+    let textContent = "";
+    for (const part of c.parts) {
+      if ("text" in part && part.text) {
+        textContent += part.text;
+      }
+    }
+    if (textContent) {
+      messages.push({ role, content: textContent });
+    }
+  }
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages,
+      temperature: 0.7,
+      max_tokens: 1500,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Groq API error (${response.status}): ${errText}`);
+  }
+
+  const data = (await response.json()) as any;
+  const replyText = data.choices?.[0]?.message?.content || "";
+  return { text: replyText };
+}
+
 type GeminiPart = { text?: string } | { inlineData: { mimeType: string; data: string } };
 type GeminiContent = { role?: string; parts: GeminiPart[] };
 
@@ -271,32 +323,16 @@ async function handleNutritionChat(body: Body) {
   if (userId) {
     const status = await getUserStatus(userId);
     if (!status?.isAdmin) {
-      const planKey = (status?.plan || "free").replace("_cancelled", "");
-      const hasAccess =
-        (status?.status === "active" || status?.status === "trialing") &&
-        (planKey === "weekly" ||
-          planKey === "monthly" ||
-          planKey === "yearly" ||
-          planKey === "annual" ||
-          !planKey);
-
-      if (!hasAccess) {
-        throw new Error(
-          "O chat de nutrição com Inteligência Artificial é exclusivo para assinantes. Assine um plano para liberar!",
-        );
-      }
-
-      let limit = 50;
-      let isDaily = true;
+      const planKey = (status?.plan || "free").replace("_cancelled", "").toLowerCase();
+      let limit = 30;
       if (planKey === "yearly" || planKey === "annual") {
-        limit = 150;
-        isDaily = true;
-      } else if (planKey === "weekly") {
-        limit = 50;
-        isDaily = false;
+        limit = 100;
       } else if (planKey === "monthly") {
         limit = 50;
-        isDaily = true;
+      } else if (planKey === "weekly") {
+        limit = 30;
+      } else {
+        limit = 30;
       }
 
       if (admin) {
@@ -308,7 +344,7 @@ async function handleNutritionChat(body: Body) {
 
         let currentUsage = usageData?.usage_count ?? 0;
 
-        if (usageData?.last_message_at && isDaily) {
+        if (usageData?.last_message_at) {
           const lastDate = new Date(usageData.last_message_at).toDateString();
           const today = new Date().toDateString();
           if (lastDate !== today) {
@@ -318,7 +354,7 @@ async function handleNutritionChat(body: Body) {
 
         if (currentUsage >= limit) {
           throw new Error(
-            `Você atingiu o limite de ${limit} mensagens ${isDaily ? "diárias" : "do seu plano Semanal"}.`,
+            `Você atingiu o limite diário de ${limit} mensagens do seu plano. O limite será renovado amanhã!`,
           );
         }
       }
@@ -380,10 +416,30 @@ Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, al
   }
   contents.push({ role: "user", parts: userParts });
 
-  const { text } = await geminiCall({
-    systemInstruction,
-    contents,
-  });
+  let text = "";
+  const hasImage = !!body.image;
+
+  if (!hasImage) {
+    try {
+      console.log("[Nutrition Chat] Tentando disparar agente Groq (texto puro)...");
+      const groqRes = await groqCall({ systemInstruction, contents });
+      text = groqRes.text;
+      console.log("[Nutrition Chat] Resposta obtida via Groq com sucesso.");
+    } catch (groqErr: any) {
+      console.warn(
+        "[Nutrition Chat] Groq falhou ou indisponível, fallback automático para Gemini:",
+        groqErr?.message,
+      );
+      const geminiRes = await geminiCall({ systemInstruction, contents });
+      text = geminiRes.text;
+    }
+  } else {
+    console.log(
+      "[Nutrition Chat] Imagem detetada, encaminhando diretamente para agente Gemini Vision...",
+    );
+    const geminiRes = await geminiCall({ systemInstruction, contents });
+    text = geminiRes.text;
+  }
 
   const reply = text || "Não consegui responder agora.";
 
@@ -625,17 +681,6 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
     ) {
       if (!isPopularSearch) {
         if (!userId) throw new Error("Usuário não identificado");
-        const status = await getUserStatus(userId);
-
-        // Admin sempre liberado
-        if (!status?.isAdmin) {
-          // Bloqueia chat se não for assinante ativo (trialing não tem chat)
-          if (data.name === "nutrition-chat" && status?.status !== "active") {
-            throw new Error(
-              "O chat da inteligência artificial está disponível apenas para assinantes pagantes.",
-            );
-          }
-        }
       }
     }
     // search-food-ai e scan-food são liberados na trial.
@@ -659,6 +704,34 @@ export async function invokeEdgeInternal(data: { name: string; body?: Body }) {
           await deductScan(userId, eligibility);
         }
         return result;
+      }
+      case "update-plan-status": {
+        const msgId = String(data.body?.msg_id ?? "");
+        const status = String(data.body?.status ?? "");
+        if (!msgId || !status) throw new Error("Parâmetros incompletos");
+        const admin = getAdminSafe();
+        if (!admin) throw new Error("Admin client unavailable");
+
+        const { data: msg } = await (admin as any)
+          .from("chat_messages")
+          .select("*")
+          .eq("id", msgId)
+          .maybeSingle();
+
+        if (!msg) throw new Error("Mensagem não encontrada");
+
+        const currentContent = msg.content || "";
+        const updatedContent = currentContent.includes("[PLAN_STATUS:")
+          ? currentContent.replace(/\[PLAN_STATUS:[^\]]+\]/, `[PLAN_STATUS:${status}]`)
+          : currentContent + ` [PLAN_STATUS:${status}]`;
+
+        const { error } = await (admin as any)
+          .from("chat_messages")
+          .update({ content: updatedContent })
+          .eq("id", msgId);
+
+        if (error) throw error;
+        return { success: true };
       }
       case "nutrition-chat":
         return await handleNutritionChat(data.body);
