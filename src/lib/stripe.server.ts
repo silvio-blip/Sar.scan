@@ -564,107 +564,162 @@ async function authUser(token: string): Promise<{ id: string; email?: string }> 
   throw new Error("Unauthorized: Invalid session.");
 }
 
-export async function verifyStripeSessionInternal(token: string, sessionId: string) {
-  const user = await authUser(token);
-  if (!sessionId) {
+export const getPlanScans = (planId: string): number => {
+  const p = PLANS_DEF.find((item) => item.id === planId);
+  if (p) return p.scans;
+  if (planId === "credits") return 50;
+  if (planId === "weekly") return 30;
+  if (planId === "monthly") return 150;
+  if (planId === "yearly") return 1200;
+  return 30;
+};
+
+export async function verifyStripeSessionInternal(token: string | undefined, sessionId: string) {
+  if (!sessionId || typeof sessionId !== "string") {
     throw new Error("Missing sessionId");
   }
 
   const { stripe } = await getStripe(true);
-  console.log(`[Stripe Verify] Verificando sessão ${sessionId} para usuário ${user.id}...`);
+  console.log(`[Stripe Verify] Consultando sessão Stripe ${sessionId}...`);
 
   const session = await stripe.checkout.sessions.retrieve(sessionId, {
-    expand: ["subscription"],
+    expand: ["subscription", "customer"],
   });
 
   if (!session) {
-    throw new Error("Sessão Stripe não encontrada");
+    throw new Error("Sessão Stripe não encontrada no Stripe");
   }
 
-  // Verifica se o usuário da sessão bate com o usuário autenticado
-  const metaUserId = session.metadata?.user_id;
-  if (metaUserId && metaUserId !== user.id) {
-    console.warn(`[Stripe Verify] Mismatch de user_id: ${metaUserId} !== ${user.id}`);
+  // Tenta autenticar via JWT se fornecido, ou usa o user_id registrado na sessão do Stripe
+  let targetUserId: string | null = null;
+  if (token) {
+    try {
+      const user = await authUser(token);
+      targetUserId = user.id;
+    } catch (authErr) {
+      console.warn("[Stripe Verify] Falha ao autenticar token JWT, usando metadata:", authErr);
+    }
+  }
+
+  if (!targetUserId && session.metadata?.user_id) {
+    targetUserId = session.metadata.user_id;
+  }
+
+  if (!targetUserId) {
+    throw new Error("Não foi possível identificar o usuário da sessão Stripe");
   }
 
   const planId = (session.metadata?.plan || "monthly") as PlanId;
-  const isPaymentPaid = session.payment_status === "paid" || session.status === "complete";
+  const isComplete = session.status === "complete" || session.payment_status === "paid";
   const subObj = session.subscription as any;
+  const customerId =
+    typeof session.customer === "string" ? session.customer : (session.customer as any)?.id || null;
+
+  console.log(
+    `[Stripe Verify] Processando ativação para usuário ${targetUserId}, plano ${planId}, status da sessão: ${session.status}, payment_status: ${session.payment_status}`,
+  );
+
+  const { data: currentSub } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .select("*")
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+
+  const currentCredits = (currentSub as any)?.scans_credits ?? 0;
 
   if (planId === "credits") {
-    if (isPaymentPaid) {
-      const { data: currentSub } = await (supabaseAdmin as any)
-        .from("subscriptions")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const addedCredits = 50;
-      const currentCredits = (currentSub as any)?.scans_credits ?? 0;
-      const newTotal = currentCredits + addedCredits;
-
-      console.log(
-        `[Stripe Verify] Creditando ${addedCredits} scans para ${user.id}. Total: ${newTotal}`,
-      );
-
-      if (currentSub) {
-        await (supabaseAdmin as any)
-          .from("subscriptions")
-          .update({
-            scans_credits: newTotal,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", user.id);
-      } else {
-        await (supabaseAdmin as any).from("subscriptions").insert({
-          user_id: user.id,
-          status: "free",
-          plan: "free",
-          scans_credits: newTotal,
-          stripe_customer_id: session.customer as string,
-          ai_agent_enabled: false,
-          updated_at: new Date().toISOString(),
-        });
-      }
-
-      return { success: true, plan: "credits", credits: newTotal };
-    }
-  } else {
-    // Assinatura
-    const subStatus = subObj?.status || (isPaymentPaid ? "active" : "active");
-    const subId = typeof session.subscription === "string" ? session.subscription : subObj?.id;
+    const addedCredits = 50;
+    const newTotal = currentCredits + addedCredits;
 
     console.log(
-      `[Stripe Verify] Ativando assinatura plano ${planId} (status: ${subStatus}) para usuário ${user.id}`,
+      `[Stripe Verify] Adicionando ${addedCredits} scans para ${targetUserId}. Total: ${newTotal}`,
     );
 
-    const { data: currentSub } = await (supabaseAdmin as any)
-      .from("subscriptions")
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    if (currentSub) {
+      await (supabaseAdmin as any)
+        .from("subscriptions")
+        .update({
+          scans_credits: newTotal,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", targetUserId);
+    } else {
+      await (supabaseAdmin as any).from("subscriptions").insert({
+        user_id: targetUserId,
+        status: "free",
+        plan: "free",
+        scans_credits: newTotal,
+        stripe_customer_id: customerId,
+        ai_agent_enabled: false,
+        updated_at: new Date().toISOString(),
+      });
+    }
 
-    const planCredits = planScans(planId);
-    const currentCredits = (currentSub as any)?.scans_credits ?? 0;
+    return {
+      success: true,
+      plan: "credits",
+      credits: newTotal,
+      message: "50 scans adicionados com sucesso!",
+    };
+  } else {
+    // Plano de assinatura (weekly, monthly, yearly)
+    const isTrial =
+      session.metadata?.is_trial === "true" ||
+      subObj?.status === "trialing" ||
+      (planId === "weekly" && !currentSub?.trial_end);
+
+    const subStatus = isTrial ? "trialing" : subObj?.status === "active" ? "active" : "active";
+    const subId =
+      typeof session.subscription === "string" ? session.subscription : subObj?.id || null;
+    const planCredits = getPlanScans(planId);
     const newTotal = currentCredits + planCredits;
 
-    await (supabaseAdmin as any).from("subscriptions").upsert(
-      {
-        user_id: user.id,
-        status: subStatus === "trialing" ? "trialing" : "active",
-        plan: planId,
-        scans_credits: newTotal,
-        stripe_customer_id: session.customer as string,
-        stripe_subscription_id: subId,
-        ai_agent_enabled: planId === "monthly" || planId === "yearly",
-        current_period_end: new Date(Date.now() + 32 * 86400000).toISOString(),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" },
+    let periodEnd = new Date(Date.now() + 32 * 86400000).toISOString();
+    if (planId === "weekly") {
+      periodEnd = new Date(Date.now() + 8 * 86400000).toISOString();
+    } else if (planId === "yearly") {
+      periodEnd = new Date(Date.now() + 366 * 86400000).toISOString();
+    }
+
+    const trialEnd = isTrial ? new Date(Date.now() + 7 * 86400000).toISOString() : null;
+
+    console.log(
+      `[Stripe Verify] Ativando ${planId} (${subStatus}) para ${targetUserId}. Novos créditos: ${newTotal}`,
     );
 
-    return { success: true, plan: planId, status: subStatus };
-  }
+    const updatePayload: Record<string, any> = {
+      user_id: targetUserId,
+      status: subStatus,
+      plan: planId,
+      scans_credits: newTotal,
+      stripe_customer_id: customerId,
+      ai_agent_enabled: true,
+      current_period_end: periodEnd,
+      updated_at: new Date().toISOString(),
+    };
 
-  return { success: true };
+    if (subId) {
+      updatePayload.stripe_subscription_id = subId;
+    }
+    if (trialEnd) {
+      updatePayload.trial_end = trialEnd;
+    }
+
+    const { error: upsertErr } = await (supabaseAdmin as any)
+      .from("subscriptions")
+      .upsert(updatePayload, { onConflict: "user_id" });
+
+    if (upsertErr) {
+      console.error("[Stripe Verify] Erro ao gravar assinatura no Supabase:", upsertErr);
+      throw new Error(`Erro ao salvar no banco: ${upsertErr.message}`);
+    }
+
+    return {
+      success: true,
+      plan: planId,
+      status: subStatus,
+      credits: newTotal,
+      trial: isTrial,
+    };
+  }
 }

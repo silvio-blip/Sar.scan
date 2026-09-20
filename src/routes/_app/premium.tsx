@@ -331,53 +331,81 @@ export function PremiumPage() {
     const search = new URLSearchParams(location.search);
     const success = search.get("success");
     const canceled = search.get("canceled");
-    const planFromUrl = search.get("plan") as PlanId | null;
+    const planFromUrl = search.get("plan") as PlanId | "credits" | null;
+    const sessionId = search.get("session_id");
 
     if (success) {
-      const sessionId = search.get("session_id");
-      if (sessionId && session?.access_token) {
-        fetch("/api/stripe/verify-session", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ sessionId }),
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            console.log("[Stripe Return] Sessão verificada com sucesso:", data);
-            if (refresh) refresh();
-          })
-          .catch((err) => {
-            console.warn("[Stripe Return] Falha ao verificar sessão na volta:", err);
-          });
-      }
-
-      // Find what plan we bought from URL first, then fallback to state
       const likelyPlanId = planFromUrl || selected;
-      const likelyPlan = displayPlans.find((p) => p.id === likelyPlanId) || displayPlans[1];
+      const likelyPlan =
+        displayPlans.find((p) => p.id === likelyPlanId) ||
+        (planFromUrl === "credits"
+          ? {
+              id: "credits" as any,
+              label: "Pacote de 50 Scans",
+              price: "€9,99",
+              cycle: "único",
+              scans: 50,
+              trialDays: 0,
+              perks: [
+                "50 Scans adicionais",
+                "Sem expiração",
+                "Scanner de alimentos",
+                "Detecção por IA",
+              ],
+            }
+          : displayPlans[1]);
+
       setPurchasedPlan(likelyPlan);
 
-      if (refresh) refresh();
+      const verifyAndActivate = async () => {
+        try {
+          if (sessionId) {
+            console.log("[Stripe Return] Enviando sessionId para verificação:", sessionId);
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (session?.access_token) {
+              headers.Authorization = `Bearer ${session.access_token}`;
+            }
 
-      // Se o utilizador finalizou o checkout num navegador de telemóvel externo (não instalado WebView)
-      // Mostramos o overlay animado para reabrir a aplicação nativa de forma mágica.
-      if (!isInstalledApp()) {
-        setShowExternalRedirectOverlay(true);
-      } else {
-        setShowSuccessModal(true);
-      }
+            const res = await fetch("/api/stripe/verify-session", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ sessionId }),
+            });
 
-      // Limpamos a URL para não disparar de novo, mas mantemos o estado do modal
-      navigate({ to: "/premium", search: {}, replace: true });
+            if (res.ok) {
+              const data = await res.json();
+              console.log("[Stripe Return] Sessão confirmada com sucesso:", data);
+              toast.success("Pagamento confirmado! Plano e créditos ativados.");
+            } else {
+              const errData = await res.json().catch(() => ({}));
+              console.warn("[Stripe Return] Erro na resposta da verificação:", errData);
+            }
+          }
+
+          if (session?.access_token) {
+            await syncSubscriptionStatusOnBackend(session.access_token).catch(() => {});
+          }
+
+          if (refresh) {
+            await refresh();
+          }
+        } catch (err) {
+          console.warn("[Stripe Return] Exceção ao verificar sessão na volta:", err);
+          if (refresh) await refresh();
+        } finally {
+          setShowSuccessModal(true);
+          navigate({ to: "/premium", search: {}, replace: true });
+        }
+      };
+
+      verifyAndActivate();
     }
 
     if (canceled) {
       setShowCancelModal(true);
       navigate({ to: "/premium", search: {}, replace: true });
     }
-  }, [location.search, refresh, navigate, selected, user, displayPlans]);
+  }, [location.search, refresh, navigate, selected, displayPlans, session?.access_token]);
 
   // Sincroniza ativamente o status da assinatura de forma garantida e em tempo real ao entrar no ecrã Premium
   useEffect(() => {
@@ -1021,41 +1049,51 @@ export function PremiumPage() {
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.3 }}
-              className="relative z-10"
+              className="relative z-10 w-full"
             >
               <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
                 {purchasedPlan?.trialDays
                   ? "Teste Grátis Ativado!"
-                  : `Plano ${purchasedPlan?.label} Ativado!`}
+                  : purchasedPlan?.id === "credits"
+                    ? "50 Scans Adicionados!"
+                    : `Plano ${purchasedPlan?.label || "Premium"} Ativado!`}
               </h2>
-              <p className="text-white/60 text-sm font-medium mb-8">
+              <p className="text-white/60 text-sm font-medium mb-6">
                 {purchasedPlan?.trialDays
-                  ? `Você tem 7 dias com 30 scans totais para escanear alimentos.`
-                  : "Parabéns! Você acaba de desbloquear o acesso total ao sar.scan."}
+                  ? "Você tem 7 dias de acesso com créditos para escanear seus alimentos."
+                  : purchasedPlan?.id === "credits"
+                    ? "Os 50 scans foram creditados e já estão prontos para você utilizar."
+                    : "Parabéns! Sua assinatura está confirmada e o acesso foi liberado em tempo real."}
               </p>
 
-              <div className="space-y-3 mb-8 text-left">
+              <div className="space-y-2.5 mb-8 text-left">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-2 px-1">
-                  SEUS NOVOS PODERES:
+                  DETALHES DA SUA CONTA:
                 </div>
                 {[
                   {
                     icon: Sparkles,
-                    text: `${purchasedPlan?.scans} créditos para o scanner de alimentos`,
+                    text: `${subscription?.scans_credits ?? purchasedPlan?.scans ?? 50} scans totais disponíveis`,
                   },
-                  { icon: Bot, text: "Acesso ao scanner por 7 dias" },
+                  {
+                    icon: Bot,
+                    text:
+                      purchasedPlan?.id === "credits"
+                        ? "Créditos sem data de expiração"
+                        : "Detecção e análise por IA liberada",
+                  },
                 ].map((item, i) => (
                   <motion.div
                     key={item.text}
                     initial={{ x: -20, opacity: 0 }}
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: 0.5 + i * 0.1 }}
-                    className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
+                    className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/5"
                   >
-                    <div className="size-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+                    <div className="size-8 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
                       <item.icon className="size-4 text-white" />
                     </div>
-                    <span className="text-xs font-semibold text-white/80">{item.text}</span>
+                    <span className="text-xs font-semibold text-white/90">{item.text}</span>
                   </motion.div>
                 ))}
               </div>
@@ -1064,18 +1102,28 @@ export function PremiumPage() {
                 <Button
                   onClick={() => {
                     setShowSuccessModal(false);
-                    navigate({ to: "/" });
+                    navigate({ to: "/scan" });
                   }}
                   className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-[0_20px_40px_rgba(255,255,255,0.1)] transition-all group"
                 >
-                  Começar a usar agora
+                  Começar a escanear agora
                   <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
                 </Button>
 
-                <p className="text-[10px] text-white/20 font-medium">
+                {!isInstalledApp() && (
+                  <button
+                    type="button"
+                    onClick={triggerAppReturnDeepLinks}
+                    className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors py-1 underline underline-offset-4"
+                  >
+                    Abrir no aplicativo Android instalado
+                  </button>
+                )}
+
+                <p className="text-[10px] text-white/30 font-medium">
                   {purchasedPlan?.trialDays
                     ? "Cancele a qualquer momento no seu perfil se mudar de ideia."
-                    : "Suas vantagens já estão disponíveis em tempo real."}
+                    : "Suas vantagens já estão ativas na sua conta."}
                 </p>
               </div>
             </motion.div>
@@ -1128,7 +1176,6 @@ export function PremiumPage() {
               <Button
                 onClick={() => {
                   setShowCancelModal(false);
-                  // Optional: highlight the selected plan or scrolls to it
                   toast.info("Escolha um plano abaixo para completar sua assinatura");
                 }}
                 className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all group"
@@ -1150,75 +1197,6 @@ export function PremiumPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Overlay de Redirecionamento Automático para o App com.sarscacan.new */}
-      <AnimatePresence>
-        {showExternalRedirectOverlay && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-zinc-950/98 backdrop-blur-md z-[99999] flex flex-col items-center justify-center p-6 text-center select-none"
-          >
-            <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
-            <div className="absolute top-10 size-40 bg-white/5 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="max-w-md w-full flex flex-col items-center gap-6 relative z-10">
-              <motion.div
-                initial={{ scale: 0.8, rotate: -15 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                className="relative size-24 rounded-[32px] bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.15)]"
-              >
-                <Crown className="size-12 animate-pulse" strokeWidth={2.5} />
-                <div className="absolute -top-1.5 -right-1.5 size-7 rounded-xl bg-black text-white flex items-center justify-center border-2 border-white text-[10px] font-black font-sans">
-                  PRO
-                </div>
-              </motion.div>
-
-              <div className="space-y-3">
-                <h1 className="text-3xl font-display font-black tracking-tighter text-white uppercase">
-                  Pagamento Concluído! 🎉
-                </h1>
-                <p className="text-sm font-semibold text-zinc-300 max-w-xs mx-auto leading-relaxed">
-                  Obrigado pela sua assinatura! Estamos a redirecionar de volta para o aplicativo
-                  sar.scan...
-                </p>
-              </div>
-
-              {/* Loader visual minimalista */}
-              <div className="flex flex-col items-center gap-2 mt-4">
-                <Loader2 className="size-8 text-white animate-spin" />
-                <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] animate-pulse">
-                  Conectando ao App Seguro
-                </span>
-              </div>
-
-              {/* Botões de fallback se o auto deep link não disparou */}
-              <div className="w-full flex flex-col gap-3 mt-8">
-                <Button
-                  onClick={triggerAppReturnDeepLinks}
-                  className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm transition-all flex items-center justify-center gap-2 shadow-[0_20px_40px_rgba(255,255,255,0.1)]"
-                >
-                  <RefreshCw className="size-4 animate-spin" />
-                  Abrir o Aplicativo Agora
-                </Button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowExternalRedirectOverlay(false);
-                    setShowSuccessModal(true);
-                  }}
-                  className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors py-2 underline underline-offset-4"
-                >
-                  Continuar no navegador Web
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
