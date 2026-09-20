@@ -23,6 +23,10 @@ export interface PlayProductDetails {
   title?: string;
   description?: string;
   offerToken?: string;
+  offerId?: string | null;
+  baseOfferToken?: string;
+  trialOfferToken?: string;
+  hasFreeTrial?: boolean;
 }
 
 export const PLAY_PRODUCT_IDS = {
@@ -67,14 +71,43 @@ export async function initializeGooglePlayIAP(): Promise<void> {
   }
 }
 
+// In-memory cache for fetched Play Store product pricing and offers
+let cachedPlayPrices: Record<string, PlayProductDetails> = {};
+
+function isTrialOfferIdentifier(offerId?: string | null): boolean {
+  if (!offerId) return false;
+  const lower = offerId.toLowerCase().trim();
+  return (
+    lower === "7-dias-gratis" ||
+    lower === "7-dias-grátis" ||
+    lower === "7-dias-de-graca" ||
+    lower === "7-dias-de-graça" ||
+    lower === "7dias" ||
+    lower === "7-dias" ||
+    lower === "7_dias_gratis" ||
+    lower === "7_dias_de_graca" ||
+    lower === "7 dias" ||
+    lower === "7 dias gratis" ||
+    lower === "7 dias de graça" ||
+    lower === "7 dias de graca" ||
+    lower === "7-dias-de-gratis" ||
+    lower.includes("7") ||
+    lower.includes("trial") ||
+    lower.includes("gratis") ||
+    lower.includes("grátis") ||
+    lower.includes("graça") ||
+    lower.includes("graca") ||
+    lower.includes("free")
+  );
+}
+
 /**
- * Consulta a Google Play Store em tempo real para obter os preços, moedas e taxas
- * localizadas exatas do país em que o utilizador se encontra.
+ * Consulta a Google Play Store em tempo real para obter os preços oficiais
+ * definidos na Google Play Console do país/moeda da conta do utilizador.
  */
 export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProductDetails>> {
   if (!isCapacitor()) {
-    console.log("[Play IAP] Ambiente Web/Navegador: mantendo preços padrão Stripe/Web.");
-    return {};
+    return cachedPlayPrices;
   }
 
   const results: Record<string, PlayProductDetails> = {};
@@ -89,6 +122,11 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
         productType: PURCHASE_TYPE.SUBS,
       });
 
+      console.log(
+        "[Play IAP] Produtos de assinatura retornados pela Google Play:",
+        subsResponse?.products,
+      );
+
       if (subsResponse?.products && Array.isArray(subsResponse.products)) {
         for (const prod of subsResponse.products) {
           const formatted =
@@ -96,6 +134,11 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
             (prod.currencySymbol
               ? `${prod.currencySymbol} ${prod.price}`
               : `${prod.price} ${prod.currencyCode || "EUR"}`);
+
+          const isTrial =
+            isTrialOfferIdentifier(prod.offerId) ||
+            prod.price === 0 ||
+            (prod.introductoryPrice !== null && prod.introductoryPrice !== undefined);
 
           const details: PlayProductDetails = {
             productId: prod.identifier,
@@ -106,28 +149,45 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
             title: prod.title,
             description: prod.description,
             offerToken: prod.offerToken,
+            offerId: prod.offerId,
+            hasFreeTrial: isTrial,
           };
 
-          // Salva pelo ID oficial da Play Store
+          // Salva pelo identificador retornado
           results[prod.identifier] = details;
           if (prod.planIdentifier) {
             results[prod.planIdentifier] = details;
           }
 
-          // Mapeia também pelos identificadores de plano amigáveis
+          // Mapeia para chaves de plano padronizadas
+          const rawId = (prod.identifier || "").toLowerCase();
+          const rawPlan = (prod.planIdentifier || "").toLowerCase();
+
           if (
-            prod.identifier === PLAY_PRODUCT_IDS.weekly ||
-            prod.planIdentifier === PLAY_PRODUCT_IDS.weekly
+            rawId === PLAY_PRODUCT_IDS.weekly.toLowerCase() ||
+            rawPlan === PLAY_PRODUCT_IDS.weekly.toLowerCase() ||
+            rawPlan === "semanal" ||
+            rawId.includes("semanal")
           ) {
-            results["weekly"] = details;
+            if (!results["weekly"] || (!results["weekly"].trialOfferToken && isTrial)) {
+              results["weekly"] = {
+                ...details,
+                trialOfferToken: isTrial ? prod.offerToken : results["weekly"]?.trialOfferToken,
+                baseOfferToken: !isTrial ? prod.offerToken : results["weekly"]?.baseOfferToken,
+              };
+            }
           } else if (
-            prod.identifier === PLAY_PRODUCT_IDS.monthly ||
-            prod.planIdentifier === PLAY_PRODUCT_IDS.monthly
+            rawId === PLAY_PRODUCT_IDS.monthly.toLowerCase() ||
+            rawPlan === PLAY_PRODUCT_IDS.monthly.toLowerCase() ||
+            rawPlan === "mensal" ||
+            rawId.includes("assinatura")
           ) {
             results["monthly"] = details;
           } else if (
-            prod.identifier === PLAY_PRODUCT_IDS.yearly ||
-            prod.planIdentifier === PLAY_PRODUCT_IDS.yearly
+            rawId === PLAY_PRODUCT_IDS.yearly.toLowerCase() ||
+            rawPlan === PLAY_PRODUCT_IDS.yearly.toLowerCase() ||
+            rawPlan === "anual" ||
+            rawId.includes("anual")
           ) {
             results["yearly"] = details;
           }
@@ -143,6 +203,11 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
         productIdentifiers: [PLAY_PRODUCT_IDS.credits],
         productType: PURCHASE_TYPE.INAPP,
       });
+
+      console.log(
+        "[Play IAP] Produtos consumíveis retornados pela Google Play:",
+        inAppResponse?.products,
+      );
 
       if (inAppResponse?.products && Array.isArray(inAppResponse.products)) {
         for (const prod of inAppResponse.products) {
@@ -168,29 +233,36 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
         }
       }
     } catch (inAppErr) {
-      console.warn("[Play IAP] Erro ao consultar preços de consumíveis na Google Play:", inAppErr);
+      console.warn("[Play IAP] Erro ao consultar consumíveis na Google Play:", inAppErr);
     }
 
-    console.log("[Play IAP] Preços recebidos:", results);
+    cachedPlayPrices = { ...cachedPlayPrices, ...results };
+    console.log("[Play IAP] Tabela de preços consolidada da Google Play:", results);
     return results;
   } catch (err) {
     console.error("[Play IAP] Erro geral ao obter preços da Google Play:", err);
-    return {};
+    return cachedPlayPrices;
   }
 }
 
 /**
- * Retorna os preços fixos oficiais da aplicação.
+ * Retorna os preços em cache da Google Play Store.
  */
 export function getStoredPlayPrices(): Record<string, PlayProductDetails> {
-  return {};
+  return cachedPlayPrices;
 }
 
 /**
- * Faz a consulta dos preços se necessário.
+ * Força sincronização de preços da Google Play.
  */
 export async function syncGooglePlayPrices(): Promise<Record<string, PlayProductDetails>> {
-  return {};
+  return fetchGooglePlayPrices();
+}
+
+export interface GooglePlayPurchaseOptions {
+  customPlanId?: string;
+  isTrial?: boolean;
+  offerId?: string;
 }
 
 /**
@@ -199,13 +271,20 @@ export async function syncGooglePlayPrices(): Promise<Record<string, PlayProduct
  *
  * @param productId Product identifier ('sar_scan_creditos', 'sar_scan_assinatura', etc.)
  * @param token User authenticated JWT token for authorization
+ * @param options Purchase options including isTrial, customPlanId, etc.
  */
 export async function requestGooglePlayPurchase(
   productId: string,
   token: string,
-  customPlanId?: string,
-): Promise<{ success: boolean; data?: any; error?: string }> {
-  console.log(`[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}`);
+  options?: GooglePlayPurchaseOptions | string,
+): Promise<{ success: boolean; data?: any; error?: string; isCancelled?: boolean }> {
+  const purchaseOpts: GooglePlayPurchaseOptions =
+    typeof options === "string" ? { customPlanId: options } : options || {};
+
+  console.log(
+    `[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}, options:`,
+    purchaseOpts,
+  );
 
   if (!isCapacitor()) {
     return {
@@ -218,7 +297,7 @@ export async function requestGooglePlayPurchase(
     const isSub = productId !== "sar_scan_creditos";
 
     // Determina o ID do Plano Base configurado no Google Play Console
-    let planIdentifier: string | undefined = customPlanId;
+    let planIdentifier: string | undefined = purchaseOpts.customPlanId;
     if (isSub && !planIdentifier) {
       if (productId.includes("semanal")) {
         planIdentifier = "semanal";
@@ -226,6 +305,63 @@ export async function requestGooglePlayPurchase(
         planIdentifier = "anual";
       } else {
         planIdentifier = "mensal";
+      }
+    }
+
+    let selectedOfferToken: string | undefined = undefined;
+
+    // Se for assinatura, busca os produtos e ofertas disponíveis para encontrar a oferta exata (ex: 7 dias grátis)
+    if (isSub) {
+      try {
+        const prodQuery = await NativePurchases.getProducts({
+          productIdentifiers: [productId],
+          productType: PURCHASE_TYPE.SUBS,
+        });
+
+        if (
+          prodQuery?.products &&
+          Array.isArray(prodQuery.products) &&
+          prodQuery.products.length > 0
+        ) {
+          console.log("[Play IAP] Ofertas disponíveis para o produto:", prodQuery.products);
+
+          if (purchaseOpts.isTrial) {
+            // Busca a oferta de 7 dias grátis configurada no Google Play Console
+            const trialOffer = prodQuery.products.find((p) => {
+              const isTrial =
+                isTrialOfferIdentifier(p.offerId) ||
+                isTrialOfferIdentifier(p.identifier) ||
+                p.price === 0 ||
+                (p.introductoryPrice !== null && p.introductoryPrice !== undefined);
+              return isTrial;
+            });
+
+            if (trialOffer && trialOffer.offerToken) {
+              console.log("[Play IAP] Oferta de Teste Grátis de 7 dias encontrada:", trialOffer);
+              selectedOfferToken = trialOffer.offerToken;
+              if (trialOffer.identifier) {
+                planIdentifier = trialOffer.identifier;
+              }
+            } else {
+              // Fallback para a primeira oferta disponível caso não haja diferenciação explícita
+              console.log("[Play IAP] Usando oferta padrão disponível:", prodQuery.products[0]);
+              selectedOfferToken = prodQuery.products[0].offerToken;
+            }
+          } else {
+            // Compra regular (sem teste): seleciona oferta base padrão sem trial
+            const baseOffer =
+              prodQuery.products.find((p) => !p.offerId || !isTrialOfferIdentifier(p.offerId)) ||
+              prodQuery.products[0];
+            if (baseOffer) {
+              selectedOfferToken = baseOffer.offerToken;
+              if (baseOffer.identifier) {
+                planIdentifier = baseOffer.identifier;
+              }
+            }
+          }
+        }
+      } catch (queryErr) {
+        console.warn("[Play IAP] Erro ao consultar produtos para obter offerToken:", queryErr);
       }
     }
 
@@ -241,6 +377,11 @@ export async function requestGooglePlayPurchase(
       purchaseOptions.planIdentifier = planIdentifier;
     }
 
+    if (isSub && selectedOfferToken) {
+      purchaseOptions.offerToken = selectedOfferToken;
+    }
+
+    console.log("[Play IAP] Chamando NativePurchases.purchaseProduct com:", purchaseOptions);
     const transaction = await NativePurchases.purchaseProduct(purchaseOptions);
 
     console.log("[Play IAP] Transação oficial retornada pela Google Play:", transaction);
@@ -272,9 +413,21 @@ export async function requestGooglePlayPurchase(
     if (
       errorMessage.includes("User cancelled") ||
       errorMessage.includes("USER_CANCELED") ||
-      errorMessage.includes("cancel")
+      errorMessage.includes("cancel") ||
+      errorMessage.includes("Purchase is not purchased") ||
+      errorMessage.includes("Purchases is not purchased") ||
+      errorMessage.includes("Activity was cancelled") ||
+      errorMessage.includes("User pressed back") ||
+      errorMessage.includes("RESULT_CANCELED")
     ) {
-      return { success: false, error: "Operação cancelada na Google Play." };
+      return { success: false, error: "Operação cancelada na Google Play.", isCancelled: true };
+    }
+
+    if (errorMessage.includes("ITEM_ALREADY_OWNED")) {
+      return {
+        success: false,
+        error: "Você já possui este item ou assinatura ativa na Google Play.",
+      };
     }
 
     return {

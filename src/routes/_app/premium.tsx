@@ -149,13 +149,51 @@ export function PremiumPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Planos em Euro fixo oficial do catálogo e banco de dados
-  const displayPlans = useMemo(() => {
-    return PLANS;
+  const [playPrices, setPlayPrices] = useState<Record<string, PlayProductDetails>>({});
+
+  useEffect(() => {
+    if (isCapacitor()) {
+      fetchGooglePlayPrices()
+        .then((prices) => {
+          if (prices && Object.keys(prices).length > 0) {
+            console.log("[Premium] Preços dinâmicos da Google Play Store carregados:", prices);
+            setPlayPrices(prices);
+          }
+        })
+        .catch((err) => {
+          console.warn("[Premium] Falha ao obter preços da Google Play:", err);
+        });
+    }
   }, []);
 
+  // Planos em tempo real com preços dinâmicos da Google Play (no APK) ou Stripe (na Web)
+  const displayPlans = useMemo(() => {
+    return PLANS.map((p) => {
+      const playData =
+        playPrices[p.id] ||
+        playPrices[PLAY_PRODUCT_IDS[p.id]] ||
+        (p.id === "weekly"
+          ? playPrices["semanal"]
+          : p.id === "yearly"
+            ? playPrices["anual"]
+            : playPrices["mensal"]);
+
+      if (playData && playData.formattedPrice) {
+        return {
+          ...p,
+          price: playData.formattedPrice,
+          priceNum: playData.price || p.priceNum,
+        };
+      }
+      return p;
+    });
+  }, [playPrices]);
+
   // Preço do pacote de 50 scans (consumível)
-  const displayCreditsPrice = "€9,99";
+  const displayCreditsPrice = useMemo(() => {
+    const creditsData = playPrices["credits"] || playPrices[PLAY_PRODUCT_IDS.credits];
+    return creditsData?.formattedPrice || "€9,99";
+  }, [playPrices]);
 
   // Verifica se o usuário possui alguma assinatura ativa no momento e que esteja dentro do prazo de validade
   const hasActiveSubscription = useMemo(() => {
@@ -250,11 +288,11 @@ export function PremiumPage() {
       `sarscan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
       `sar-scan://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
       `foodscanner://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
-      `com.sarscacan.new://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
+      `com.sarscan.new://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}`,
     ];
 
-    // Android Intent seguro que força abertura direta da aplicação com Package com.sarscacan.new
-    const androidIntent = `intent://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}#Intent;scheme=sarscan;package=com.sarscacan.new;S.browser_fallback_url=${encodeURIComponent(window.location.origin + "/premium?success=1")};end`;
+    // Android Intent seguro que força abertura direta da aplicação com Package com.sarscan.new
+    const androidIntent = `intent://premium?success=1&plan=${planParam}${isTrial ? "&trial=1" : ""}#Intent;scheme=sarscan;package=com.sarscan.new;S.browser_fallback_url=${encodeURIComponent(window.location.origin + "/premium?success=1")};end`;
 
     // Navegar de forma não obstrutiva através de frames ocultos nos esquemas customizados
     let idx = 0;
@@ -372,15 +410,23 @@ export function PremiumPage() {
               : PLAY_PRODUCT_IDS.monthly;
 
         // Invoca a Bottom Sheet oficial da Google Play Store no celular
-        const res = await requestGooglePlayPurchase(playProductId, session.access_token);
+        const res = await requestGooglePlayPurchase(playProductId, session.access_token, {
+          isTrial: trial,
+        });
         if (res.success) {
-          toast.success("Assinatura ativada com sucesso pela Google Play!");
+          toast.success(
+            trial
+              ? "Teste grátis de 7 dias ativado com sucesso pela Google Play!"
+              : "Assinatura ativada com sucesso pela Google Play!",
+          );
           if (refresh) await refresh();
           const planDef = displayPlans.find((p) => p.id === planId) || displayPlans[1];
           setPurchasedPlan(planDef);
           setShowSuccessModal(true);
         } else {
-          toast.error(res.error || "A transação falhou ou foi cancelada na Google Play.");
+          if (!res.isCancelled) {
+            toast.error(res.error || "A transação falhou na Google Play.");
+          }
         }
         return;
       }
@@ -433,9 +479,11 @@ export function PremiumPage() {
           });
           setShowSuccessModal(true);
         } else {
-          toast.error(
-            res.error || "A transação de créditos falhou ou foi rejeitada pela Google Play.",
-          );
+          if (!res.isCancelled) {
+            toast.error(
+              res.error || "A transação de créditos falhou ou foi rejeitada pela Google Play.",
+            );
+          }
         }
         return;
       }
@@ -581,12 +629,6 @@ export function PremiumPage() {
           <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
             Escolha sua jornada
           </h2>
-          {isCapacitor() && (
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground/70 bg-secondary/50 px-2.5 py-1 rounded-full border border-border/50">
-              <Globe className="size-3 text-primary" />
-              <span>Google Play Store (Moeda Local)</span>
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3">
