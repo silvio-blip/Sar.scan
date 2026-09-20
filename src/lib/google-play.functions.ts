@@ -683,7 +683,7 @@ export async function requestGooglePlayPurchase(
         transaction = await NativePurchases.purchaseProduct(purchaseOptions);
       } catch (attemptErr: any) {
         console.warn(
-          "[Play IAP] Falha na primeira tentativa com offerToken, tentando fallback simplificado...",
+          "[Play IAP] Falha na primeira tentativa com offerToken, tentando segunda tentativa sem offerToken...",
           attemptErr,
         );
         if (isUserCancellation(attemptErr)) {
@@ -693,28 +693,48 @@ export async function requestGooglePlayPurchase(
             isCancelled: true,
           };
         }
-        // Fallback retry sem offerToken ou sem planIdentifier
+        // Segunda tentativa: sem offerToken, mantendo planIdentifier
         try {
           const fallbackOptions: any = {
             productIdentifier: finalProductId,
             productType: PURCHASE_TYPE.SUBS,
+            planIdentifier: planIdentifier,
             autoAcknowledgePurchases: true,
           };
-          if (planIdentifier) {
-            fallbackOptions.planIdentifier = planIdentifier;
-          }
-          console.log("[Play IAP] Invocando fallback de compra Google Play:", fallbackOptions);
+          console.log("[Play IAP] Invocando 2ª tentativa Google Play:", fallbackOptions);
           transaction = await NativePurchases.purchaseProduct(fallbackOptions);
-        } catch (fallbackErr: any) {
-          console.log("[Play IAP] Erro no fallback de compra:", fallbackErr);
-          if (isUserCancellation(fallbackErr)) {
+        } catch (fallbackErr2: any) {
+          console.warn(
+            "[Play IAP] Falha na 2ª tentativa, executando tentativa final limpa (apenas productIdentifier)...",
+            fallbackErr2,
+          );
+          if (isUserCancellation(fallbackErr2)) {
             return {
               success: false,
               error: "O plano não foi concluído.",
               isCancelled: true,
             };
           }
-          throw fallbackErr;
+          // Terceira tentativa (Tentativa Final Limpa): Apenas productIdentifier e productType, exatamente como os consumíveis
+          try {
+            const cleanOptions: any = {
+              productIdentifier: finalProductId,
+              productType: PURCHASE_TYPE.SUBS,
+              autoAcknowledgePurchases: true,
+            };
+            console.log("[Play IAP] Invocando tentativa final limpa Google Play:", cleanOptions);
+            transaction = await NativePurchases.purchaseProduct(cleanOptions);
+          } catch (cleanErr: any) {
+            console.log("[Play IAP] Erro definitivo na compra de assinatura:", cleanErr);
+            if (isUserCancellation(cleanErr)) {
+              return {
+                success: false,
+                error: "O plano não foi concluído.",
+                isCancelled: true,
+              };
+            }
+            throw cleanErr;
+          }
         }
       }
     } else {
