@@ -492,7 +492,14 @@ function isItemAlreadyOwnedError(err: any): boolean {
     normalized.includes("already owned") ||
     normalized.includes("already_owned") ||
     normalized.includes("já possui este item") ||
+    normalized.includes("ja possui este item") ||
+    normalized.includes("já subscreveu") ||
+    normalized.includes("ja subscreveu") ||
+    normalized.includes("subscreveu") ||
+    normalized.includes("already subscribed") ||
     normalized.includes("already purchased") ||
+    normalized.includes("gerir subscrições") ||
+    normalized.includes("gerir subscricoes") ||
     normalized.includes("billingresponsecode.item_already_owned") ||
     normalized.includes("response code: 7") ||
     normalized.includes("responsecode: 7") ||
@@ -539,6 +546,9 @@ async function recoverAndVerifyExistingPurchase(
             token,
           );
           if (verifyRes.success) {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("auth:refresh"));
+            }
             return verifyRes;
           }
         }
@@ -563,6 +573,9 @@ async function recoverAndVerifyExistingPurchase(
             token,
           );
           if (verifyRes.success) {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("auth:refresh"));
+            }
             return verifyRes;
           }
         }
@@ -586,6 +599,9 @@ async function recoverAndVerifyExistingPurchase(
             token,
           );
           if (verifyRes.success) {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("auth:refresh"));
+            }
             return verifyRes;
           }
         }
@@ -795,12 +811,12 @@ export async function requestGooglePlayPurchase(
           };
         }
 
-        // Se a Google Play avisar que este item já foi adquirido
+        // Se a Google Play avisar que este item já foi adquirido, recupera e valida imediatamente
         if (isItemAlreadyOwnedError(attemptErr)) {
-          return {
-            success: false,
-            error: "Esta assinatura já está ativa na sua conta Google Play.",
-          };
+          const recovered = await recoverAndVerifyExistingPurchase(finalProductId, true, token);
+          if (recovered?.success) {
+            return recovered;
+          }
         }
 
         // Segunda tentativa: sem offerToken, mantendo planIdentifier
@@ -830,10 +846,10 @@ export async function requestGooglePlayPurchase(
           }
 
           if (isItemAlreadyOwnedError(fallbackErr2)) {
-            return {
-              success: false,
-              error: "Esta assinatura já está ativa na sua conta Google Play.",
-            };
+            const recovered = await recoverAndVerifyExistingPurchase(finalProductId, true, token);
+            if (recovered?.success) {
+              return recovered;
+            }
           }
 
           // Terceira tentativa (Tentativa Final Limpa): Apenas productIdentifier e productType, exatamente como os consumíveis
@@ -859,10 +875,10 @@ export async function requestGooglePlayPurchase(
             }
 
             if (isItemAlreadyOwnedError(cleanErr)) {
-              return {
-                success: false,
-                error: "Esta assinatura já está ativa na sua conta Google Play.",
-              };
+              const recovered = await recoverAndVerifyExistingPurchase(finalProductId, true, token);
+              if (recovered?.success) {
+                return recovered;
+              }
             }
 
             throw cleanErr;
@@ -948,6 +964,10 @@ export async function requestGooglePlayPurchase(
     }
 
     if (isItemAlreadyOwnedError(err)) {
+      const recovered = await recoverAndVerifyExistingPurchase(productId, true, token);
+      if (recovered?.success) {
+        return recovered;
+      }
       return {
         success: false,
         error: "Esta assinatura já está ativa na sua conta Google Play.",

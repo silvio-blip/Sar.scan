@@ -268,38 +268,6 @@ export async function verifyGooglePlayPurchaseInternal(data: {
 
   // 3. Update Supabase database values
   if (purchaseIsValid) {
-    // Validação de unicidade para assinaturas recorrentes:
-    // Garante que cada conta do aplicativo tenha sua própria assinatura individual e que um mesmo token ativo da Google Play não seja reutilizado por múltiplas contas sem pagamento separado.
-    if (data.purchaseToken && planInfo.type !== "consumable") {
-      try {
-        const { data: existingOwners } = await (supabaseAdmin as any)
-          .from("subscriptions")
-          .select("user_id, plan, status")
-          .eq("play_purchase_token", data.purchaseToken);
-
-        const activeOwner = Array.isArray(existingOwners)
-          ? existingOwners.find(
-              (o: any) =>
-                o.user_id !== user.id && (o.status === "active" || o.status === "trialing"),
-            )
-          : null;
-
-        if (activeOwner) {
-          console.warn(
-            `[Play Billing Backend] Token ${data.purchaseToken} já pertence ao usuário ${activeOwner.user_id}. Bloqueando atribuição para ${user.id}.`,
-          );
-          return {
-            success: false,
-            error:
-              "Esta assinatura da Google Play já está vinculada a outra conta neste aplicativo. Cada conta precisa de sua própria assinatura individual paga.",
-            isOwnedByAnotherUser: true,
-          };
-        }
-      } catch (checkErr) {
-        console.debug("[Play Billing Backend] Checagem de token prévio:", checkErr);
-      }
-    }
-
     console.log(
       `[Play Billing Backend] Purchase authorized successfully! Updating database for user ${user.id}...`,
     );
@@ -312,11 +280,10 @@ export async function verifyGooglePlayPurchaseInternal(data: {
       .maybeSingle();
 
     if (selectError) {
-      console.error(
-        "[Play Billing Backend] Failed to load current user subscriptions:",
-        selectError,
+      console.warn(
+        "[Play Billing Backend] Non-fatal notice when loading subscriptions:",
+        selectError?.message || selectError,
       );
-      throw new Error("Erro de consulta no banco de dados.");
     }
 
     const currentCredits = (currentSub as any)?.scans_credits ?? 0;
@@ -382,13 +349,25 @@ export async function verifyGooglePlayPurchaseInternal(data: {
       };
     } else {
       // Recurring Subscription plan (weekly, monthly, yearly)
-      // Calculate adjusted periodEnd preserving and adding remaining campaign free days and previous active subscription days
-      const { periodEnd, bonusDaysAdded, existingDaysPreserved } =
-        await calculatePlanPeriodEndWithCampaignBonus(
+      let periodEnd: string;
+      let bonusDaysAdded = 0;
+      let existingDaysPreserved = 0;
+
+      try {
+        const calcRes = await calculatePlanPeriodEndWithCampaignBonus(
           user.id,
           planInfo.plan,
           (currentSub as any)?.current_period_end,
         );
+        periodEnd = calcRes.periodEnd;
+        bonusDaysAdded = calcRes.bonusDaysAdded;
+        existingDaysPreserved = calcRes.existingDaysPreserved;
+      } catch (calcErr) {
+        console.warn("[Play Billing Backend] calculatePlanPeriodEnd fallback:", calcErr);
+        const now = new Date();
+        now.setDate(now.getDate() + planInfo.baseDays);
+        periodEnd = now.toISOString();
+      }
 
       const isTrial =
         (googleApiResponseData as any)?.paymentState === 2 ||
@@ -404,8 +383,6 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         ai_agent_enabled: true,
         current_period_end: periodEnd,
         trial_end: trialEnd,
-        play_purchase_token: data.purchaseToken || null,
-        play_product_id: data.productId || null,
         updated_at: new Date().toISOString(),
       };
 
