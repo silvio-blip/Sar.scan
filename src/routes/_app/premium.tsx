@@ -252,6 +252,11 @@ export function PremiumPage() {
   const isEligibleForTrial = false;
 
   const triggerAppReturnDeepLinks = useCallback(() => {
+    if (isInstalledApp() || isCapacitor()) {
+      console.log("[DeepLink] Já em execução no aplicativo Android nativo. Ignorando deep links.");
+      return;
+    }
+
     console.log("[DeepLink] Iniciando redirecionamento para o App...");
     try {
       window.close();
@@ -298,7 +303,7 @@ export function PremiumPage() {
   }, [purchasedPlan, selected, location.search]);
 
   useEffect(() => {
-    if (showExternalRedirectOverlay) {
+    if (showExternalRedirectOverlay && !isInstalledApp() && !isCapacitor()) {
       const timer = setTimeout(() => {
         triggerAppReturnDeepLinks();
       }, 1000);
@@ -444,11 +449,13 @@ export function PremiumPage() {
               : PLAY_PRODUCT_IDS.monthly;
         const basePlan = planId === "weekly" ? "semanal" : planId === "yearly" ? "anual" : "mensal";
 
-        // Invoca a Bottom Sheet oficial da Google Play Store no celular (com oferta de 7 dias grátis se trial=true)
+        // Invoca a Bottom Sheet oficial nativa da Google Play Store no celular
         const res = await requestGooglePlayPurchase(playProductId, session.access_token, {
           isTrial: trial,
           customPlanId: basePlan,
+          userId: user.id,
         });
+
         if (res.success) {
           toast.success(
             trial
@@ -497,7 +504,11 @@ export function PremiumPage() {
     try {
       if (isCapacitor()) {
         // Invoca a Bottom Sheet oficial da Google Play Store para o pacote de 50 scans (consumível)
-        const res = await requestGooglePlayPurchase(PLAY_PRODUCT_IDS.credits, session.access_token);
+        const res = await requestGooglePlayPurchase(
+          PLAY_PRODUCT_IDS.credits,
+          session.access_token,
+          { userId: user.id },
+        );
         if (res.success) {
           toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");
           if (refresh) await refresh();
@@ -1100,7 +1111,7 @@ export function PremiumPage() {
                   <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
                 </Button>
 
-                {!isInstalledApp() && (
+                {!isInstalledApp() && !isCapacitor() && (
                   <button
                     type="button"
                     onClick={triggerAppReturnDeepLinks}

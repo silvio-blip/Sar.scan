@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Capacitor } from "@capacitor/core";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -55,19 +56,84 @@ export function getApiUrl(path: string): string {
 export function isInstalledApp(): boolean {
   if (typeof window === "undefined") return false;
 
-  // 1. Capacitor JS native bridge (only present in real compiled native APK/iOS apps)
-  const cap = (window as any).Capacitor;
-  const isCapacitorNative = !!(
-    cap &&
-    (cap.isNative === true || cap.platform === "android" || cap.platform === "ios")
-  );
+  // 1. Official Capacitor native platform check
+  try {
+    if (Capacitor.isNativePlatform()) return true;
+    const platform = Capacitor.getPlatform();
+    if (platform === "android" || platform === "ios") return true;
+  } catch (e) {
+    // Ignored in non-native environments
+    console.debug("[Env Detection] NativePlatform check error:", e);
+  }
 
-  // 2. Custom protocols typical of compiled app views
-  const isCapacitorProtocol = ["capacitor:", "http-extension:", "file:", "ionic:"].includes(
-    window.location.protocol,
-  );
+  // 2. Global window.Capacitor inspection
+  try {
+    const cap = (window as any).Capacitor;
+    if (cap) {
+      if (typeof cap.isNativePlatform === "function" && cap.isNativePlatform()) return true;
+      if (typeof cap.getPlatform === "function") {
+        const p = cap.getPlatform();
+        if (p === "android" || p === "ios") return true;
+      }
+      if (cap.isNative === true || cap.platform === "android" || cap.platform === "ios") {
+        return true;
+      }
+      if (cap.Plugins && typeof cap.Plugins === "object" && Object.keys(cap.Plugins).length > 0) {
+        return true;
+      }
+    }
+  } catch (e) {
+    console.debug("[Env Detection] Global Capacitor check error:", e);
+  }
 
-  return isCapacitorNative || isCapacitorProtocol;
+  // 3. Native bridge or custom app injections (Android WebView JavascriptInterface or WebKit)
+  if (
+    (window as any).androidBridge !== undefined ||
+    (window as any).Android !== undefined ||
+    (window as any).webkit?.messageHandlers !== undefined
+  ) {
+    return true;
+  }
+
+  // 4. Custom protocols typical of compiled app views
+  const protocol = window.location.protocol || "";
+  if (["capacitor:", "http-extension:", "file:", "ionic:"].includes(protocol)) {
+    return true;
+  }
+
+  // 5. Hostname localhost combined with Capacitor or mobile WebView
+  const hostname = window.location.hostname || "";
+  const origin = window.location.origin || "";
+  if (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    origin.includes("localhost") ||
+    origin.includes("127.0.0.1") ||
+    origin.startsWith("file:")
+  ) {
+    if ((window as any).Capacitor !== undefined) return true;
+  }
+
+  // 6. UserAgent check for Android/iOS WebView / Standalone mode
+  if (typeof navigator !== "undefined" && navigator.userAgent) {
+    const ua = navigator.userAgent;
+    if (/Capacitor|Cordova/i.test(ua)) return true;
+    if (/Android.*wv/i.test(ua)) return true;
+    if ((navigator as any).standalone === true) return true;
+  }
+
+  // 7. Check if window.matchMedia standalone is true (PWA / installed webview)
+  if (typeof window.matchMedia === "function") {
+    try {
+      if (window.matchMedia("(display-mode: standalone)").matches) {
+        return true;
+      }
+    } catch (e) {
+      console.debug("[Env Detection] matchMedia error:", e);
+    }
+  }
+
+  return false;
 }
 
 export function getFoodEmoji(name: string): string {

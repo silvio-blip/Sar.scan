@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getApiUrl } from "./utils";
+import { getApiUrl, isInstalledApp } from "./utils";
 import { toast } from "sonner";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
@@ -88,17 +88,13 @@ export function getBasePlanId(productIdOrPlan: string): string {
 export const isCapacitor = (): boolean => {
   if (typeof window === "undefined") return false;
   try {
-    return Capacitor.isNativePlatform();
-  } catch {
-    const cap = (window as any).Capacitor;
-    return !!(
-      cap &&
-      (cap.isNative === true ||
-        cap.platform === "android" ||
-        cap.platform === "ios" ||
-        (typeof cap.isNativePlatform === "function" && cap.isNativePlatform()))
-    );
+    if (Capacitor.isNativePlatform()) return true;
+    const platform = Capacitor.getPlatform();
+    if (platform === "android" || platform === "ios") return true;
+  } catch (e) {
+    console.debug("[Play IAP] isCapacitor detection exception:", e);
   }
+  return false;
 };
 
 const PLAY_PRICES_STORAGE_KEY = "sar_scan_google_play_prices_cache";
@@ -203,6 +199,14 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
     return cachedPlayPrices;
   }
 
+  try {
+    if (!Capacitor.isNativePlatform()) {
+      return cachedPlayPrices;
+    }
+  } catch {
+    return cachedPlayPrices;
+  }
+
   const results: Record<string, PlayProductDetails> = { ...cachedPlayPrices };
 
   try {
@@ -304,8 +308,13 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
           }
         }
       }
-    } catch (subErr) {
-      console.warn("[Play IAP] Erro ao consultar preços de assinaturas na Google Play:", subErr);
+    } catch (subErr: any) {
+      if (
+        !subErr?.message?.includes("mocked in web") &&
+        !JSON.stringify(subErr || "").includes("mocked in web")
+      ) {
+        console.warn("[Play IAP] Erro ao consultar preços de assinaturas na Google Play:", subErr);
+      }
     }
 
     // 2. Consulta produto consumível de créditos (Pacote de 50 scans)
@@ -343,8 +352,13 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
           results["credits"] = details;
         }
       }
-    } catch (inAppErr) {
-      console.warn("[Play IAP] Erro ao consultar consumíveis na Google Play:", inAppErr);
+    } catch (inAppErr: any) {
+      if (
+        !inAppErr?.message?.includes("mocked in web") &&
+        !JSON.stringify(inAppErr || "").includes("mocked in web")
+      ) {
+        console.warn("[Play IAP] Erro ao consultar consumíveis na Google Play:", inAppErr);
+      }
     }
 
     cachedPlayPrices = { ...cachedPlayPrices, ...results };
@@ -445,11 +459,150 @@ export interface GooglePlayPurchaseOptions {
   isTrial?: boolean;
   offerId?: string;
   offerToken?: string;
+  appAccountToken?: string;
+  userId?: string;
+}
+
+/**
+ * Helper to extract user identifier from JWT without external libraries.
+ */
+function getUserIdFromToken(token?: string): string | undefined {
+  if (!token) return undefined;
+  try {
+    const parts = token.split(".");
+    if (parts.length >= 2) {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+      return payload.sub || payload.user_id || payload.id;
+    }
+  } catch (err) {
+    console.debug("[Play IAP] Falha ao extrair payload JWT:", err);
+  }
+  return undefined;
+}
+
+/**
+ * Checks if the error message indicates ITEM_ALREADY_OWNED from Google Play.
+ */
+function isItemAlreadyOwnedError(err: any): boolean {
+  if (!err) return false;
+  const msg = typeof err === "string" ? err : err?.message || err?.error || JSON.stringify(err);
+  const normalized = String(msg).toLowerCase();
+  return (
+    normalized.includes("item_already_owned") ||
+    normalized.includes("already owned") ||
+    normalized.includes("already_owned") ||
+    normalized.includes("já possui este item") ||
+    normalized.includes("already purchased") ||
+    normalized.includes("billingresponsecode.item_already_owned") ||
+    normalized.includes("response code: 7") ||
+    normalized.includes("responsecode: 7") ||
+    normalized.includes("code: 7") ||
+    normalized.includes("code 7")
+  );
+}
+
+/**
+ * Recupera e valida uma compra/assinatura ativa existente no dispositivo
+ * para a conta de usuário autenticada no aplicativo (suporte a multi-contas no mesmo celular).
+ */
+async function recoverAndVerifyExistingPurchase(
+  productId: string,
+  isSub: boolean,
+  token: string,
+): Promise<{ success: boolean; data?: any; error?: string } | null> {
+  try {
+    console.log(
+      `[Play IAP Multi-Account] ITEM_ALREADY_OWNED detectado para o produto ${productId}. Tentando recuperar compra ativa do dispositivo para vincular à conta atual do usuário...`,
+    );
+
+    // 1. Tenta buscar das assinaturas ativas se for sub
+    if (isSub) {
+      const { purchases } = await NativePurchases.getPurchases({
+        productType: PURCHASE_TYPE.SUBS,
+      });
+
+      if (purchases && purchases.length > 0) {
+        console.log("[Play IAP Multi-Account] Assinaturas encontradas no dispositivo:", purchases);
+        const matching =
+          purchases.find((p) => p.productIdentifier === productId) ||
+          purchases.find((p) => p.productIdentifier?.startsWith("sar_scan_assinatura")) ||
+          purchases[0];
+
+        if (matching?.purchaseToken) {
+          console.log(
+            "[Play IAP Multi-Account] Assinatura existente localizada. Validando para a conta atual...",
+            matching,
+          );
+          const verifyRes = await verifyPurchaseOnBackend(
+            matching.productIdentifier || productId,
+            matching.purchaseToken,
+            token,
+          );
+          if (verifyRes.success) {
+            return verifyRes;
+          }
+        }
+      }
+    } else {
+      // In-app (Créditos)
+      const { purchases } = await NativePurchases.getPurchases({
+        productType: PURCHASE_TYPE.INAPP,
+      });
+
+      if (purchases && purchases.length > 0) {
+        const matching = purchases.find((p) => p.productIdentifier === productId) || purchases[0];
+        if (matching?.purchaseToken) {
+          try {
+            await NativePurchases.consumePurchase({ purchaseToken: matching.purchaseToken });
+          } catch (consumeErr) {
+            console.debug("[Play IAP] Consumo prévio dispensado:", consumeErr);
+          }
+          const verifyRes = await verifyPurchaseOnBackend(
+            matching.productIdentifier || productId,
+            matching.purchaseToken,
+            token,
+          );
+          if (verifyRes.success) {
+            return verifyRes;
+          }
+        }
+      }
+    }
+
+    // 2. Se não encontrou de imediato em getPurchases, tenta restorePurchases e repete a busca
+    try {
+      await NativePurchases.restorePurchases();
+      const retryPurchases = await NativePurchases.getPurchases({
+        productType: isSub ? PURCHASE_TYPE.SUBS : PURCHASE_TYPE.INAPP,
+      });
+      if (retryPurchases?.purchases && retryPurchases.purchases.length > 0) {
+        const matching =
+          retryPurchases.purchases.find((p) => p.productIdentifier === productId) ||
+          retryPurchases.purchases[0];
+        if (matching?.purchaseToken) {
+          const verifyRes = await verifyPurchaseOnBackend(
+            matching.productIdentifier || productId,
+            matching.purchaseToken,
+            token,
+          );
+          if (verifyRes.success) {
+            return verifyRes;
+          }
+        }
+      }
+    } catch (restErr) {
+      console.warn("[Play IAP Multi-Account] Falha no fallback de restorePurchases:", restErr);
+    }
+  } catch (err) {
+    console.warn("[Play IAP Multi-Account] Falha ao recuperar compras do dispositivo:", err);
+  }
+  return null;
 }
 
 /**
  * Inicia o fluxo nativo oficial de faturamento da Google Play Store no Android
- * com auto-descoberta dinâmica de produtos, ofertas e planos base.
+ * com auto-descoberta dinâmica de produtos, ofertas e planos base, além de suporte
+ * robusto para múltiplas contas no mesmo aparelho celular.
  */
 export async function requestGooglePlayPurchase(
   productId: string,
@@ -459,8 +612,11 @@ export async function requestGooglePlayPurchase(
   const purchaseOpts: GooglePlayPurchaseOptions =
     typeof options === "string" ? { customPlanId: options } : options || {};
 
+  const currentUserId =
+    purchaseOpts.userId || purchaseOpts.appAccountToken || getUserIdFromToken(token);
+
   console.log(
-    `[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}, options:`,
+    `[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}, userId: ${currentUserId}, options:`,
     purchaseOpts,
   );
 
@@ -619,18 +775,18 @@ export async function requestGooglePlayPurchase(
       if (selectedOfferToken) {
         purchaseOptions.offerToken = selectedOfferToken;
       }
+      if (currentUserId) {
+        purchaseOptions.appAccountToken = currentUserId;
+      }
 
       console.log(
-        `[Play IAP] Invocando Google Play com prodId=${finalProductId}, planId=${planIdentifier}, offerToken=${selectedOfferToken ? "PRESENTE" : "NENHUM"}`,
+        `[Play IAP] Invocando Google Play com prodId=${finalProductId}, planId=${planIdentifier}, appAccountToken=${currentUserId || "NENHUM"}, offerToken=${selectedOfferToken ? "PRESENTE" : "NENHUM"}`,
       );
 
       try {
         transaction = await NativePurchases.purchaseProduct(purchaseOptions);
       } catch (attemptErr: any) {
-        console.warn(
-          "[Play IAP] Falha na primeira tentativa com offerToken, tentando segunda tentativa sem offerToken...",
-          attemptErr,
-        );
+        console.warn("[Play IAP] Falha na primeira tentativa com offerToken:", attemptErr);
         if (isUserCancellation(attemptErr)) {
           return {
             success: false,
@@ -638,6 +794,15 @@ export async function requestGooglePlayPurchase(
             isCancelled: true,
           };
         }
+
+        // Se a Google Play avisar que este item já foi adquirido
+        if (isItemAlreadyOwnedError(attemptErr)) {
+          return {
+            success: false,
+            error: "Esta assinatura já está ativa na sua conta Google Play.",
+          };
+        }
+
         // Segunda tentativa: sem offerToken, mantendo planIdentifier
         try {
           const fallbackOptions: any = {
@@ -646,6 +811,9 @@ export async function requestGooglePlayPurchase(
             planIdentifier: planIdentifier,
             autoAcknowledgePurchases: true,
           };
+          if (currentUserId) {
+            fallbackOptions.appAccountToken = currentUserId;
+          }
           console.log("[Play IAP] Invocando 2ª tentativa Google Play:", fallbackOptions);
           transaction = await NativePurchases.purchaseProduct(fallbackOptions);
         } catch (fallbackErr2: any) {
@@ -660,6 +828,14 @@ export async function requestGooglePlayPurchase(
               isCancelled: true,
             };
           }
+
+          if (isItemAlreadyOwnedError(fallbackErr2)) {
+            return {
+              success: false,
+              error: "Esta assinatura já está ativa na sua conta Google Play.",
+            };
+          }
+
           // Terceira tentativa (Tentativa Final Limpa): Apenas productIdentifier e productType, exatamente como os consumíveis
           try {
             const cleanOptions: any = {
@@ -667,6 +843,9 @@ export async function requestGooglePlayPurchase(
               productType: PURCHASE_TYPE.SUBS,
               autoAcknowledgePurchases: true,
             };
+            if (currentUserId) {
+              cleanOptions.appAccountToken = currentUserId;
+            }
             console.log("[Play IAP] Invocando tentativa final limpa Google Play:", cleanOptions);
             transaction = await NativePurchases.purchaseProduct(cleanOptions);
           } catch (cleanErr: any) {
@@ -678,6 +857,14 @@ export async function requestGooglePlayPurchase(
                 isCancelled: true,
               };
             }
+
+            if (isItemAlreadyOwnedError(cleanErr)) {
+              return {
+                success: false,
+                error: "Esta assinatura já está ativa na sua conta Google Play.",
+              };
+            }
+
             throw cleanErr;
           }
         }
@@ -693,6 +880,9 @@ export async function requestGooglePlayPurchase(
       if (selectedOfferToken) {
         purchaseOptions.offerToken = selectedOfferToken;
       }
+      if (currentUserId) {
+        purchaseOptions.appAccountToken = currentUserId;
+      }
 
       console.log(`[Play IAP] Invocando Google Play in-app prodId=${finalProductId}...`);
 
@@ -707,6 +897,14 @@ export async function requestGooglePlayPurchase(
             isCancelled: true,
           };
         }
+
+        if (isItemAlreadyOwnedError(attemptErr)) {
+          const recovered = await recoverAndVerifyExistingPurchase(finalProductId, false, token);
+          if (recovered?.success) {
+            return recovered;
+          }
+        }
+
         throw attemptErr;
       }
     }
@@ -749,10 +947,10 @@ export async function requestGooglePlayPurchase(
       return { success: false, error: "O plano não foi concluído.", isCancelled: true };
     }
 
-    if (errorMessage.includes("ITEM_ALREADY_OWNED")) {
+    if (isItemAlreadyOwnedError(err)) {
       return {
         success: false,
-        error: "Você já possui este item ou assinatura ativa na Google Play.",
+        error: "Esta assinatura já está ativa na sua conta Google Play.",
       };
     }
 

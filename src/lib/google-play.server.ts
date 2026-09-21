@@ -268,6 +268,38 @@ export async function verifyGooglePlayPurchaseInternal(data: {
 
   // 3. Update Supabase database values
   if (purchaseIsValid) {
+    // Validação de unicidade para assinaturas recorrentes:
+    // Garante que cada conta do aplicativo tenha sua própria assinatura individual e que um mesmo token ativo da Google Play não seja reutilizado por múltiplas contas sem pagamento separado.
+    if (data.purchaseToken && planInfo.type !== "consumable") {
+      try {
+        const { data: existingOwners } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .select("user_id, plan, status")
+          .eq("play_purchase_token", data.purchaseToken);
+
+        const activeOwner = Array.isArray(existingOwners)
+          ? existingOwners.find(
+              (o: any) =>
+                o.user_id !== user.id && (o.status === "active" || o.status === "trialing"),
+            )
+          : null;
+
+        if (activeOwner) {
+          console.warn(
+            `[Play Billing Backend] Token ${data.purchaseToken} já pertence ao usuário ${activeOwner.user_id}. Bloqueando atribuição para ${user.id}.`,
+          );
+          return {
+            success: false,
+            error:
+              "Esta assinatura da Google Play já está vinculada a outra conta neste aplicativo. Cada conta precisa de sua própria assinatura individual paga.",
+            isOwnedByAnotherUser: true,
+          };
+        }
+      } catch (checkErr) {
+        console.debug("[Play Billing Backend] Checagem de token prévio:", checkErr);
+      }
+    }
+
     console.log(
       `[Play Billing Backend] Purchase authorized successfully! Updating database for user ${user.id}...`,
     );
@@ -372,6 +404,8 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         ai_agent_enabled: true,
         current_period_end: periodEnd,
         trial_end: trialEnd,
+        play_purchase_token: data.purchaseToken || null,
+        play_product_id: data.productId || null,
         updated_at: new Date().toISOString(),
       };
 
