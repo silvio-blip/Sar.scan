@@ -85,12 +85,13 @@ export async function getRemainingCampaignDaysServer(userId: string): Promise<nu
 }
 
 /**
- * Calculates adjusted subscription expiration date by preserving and adding remaining campaign days.
+ * Calculates adjusted subscription expiration date by preserving and adding remaining campaign days and any remaining subscription days.
  */
 export async function calculatePlanPeriodEndWithCampaignBonus(
   userId: string,
   planId: string,
-): Promise<{ periodEnd: string; bonusDaysAdded: number }> {
+  existingPeriodEnd?: string | null,
+): Promise<{ periodEnd: string; bonusDaysAdded: number; existingDaysPreserved: number }> {
   let baseDays = 30;
   const lowerPlan = (planId || "").toLowerCase();
   if (lowerPlan === "weekly" || lowerPlan === "semanal") {
@@ -100,14 +101,24 @@ export async function calculatePlanPeriodEndWithCampaignBonus(
   }
 
   const bonusDaysAdded = await getRemainingCampaignDaysServer(userId);
-  const totalDays = baseDays + bonusDaysAdded;
+
+  let existingDaysPreserved = 0;
+  if (existingPeriodEnd) {
+    const existingEndTime = parseDateResilient(existingPeriodEnd);
+    const diff = existingEndTime - Date.now();
+    if (diff > 0) {
+      existingDaysPreserved = Math.ceil(diff / 86400000);
+    }
+  }
+
+  const totalDays = baseDays + bonusDaysAdded + existingDaysPreserved;
   const periodEnd = new Date(Date.now() + totalDays * 86400000).toISOString();
 
   console.log(
-    `[Campaign Server] Período calculado para usuário ${userId}, plano ${planId}: ${baseDays} dias base + ${bonusDaysAdded} dias bónus campanha = ${totalDays} dias totais (Expira em: ${periodEnd})`,
+    `[Campaign Server] Período calculado para usuário ${userId}, plano ${planId}: ${baseDays} dias base + ${bonusDaysAdded} dias bónus campanha + ${existingDaysPreserved} dias ativos anteriores = ${totalDays} dias totais (Expira em: ${periodEnd})`,
   );
 
-  return { periodEnd, bonusDaysAdded };
+  return { periodEnd, bonusDaysAdded, existingDaysPreserved };
 }
 
 /**

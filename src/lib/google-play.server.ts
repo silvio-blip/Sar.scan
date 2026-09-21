@@ -292,31 +292,49 @@ export async function verifyGooglePlayPurchaseInternal(data: {
     const newTotal = currentCredits + addedCredits;
 
     if (planInfo.type === "consumable") {
-      // Consumable credit pack
-      const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
-        {
-          user_id: user.id,
-          scans_credits: newTotal,
-          status: (currentSub as any)?.status ?? "free",
-          plan: (currentSub as any)?.plan ?? null,
-          trial_end: (currentSub as any)?.trial_end ?? null,
-          current_period_end: (currentSub as any)?.current_period_end ?? null,
-          ai_agent_enabled: (currentSub as any)?.ai_agent_enabled ?? false,
-          play_purchase_token: data.purchaseToken,
-          play_product_id: data.productId,
-          stripe_subscription_id: (currentSub as any)?.stripe_subscription_id ?? null,
-          stripe_customer_id: (currentSub as any)?.stripe_customer_id ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      );
+      // Consumable credit pack (ex: 50 scans)
+      const updateData = {
+        user_id: user.id,
+        scans_credits: newTotal,
+        status: (currentSub as any)?.status ?? "free",
+        plan: (currentSub as any)?.plan ?? null,
+        trial_end: (currentSub as any)?.trial_end ?? null,
+        current_period_end: (currentSub as any)?.current_period_end ?? null,
+        ai_agent_enabled: (currentSub as any)?.ai_agent_enabled ?? false,
+        updated_at: new Date().toISOString(),
+      };
+
+      let updateError: any = null;
+      try {
+        const { error } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .upsert(updateData, { onConflict: "user_id" });
+        updateError = error;
+      } catch (err: any) {
+        updateError = err;
+      }
 
       if (updateError) {
-        console.error(
-          "[Play Billing Backend] Failed adding purchase pack in database:",
+        console.warn(
+          "[Play Billing Backend] Upsert consumable failed, attempting update/insert fallback:",
           updateError,
         );
-        throw new Error("Erro crítico ao carregar créditos.");
+        const { error: directErr } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .update(updateData)
+          .eq("user_id", user.id);
+        if (directErr) {
+          const { error: insertErr } = await (supabaseAdmin as any)
+            .from("subscriptions")
+            .insert(updateData);
+          if (insertErr) {
+            console.error(
+              "[Play Billing Backend] All DB attempts failed for consumable:",
+              insertErr,
+            );
+            throw new Error("Erro ao salvar créditos no banco de dados.");
+          }
+        }
       }
 
       console.log(
@@ -332,11 +350,13 @@ export async function verifyGooglePlayPurchaseInternal(data: {
       };
     } else {
       // Recurring Subscription plan (weekly, monthly, yearly)
-      // Calculate adjusted periodEnd preserving and adding remaining campaign free days
-      const { periodEnd, bonusDaysAdded } = await calculatePlanPeriodEndWithCampaignBonus(
-        user.id,
-        planInfo.plan,
-      );
+      // Calculate adjusted periodEnd preserving and adding remaining campaign free days and previous active subscription days
+      const { periodEnd, bonusDaysAdded, existingDaysPreserved } =
+        await calculatePlanPeriodEndWithCampaignBonus(
+          user.id,
+          planInfo.plan,
+          (currentSub as any)?.current_period_end,
+        );
 
       const isTrial =
         (googleApiResponseData as any)?.paymentState === 2 ||
@@ -344,29 +364,52 @@ export async function verifyGooglePlayPurchaseInternal(data: {
 
       const trialEnd = isTrial ? new Date(Date.now() + 7 * 86400000).toISOString() : null;
 
-      const { error: updateError } = await (supabaseAdmin as any).from("subscriptions").upsert(
-        {
-          user_id: user.id,
-          status: isTrial ? "trialing" : "active",
-          plan: planInfo.plan,
-          scans_credits: newTotal,
-          ai_agent_enabled: true,
-          current_period_end: periodEnd,
-          trial_end: trialEnd,
-          play_purchase_token: data.purchaseToken,
-          play_product_id: data.productId,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      );
+      const subUpdateData = {
+        user_id: user.id,
+        status: isTrial ? "trialing" : "active",
+        plan: planInfo.plan,
+        scans_credits: newTotal,
+        ai_agent_enabled: true,
+        current_period_end: periodEnd,
+        trial_end: trialEnd,
+        updated_at: new Date().toISOString(),
+      };
+
+      let updateError: any = null;
+      try {
+        const { error } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .upsert(subUpdateData, { onConflict: "user_id" });
+        updateError = error;
+      } catch (err: any) {
+        updateError = err;
+      }
 
       if (updateError) {
-        console.error("[Play Billing Backend] Failed subscribing user in database:", updateError);
-        throw new Error("Erro crítico ao sincronizar assinatura.");
+        console.warn(
+          "[Play Billing Backend] Upsert subscription failed, attempting update/insert fallback:",
+          updateError,
+        );
+        const { error: directErr } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .update(subUpdateData)
+          .eq("user_id", user.id);
+        if (directErr) {
+          const { error: insertErr } = await (supabaseAdmin as any)
+            .from("subscriptions")
+            .insert(subUpdateData);
+          if (insertErr) {
+            console.error(
+              "[Play Billing Backend] All DB attempts failed for subscription:",
+              insertErr,
+            );
+            throw new Error("Erro ao atualizar assinatura no banco de dados.");
+          }
+        }
       }
 
       console.log(
-        `[Play Billing Backend] Success subscribing user ${user.id} to ${planInfo.plan} plan. New credits: ${newTotal}, periodEnd: ${periodEnd} (+${bonusDaysAdded} campaign days preserved)`,
+        `[Play Billing Backend] Success subscribing user ${user.id} to ${planInfo.plan} plan. New credits: ${newTotal}, periodEnd: ${periodEnd} (+${bonusDaysAdded} campaign days + ${existingDaysPreserved} prior active days preserved)`,
       );
 
       return {
@@ -378,6 +421,7 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         subscriptionStatus: isTrial ? "trialing" : "active",
         periodEnd,
         bonusDaysAdded,
+        existingDaysPreserved,
         details: googleApiResponseData,
       };
     }
@@ -830,27 +874,36 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
 
   let finalSub = currentSub;
   if (needsUpdate) {
-    const { data: updated, error: updateErr } = await (supabaseAdmin as any)
+    const syncPayload = {
+      user_id: user.id,
+      status: newStatus,
+      plan: newPlan,
+      ai_agent_enabled: newAi,
+      scans_credits: newCredits,
+      trial_end: trialEndVal,
+      current_period_end: periodEndVal,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data: updated, error: updateErr } = await (supabaseAdmin as any)
       .from("subscriptions")
-      .upsert(
-        {
-          user_id: user.id,
-          status: newStatus,
-          plan: newPlan,
-          ai_agent_enabled: newAi,
-          scans_credits: newCredits,
-          stripe_subscription_id: finalStripeSubId,
-          stripe_customer_id: currentSub.stripe_customer_id,
-          play_purchase_token: currentSub.play_purchase_token,
-          play_product_id: currentSub.play_product_id,
-          trial_end: trialEndVal,
-          current_period_end: periodEndVal,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      )
+      .upsert(syncPayload, { onConflict: "user_id" })
       .select()
-      .single();
+      .maybeSingle();
+
+    if (updateErr) {
+      console.warn("[Subscription Sync] Upsert failed, fallback to update:", updateErr);
+      const { data: directUpdated, error: directErr } = await (supabaseAdmin as any)
+        .from("subscriptions")
+        .update(syncPayload)
+        .eq("user_id", user.id)
+        .select()
+        .maybeSingle();
+      if (!directErr && directUpdated) {
+        updated = directUpdated;
+        updateErr = null;
+      }
+    }
 
     if (!updateErr && updated) {
       finalSub = updated;

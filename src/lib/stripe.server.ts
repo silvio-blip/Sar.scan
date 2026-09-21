@@ -746,15 +746,17 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
     const planCredits = getPlanScans(planId);
     const newTotal = currentCredits + planCredits;
 
-    const { periodEnd, bonusDaysAdded } = await calculatePlanPeriodEndWithCampaignBonus(
-      targetUserId,
-      planId,
-    );
+    const { periodEnd, bonusDaysAdded, existingDaysPreserved } =
+      await calculatePlanPeriodEndWithCampaignBonus(
+        targetUserId,
+        planId,
+        (currentSub as any)?.current_period_end,
+      );
 
     const trialEnd = isTrial ? new Date(Date.now() + 7 * 86400000).toISOString() : null;
 
     console.log(
-      `[Stripe Verify] Ativando ${planId} (${subStatus}) para ${targetUserId}. Novos créditos: ${newTotal}, Período até: ${periodEnd} (+${bonusDaysAdded} dias bónus campanha)`,
+      `[Stripe Verify] Ativando ${planId} (${subStatus}) para ${targetUserId}. Novos créditos: ${newTotal}, Período até: ${periodEnd} (+${bonusDaysAdded} dias bónus campanha + ${existingDaysPreserved} dias prévios)`,
     );
 
     const updatePayload: Record<string, any> = {
@@ -762,15 +764,11 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
       status: subStatus,
       plan: planId,
       scans_credits: newTotal,
-      stripe_customer_id: customerId,
       ai_agent_enabled: true,
       current_period_end: periodEnd,
       updated_at: new Date().toISOString(),
     };
 
-    if (subId) {
-      updatePayload.stripe_subscription_id = subId;
-    }
     if (trialEnd) {
       updatePayload.trial_end = trialEnd;
     }
@@ -780,8 +778,21 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
       .upsert(updatePayload, { onConflict: "user_id" });
 
     if (upsertErr) {
-      console.error("[Stripe Verify] Erro ao gravar assinatura no Supabase:", upsertErr);
-      throw new Error(`Erro ao salvar no banco: ${upsertErr.message}`);
+      console.warn("[Stripe Verify] Upsert falhou, tentando update/insert fallback:", upsertErr);
+      const { error: updateDirectErr } = await (supabaseAdmin as any)
+        .from("subscriptions")
+        .update(updatePayload)
+        .eq("user_id", targetUserId);
+
+      if (updateDirectErr) {
+        const { error: insertDirectErr } = await (supabaseAdmin as any)
+          .from("subscriptions")
+          .insert(updatePayload);
+        if (insertDirectErr) {
+          console.error("[Stripe Verify] Erro ao gravar assinatura no Supabase:", insertDirectErr);
+          throw new Error(`Erro ao salvar no banco: ${insertDirectErr.message}`);
+        }
+      }
     }
 
     return {
