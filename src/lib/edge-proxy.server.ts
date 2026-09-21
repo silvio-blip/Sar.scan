@@ -643,7 +643,7 @@ export async function checkEligibility(userId: string) {
   }
 
   throw new Error(
-    "Você atingiu o limite de 3 scans gratuitos por dia. Assine um plano para continuar escaneando ou aguarde amanhã!",
+    "Seus créditos de scans acabaram! Adquira mais créditos ou assine um plano premium para continuar.",
   );
 }
 

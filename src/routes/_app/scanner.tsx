@@ -318,9 +318,7 @@ export function ScannerPage() {
     if (!user) return;
     if (remaining <= 0) {
       toast.error(
-        isPremium
-          ? "Créditos do plano esgotados. Faça upgrade ou aguarde a renovação."
-          : "Limite diário atingido. Assine Premium!",
+        "Créditos de scans esgotados! Adquira mais créditos ou assine um plano para continuar.",
       );
       return;
     }
