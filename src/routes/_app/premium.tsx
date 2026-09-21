@@ -148,7 +148,6 @@ export function PremiumPage() {
   const [purchasedPlan, setPurchasedPlan] = useState<PlanDef | null>(null);
   const [confirmingPlan, setConfirmingPlan] = useState<PlanDef | null>(null);
   const [showExternalRedirectOverlay, setShowExternalRedirectOverlay] = useState(false);
-  const [restoringPurchases, setRestoringPurchases] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -907,44 +906,6 @@ export function PremiumPage() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Opção para restaurar compras desta conta */}
-      <div className="flex flex-col items-center justify-center gap-3 pt-2">
-        <Button
-          variant="outline"
-          disabled={restoringPurchases}
-          onClick={async () => {
-            if (restoringPurchases) return;
-            setRestoringPurchases(true);
-            try {
-              if (isCapacitor() && session?.access_token) {
-                const res = await restoreGooglePlayPurchases(session.access_token);
-                if (res.success) {
-                  toast.success(res.message);
-                  await refresh();
-                } else {
-                  toast.error(res.message);
-                }
-              } else {
-                await refresh();
-                toast.success("Assinaturas e créditos sincronizados com a conta!");
-              }
-            } catch (err: any) {
-              toast.error(err?.message || "Erro ao restaurar compras.");
-            } finally {
-              setRestoringPurchases(false);
-            }
-          }}
-          className="text-xs font-bold border-border/80 hover:border-primary/50 text-foreground flex items-center gap-2 h-11 px-6 rounded-full hover:bg-secondary/60 transition-all shadow-sm"
-        >
-          {restoringPurchases ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <RefreshCw className="size-4 text-primary" />
-          )}
-          Restaurar Compras Desta Conta
-        </Button>
       </div>
 
       <Dialog open={!!confirmingPlan} onOpenChange={(open) => !open && setConfirmingPlan(null)}>
