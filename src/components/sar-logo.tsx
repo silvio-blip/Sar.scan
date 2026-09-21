@@ -26,9 +26,10 @@ export function SarLogo({
 
       <div className={`flex flex-col ${align === "center" ? "items-center" : "items-start"}`}>
         <h1
-          className={`font-display font-black tracking-tighter text-foreground ${sizes[size]} leading-none`}
+          className={`font-black tracking-tight text-foreground ${sizes[size]} leading-none`}
+          style={{ fontFamily: "'Plus Jakarta Sans', 'Montserrat', sans-serif" }}
         >
-          sar.scan
+          sarscan
         </h1>
         {size !== "sm" && (
           <span className="text-[10px] tracking-[0.4em] uppercase text-muted-foreground/60 font-black">

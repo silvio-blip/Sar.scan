@@ -28,7 +28,16 @@ export const Route = createFileRoute("/direitos-privacidade")({
 function DireitosPrivacidadePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"termos" | "privacidade">("termos");
+  const [activeTab, setActiveTab] = useState<"termos" | "privacidade">(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      if (tab === "privacidade" || tab === "termos") {
+        return tab;
+      }
+    }
+    return "termos";
+  });
   const [copied, setCopied] = useState(false);
 
   const copyLink = () => {
@@ -67,9 +76,16 @@ function DireitosPrivacidadePage() {
           </Button>
 
           <div className="flex items-center gap-2">
-            <SarLogo className="size-8 text-primary" />
-            <span className="font-display font-black text-sm uppercase tracking-widest text-primary">
-              SAR APP
+            <img
+              src="https://i.imgur.com/pwXdv52.png"
+              alt="Logo"
+              className="size-6 rounded-full object-cover shadow-sm"
+            />
+            <span
+              className="font-black text-xs uppercase tracking-[0.2em] text-primary"
+              style={{ fontFamily: "'Plus Jakarta Sans', 'Montserrat', sans-serif" }}
+            >
+              sarscan
             </span>
           </div>
 
@@ -96,12 +112,15 @@ function DireitosPrivacidadePage() {
 
         {/* Hero Section */}
         <div className="text-center space-y-3 py-4">
-          <h1 className="text-3xl md:text-4xl font-display font-extrabold text-foreground tracking-tight leading-tight">
+          <h1
+            className="text-3xl md:text-4xl font-black text-foreground tracking-tight leading-tight"
+            style={{ fontFamily: "'Plus Jakarta Sans', 'Montserrat', sans-serif" }}
+          >
             Direitos e Privacidade
           </h1>
           <p className="text-sm md:text-base text-muted-foreground max-w-xl mx-auto font-medium leading-relaxed">
             Leia atentamente as diretrizes de uso, política de créditos e regras de processamento de
-            dados do aplicativo nutricional SAR.
+            dados do aplicativo nutricional sarscan.
           </p>
         </div>
 
