@@ -70,19 +70,40 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 const expiredUpdatesInProgress = new Set<string>();
 
+const CAMPAIGN_STORAGE_KEY = "sar_scan_campaign_cache";
+
+function getCachedCampaignSettings() {
+  if (typeof window === "undefined") {
+    return {
+      enabled: false,
+      startDate: "",
+      endDate: "",
+      bonusScans: 0,
+      freeAiDays: 0,
+    };
+  }
+  try {
+    const raw = localStorage.getItem(CAMPAIGN_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.debug("[Auth] Erro ao ler cache de campanha:", e);
+  }
+  return {
+    enabled: false,
+    startDate: "",
+    endDate: "",
+    bonusScans: 0,
+    freeAiDays: 0,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [campaignSettings, setCampaignSettings] = useState({
-    enabled: false,
-    startDate: "",
-    endDate: "",
-    bonusScans: 0,
-    freeAiDays: 0,
-  });
+  const [campaignSettings, setCampaignSettings] = useState(getCachedCampaignSettings);
   const [loading, setLoading] = useState(true);
 
   const lastSyncTimeRef = useRef<number>(0);
@@ -98,41 +119,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isExecutingRef.current = true;
 
     try {
-      // Obter sessão atual de forma segura e atualizada
-      const { data: sessionData } = await supabase.auth.getSession();
-      const currentToken = sessionData?.session?.access_token || session?.access_token;
-
-      // Evita loops infinitos e garante sincronização ativa direta (máximo uma chamada ativa a cada 30 segundos)
-      const nowTime = Date.now();
-      if (currentToken && !isSyncingRef.current && nowTime - lastSyncTimeRef.current > 30000) {
-        isSyncingRef.current = true;
-        try {
-          await syncSubscriptionStatusOnBackend(currentToken);
-          lastSyncTimeRef.current = Date.now();
-        } catch (syncErr) {
-          console.warn("[Auth] Falha ao sincronizar assinatura de forma ativa:", syncErr);
-        } finally {
-          isSyncingRef.current = false;
-        }
-      }
-
-      const [{ data: prof }, { data: sub }, { data: roles }] = await Promise.all([
+      // Carrega dados essenciais do usuário e configurações de campanha em paralelo com máxima velocidade
+      const [sessionRes, profRes, subRes, rolesRes, settingsRes] = await Promise.all([
+        supabase.auth.getSession(),
         supabase.from("profiles").select("*").eq("id", uid).maybeSingle(),
         supabase.from("subscriptions").select("*").eq("user_id", uid).maybeSingle(),
         supabase.from("user_roles").select("role").eq("user_id", uid),
-      ]);
-
-      let typedSub = sub as Subscription | null;
-
-      // Buscar Configurações da Campanha
-      let campEnabled = false;
-      let campStart = "";
-      let campEnd = "";
-      let campBonus = 0;
-      let campAiDays = 0;
-
-      try {
-        const { data: settings } = await supabase
+        supabase
           .from("app_settings")
           .select("key, value")
           .in("key", [
@@ -141,25 +134,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             "campaign_end_date",
             "campaign_bonus_scans",
             "campaign_free_ai_days",
-          ]);
-        if (settings) {
-          settings.forEach((r) => {
-            if (r.key === "campaign_enabled") campEnabled = r.value === "true";
-            if (r.key === "campaign_start_date") campStart = r.value;
-            if (r.key === "campaign_end_date") campEnd = r.value;
-            if (r.key === "campaign_bonus_scans") campBonus = parseInt(r.value) || 0;
-            if (r.key === "campaign_free_ai_days") campAiDays = parseInt(r.value) || 0;
+          ]),
+      ]);
+
+      const currentToken = sessionRes.data?.session?.access_token || session?.access_token;
+      const prof = profRes.data;
+      const sub = subRes.data;
+      const roles = rolesRes.data;
+      const settings = settingsRes.data;
+
+      // Executa sincronização de status em background se necessário sem bloquear a UI inicial
+      const nowTime = Date.now();
+      if (currentToken && !isSyncingRef.current && nowTime - lastSyncTimeRef.current > 30000) {
+        isSyncingRef.current = true;
+        syncSubscriptionStatusOnBackend(currentToken)
+          .then(() => {
+            lastSyncTimeRef.current = Date.now();
+          })
+          .catch((syncErr) => {
+            console.warn("[Auth] Falha ao sincronizar assinatura de forma ativa:", syncErr);
+          })
+          .finally(() => {
+            isSyncingRef.current = false;
           });
-          setCampaignSettings({
-            enabled: campEnabled,
-            startDate: campStart,
-            endDate: campEnd,
-            bonusScans: campBonus,
-            freeAiDays: campAiDays,
-          });
+      }
+
+      let typedSub = sub as Subscription | null;
+
+      // Buscar e persistir configurações da Campanha
+      let campEnabled = false;
+      let campStart = "";
+      let campEnd = "";
+      let campBonus = 0;
+      let campAiDays = 0;
+
+      if (settings) {
+        settings.forEach((r) => {
+          if (r.key === "campaign_enabled") campEnabled = r.value === "true";
+          if (r.key === "campaign_start_date") campStart = r.value;
+          if (r.key === "campaign_end_date") campEnd = r.value;
+          if (r.key === "campaign_bonus_scans") campBonus = parseInt(r.value) || 0;
+          if (r.key === "campaign_free_ai_days") campAiDays = parseInt(r.value) || 0;
+        });
+
+        const newCampSettings = {
+          enabled: campEnabled,
+          startDate: campStart,
+          endDate: campEnd,
+          bonusScans: campBonus,
+          freeAiDays: campAiDays,
+        };
+
+        setCampaignSettings(newCampSettings);
+        try {
+          if (typeof window !== "undefined") {
+            localStorage.setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(newCampSettings));
+          }
+        } catch (saveErr) {
+          console.debug("[Auth] Erro ao salvar cache de campanha:", saveErr);
         }
-      } catch (err) {
-        console.warn("[Auth] Erro ao carregar configurações de campanha:", err);
       }
 
       // 1. Novo utilizador logado pela primeira vez: criar registro gratuito

@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { isInstalledApp } from "@/lib/utils";
-import { isCapacitor, restoreGooglePlayPurchases } from "@/lib/google-play.functions";
+import { isCapacitor } from "@/lib/google-play.functions";
 import { Switch } from "@/components/ui/switch";
 import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 
@@ -51,7 +51,6 @@ export function PerfilPage() {
     () => localStorage.getItem("push_notifications_active") !== "false",
   );
 
-  const [restoringPurchases, setRestoringPurchases] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
   const [cameraGranted, setCameraGranted] = useState<boolean | null>(null);
@@ -198,7 +197,7 @@ export function PerfilPage() {
                 ? `Plano ${subscription.plan === "weekly" ? "Semanal" : subscription.plan === "yearly" ? "Anual" : "Mensal"} · Ativo`
                 : subscription?.status === "trialing"
                   ? "Teste Grátis (7 Dias) · Ativo"
-                  : "Plano Gratuito · Gerenciar e Cancelar"}
+                  : "Plano Gratuito · Ver Planos Premium"}
             </div>
           </div>
           <ChevronRight className="size-4 text-muted-foreground" />
@@ -347,48 +346,6 @@ export function PerfilPage() {
       </Link>
 
       <div className="border-t border-border" />
-
-      {/* Sincronizar / Restaurar Compras */}
-      <Card
-        onClick={async () => {
-          if (restoringPurchases) return;
-          setRestoringPurchases(true);
-          try {
-            if (isCapacitor() && session?.access_token) {
-              const res = await restoreGooglePlayPurchases(session.access_token);
-              if (res.success) {
-                toast.success(res.message);
-                await refresh();
-              } else {
-                toast.error(res.message);
-              }
-            } else {
-              await refresh();
-              toast.success("Dados da conta e assinaturas sincronizados com sucesso!");
-            }
-          } catch (e: any) {
-            toast.error(e.message || "Erro ao sincronizar compras.");
-          } finally {
-            setRestoringPurchases(false);
-          }
-        }}
-        className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm cursor-pointer transform transition hover:scale-[1.02] active:scale-95"
-      >
-        <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-          {restoringPurchases ? (
-            <Loader2 className="size-5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-5" />
-          )}
-        </div>
-        <div className="flex-1">
-          <div className="font-bold text-sm text-foreground">Restaurar Compras</div>
-          <div className="text-[11px] text-muted-foreground font-semibold">
-            Sincronizar assinaturas e créditos ativos com esta conta
-          </div>
-        </div>
-        <ChevronRight className="size-4 text-muted-foreground" />
-      </Card>
 
       <Link
         to="/perfil/excluir-conta"

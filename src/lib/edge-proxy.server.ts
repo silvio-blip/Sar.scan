@@ -174,14 +174,12 @@ async function geminiCall(opts: {
   });
 
   const modelsToTry = [
-    "gemini-3.8-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.1-pro-preview",
     "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
+    "gemini-flash-latest",
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-3.1-pro-preview",
   ];
   let response: any = null;
   let lastErr: any = null;
@@ -307,13 +305,13 @@ async function handleSearchFoodAi(body: Body) {
 
   const { text } = await geminiCall({
     systemInstruction:
-      "Você é um nutricionista brasileiro. Responda apenas com JSON conforme o schema, em português.",
+      "Você é um nutricionista e base de dados mundial de alimentos. Responda apenas com JSON conforme o schema, em português.",
     contents: [
       {
         role: "user",
         parts: [
           {
-            text: `Liste até 6 variantes comuns do alimento "${query}". Para cada uma: nome curto, porção comum (ex.: "100g", "1 unidade"), calorias e macros (carb, prot, gord em gramas) por porção.`,
+            text: `Pesquise no mundo inteiro por alimentos, pratos (ex: hambúrgueres, massas, sushi, fast food, pratos típicos de qualquer país) ou marcas cujo nome corresponda ou seja semelhante a "${query}". Liste até 8 opções comuns com nome, porção comum (ex.: "100g", "1 unidade"), calorias e macros (carb, prot, gord em gramas) por porção.`,
           },
         ],
       },
@@ -412,11 +410,10 @@ async function handleNutritionChat(body: Body) {
 ${profileContext}
 
 DIRETRIZES DE ESCOPO ABSOLUTAS (OBRIGATÓRIO):
-1. RESPOSTA EXCLUSIVA DE NUTRIÇÃO E SAÚDE: Você só está autorizado a responder a perguntas diretamente relacionadas a nutrição, alimentação, saúde metabólica, calorias, receitas e dietas. Se o usuário fizer qualquer pergunta fora deste escopo (por exemplo, sobre programação, matemática, história, notícias, entretenimento, curiosidades gerais, tradução ou qualquer outro assunto que não seja nutrição), responda de forma muito curta e direta: "Desculpe, fui projetado exclusivamente para ajudar com nutrição, dietas e saúde. Não posso responder a perguntas sobre outros assuntos." Não responda, sob hipótese alguma, a perguntas fora do tema.
-2. RESPOSTAS CURTAS, DIRETAS E CONCISAS: Seja extremamente direto e conciso. Se o usuário fizer uma pergunta simples ou curta, responda com um resumo rápido de poucas linhas ou um parágrafo breve e encerre. Evite gerar explicações longas, textos prolixos ou introduções e conclusões desnecessárias, a menos que uma análise altamente detalhada seja solicitada explicitamente. Poupe recursos e o tempo do utilizador.
-3. Se o usuário enviar uma foto de prato de comida ou alimento, analise detalhadamente os ingredientes, calorias estimadas e macronutrientes.
-4. Se o usuário solicitar receitas, ajustes nutricionais ou melhorias no plano, além da resposta explicativa breve, inclua no final da resposta um bloco JSON estruturado no formato exato (sem formatação markdown adicional ao redor):
-[APLICAR_MELHORIAS: {"meta": "...", "dieta": "..."}] com as atualizações sugeridas para o perfil do usuário.`;
+1. RESPOSTA EXCLUSIVA DE NUTRIÇÃO E SAÚDE: Você só está autorizado a responder a perguntas diretamente relacionadas a nutrição, alimentação, saúde metabólica, calorias, receitas e dietas. Se o usuário fizer qualquer pergunta fora deste escopo, responda: "Desculpe, fui projetado exclusivamente para ajudar com nutrição, dietas e saúde."
+2. RESPOSTAS CURTAS, DIRETAS E CONCISAS: Seja extremamente direto e conciso. Responda com um resumo rápido de poucas linhas ou um parágrafo breve. Evite explicações prolixas.
+3. Se o usuário enviar uma foto de prato de comida ou alimento, analise detalhadamente os ingredientes, calorias e macronutrientes.
+4. NUNCA gere blocos [APLICAR_MELHORIAS: ...] a menos que o usuário solicite explicitamente a criação ou alteração de um plano nutricional ou meta. Em conversas normais, dúvidas do dia a dia, cálculos de água ou orientações, responda APENAS com texto explicativo conciso, sem nenhum bloco de plano automático.`;
 
   const contents: any[] = [];
   chatHistory.forEach((h) => {

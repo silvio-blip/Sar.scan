@@ -533,6 +533,29 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     };
   }
 
+  const isOneTimePlayPass = Boolean(
+    currentSub.play_product_id?.startsWith("sar_scan_pass_") ||
+    currentSub.play_product_id?.includes("pass_") ||
+    currentSub.play_product_id === "sar_scan_creditos" ||
+    (!currentSub.stripe_subscription_id &&
+      (currentSub.play_purchase_token || currentSub.play_order_id)),
+  );
+
+  // Se for passe temporal da Google Play com vigência ativa, preserva o plano até o final dos dias contratados
+  const now = new Date();
+  const hasFutureEnd =
+    currentSub.current_period_end && new Date(currentSub.current_period_end) > now;
+  if (isOneTimePlayPass && hasFutureEnd) {
+    const formattedDate = new Date(currentSub.current_period_end).toLocaleDateString("pt-BR");
+    return {
+      success: true,
+      message: `Seu passe Google Play já é pré-pago sem renovação automática. Seus benefícios e créditos continuam ativos até ${formattedDate}.`,
+      subscription: currentSub,
+      expiresAt: currentSub.current_period_end,
+      cancelAtPeriodEnd: true,
+    };
+  }
+
   // 1. Se for assinatura Stripe, aciona o cancelamento na API do Stripe usando a chave do banco (app_settings)
   try {
     const { stripe } = await getStripe(true);
@@ -604,11 +627,6 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
   const rawKey = settings.google_play_private_key || process.env.GOOGLE_PLAY_PRIVATE_KEY || "";
   const packageName =
     settings.google_play_package_name || process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.sarscan.new";
-
-  const isOneTimePlayPass =
-    currentSub.play_product_id?.startsWith("sar_scan_pass_") ||
-    currentSub.play_product_id?.includes("pass_") ||
-    currentSub.play_product_id === "sar_scan_creditos";
 
   if (
     !isOneTimePlayPass &&

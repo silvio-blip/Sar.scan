@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { NutritionModal, type NutritionFood } from "@/components/nutrition-modal";
 import { FoodImage } from "@/components/food-image";
 import { getFoodEmoji, getApiUrl } from "@/lib/utils";
+import { WORLD_FOOD_DATABASE } from "@/data/foodDatabase";
 
 export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 
@@ -35,18 +36,35 @@ export function BuscarPage() {
       if (cached && cached.length >= 50)
         return cached.map((c) => ({ ...c, porcao: "1 porção" })) as Food[];
 
-      const response = await fetch(getApiUrl("/api/edge"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "search-food-ai", body: { mode: "popular" } }),
-      });
-      const data = await response.json();
-      if (!response.ok || data.error) throw new Error(data.error ?? "Erro ao carregar alimentos");
-      return (data.alimentos ?? []) as Food[];
+      return WORLD_FOOD_DATABASE as Food[];
     },
   });
 
-  const filtered = (popular ?? []).filter((f) => f.nome.toLowerCase().includes(q.toLowerCase()));
+  const allFoods = useMemo(() => {
+    const map = new Map<string, Food>();
+    WORLD_FOOD_DATABASE.forEach((f) => map.set(f.nome.toLowerCase(), f as Food));
+    (popular ?? []).forEach((f) => map.set(f.nome.toLowerCase(), f));
+    try {
+      const cachedAi = JSON.parse(localStorage.getItem("sar_ai_search_cache") || "{}");
+      Object.values(cachedAi)
+        .flat()
+        .forEach((f: any) => {
+          if (f && f.nome) map.set(f.nome.toLowerCase(), f);
+        });
+    } catch {
+      // ignore cache read failure
+    }
+    return Array.from(map.values());
+  }, [popular]);
+
+  const filtered = useMemo(() => {
+    if (!q.trim()) return allFoods;
+    const query = q.toLowerCase().trim();
+    return allFoods.filter(
+      (f) => f.nome.toLowerCase().includes(query) || f.porcao?.toLowerCase().includes(query),
+    );
+  }, [allFoods, q]);
+
   const showList = useMemo(() => variants ?? filtered, [variants, filtered]);
 
   const adicionar = async (food: NutritionFood, p: number, fotoUrl?: string | null) => {
@@ -81,7 +99,20 @@ export function BuscarPage() {
   };
 
   const buscarIA = async () => {
-    if (!q.trim()) return;
+    const queryTrim = q.trim();
+    if (!queryTrim) return;
+
+    // Check localStorage cache first
+    try {
+      const cachedAi = JSON.parse(localStorage.getItem("sar_ai_search_cache") || "{}");
+      if (cachedAi[queryTrim.toLowerCase()]) {
+        setVariants(cachedAi[queryTrim.toLowerCase()]);
+        return;
+      }
+    } catch {
+      // ignore cache read failure
+    }
+
     setAiBusy(true);
     try {
       const response = await fetch(getApiUrl("/api/edge"), {
@@ -89,7 +120,7 @@ export function BuscarPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: "search-food-ai",
-          body: { query: q, mode: "variants", user_id: user?.id },
+          body: { query: queryTrim, mode: "variants", user_id: user?.id },
         }),
       });
 
@@ -102,6 +133,14 @@ export function BuscarPage() {
         toast.message("Nenhum alimento encontrado", {
           description: "Tente usar termos diferentes para a busca.",
         });
+      } else {
+        try {
+          const cachedAi = JSON.parse(localStorage.getItem("sar_ai_search_cache") || "{}");
+          cachedAi[queryTrim.toLowerCase()] = alimentos;
+          localStorage.setItem("sar_ai_search_cache", JSON.stringify(cachedAi));
+        } catch {
+          // ignore
+        }
       }
       setVariants(alimentos);
     } catch (e: any) {

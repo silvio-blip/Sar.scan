@@ -1,13 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { Trash2, Camera, Image as ImageIcon, Loader2, ArrowLeft } from "lucide-react";
+import {
+  Trash2,
+  Camera,
+  Image as ImageIcon,
+  Loader2,
+  ArrowLeft,
+  Sparkles,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { FoodImage } from "@/components/food-image";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
@@ -36,8 +45,49 @@ export function DiarioPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState<Entry | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const getFeedbackForEntry = (id: string) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("sar_entry_feedbacks") || "{}");
+      return stored[id] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const speakFeedback = (text: string) => {
+    if (!text) return;
+    if (!("speechSynthesis" in window)) return;
+
+    if (isPlayingAudio) {
+      window.speechSynthesis.cancel();
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "pt-PT";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => setIsPlayingAudio(false);
+    utterance.onerror = () => setIsPlayingAudio(false);
+
+    setIsPlayingAudio(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const { data: entries } = useQuery({
     queryKey: ["entries", user?.id, today()],
@@ -552,54 +602,39 @@ export function DiarioPage() {
                 <FoodImage
                   src={open.foto_url}
                   alt={open.nome}
-                  className="w-full h-44 object-cover group-hover:scale-105 transition-all duration-700"
+                  className="w-full h-44 object-cover"
                 />
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".png,.jpg,.jpeg,.webp,.heic,.heif,image/*"
-                  className="sr-only absolute pointer-events-none w-0 h-0"
-                  onChange={trocarFoto}
-                />
-                <input
-                  ref={cameraRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only absolute pointer-events-none w-0 h-0"
-                  onChange={trocarFoto}
-                />
-                <div className="absolute bottom-3 right-3 flex items-center gap-2 z-10">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-2xl bg-white/95 text-zinc-900 border border-zinc-200 shadow-sm gap-1.5 font-black text-[10px] uppercase tracking-widest h-9 px-3 active:scale-95 transition-all hover:bg-white"
-                    onClick={handleTakeLivePhoto}
-                    disabled={uploadingPhoto}
-                    title="Tirar foto em tempo real agora"
-                  >
-                    {uploadingPhoto ? (
-                      <Loader2 className="size-3.5 animate-spin text-zinc-900" />
-                    ) : (
-                      <Camera className="size-3.5 text-emerald-600" />
-                    )}
-                    <span>Tirar Foto</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className="rounded-2xl bg-white/95 text-zinc-900 border border-zinc-200 shadow-sm gap-1.5 font-black text-[10px] uppercase tracking-widest h-9 px-3 active:scale-95 transition-all hover:bg-white"
-                    onClick={handleSelectPhoto}
-                    disabled={uploadingPhoto}
-                    title="Escolher foto da galeria"
-                  >
-                    <ImageIcon className="size-3.5 text-sky-600" />
-                    <span>Galeria</span>
-                  </Button>
-                </div>
               </div>
+
+              {getFeedbackForEntry(open.id) && (
+                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 space-y-2 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-bold text-primary tracking-wide uppercase">
+                      <Sparkles className="size-4 shrink-0" /> Análise de Impacto na Meta
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => speakFeedback(getFeedbackForEntry(open.id))}
+                      className="h-7 px-2.5 rounded-xl text-xs gap-1.5 border-primary/30 bg-background hover:bg-primary/10 text-primary transition-all"
+                      title={isPlayingAudio ? "Parar áudio" : "Ouvir áudio da sugestão"}
+                    >
+                      {isPlayingAudio ? (
+                        <>
+                          <VolumeX className="size-3.5 animate-pulse text-destructive" /> Parar
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="size-3.5" /> Ouvir Áudio
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-foreground/90 leading-relaxed font-medium">
+                    {getFeedbackForEntry(open.id)}
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 px-1">
                 <div className="h-px flex-1 bg-border" />

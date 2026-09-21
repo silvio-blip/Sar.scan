@@ -79,6 +79,7 @@ export function ScannerPage() {
   const [scanning, setScanning] = useState(false);
   const [detected, setDetected] = useState<ScannedFood[] | null>(null);
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
+  const [feedbackMeta, setFeedbackMeta] = useState<string | null>(null);
   const [picked, setPicked] = useState<NutritionFood | null>(null);
 
   useEffect(() => {
@@ -395,6 +396,7 @@ export function ScannerPage() {
       }
 
       const itens = parsedResult.itens || parsedResult.items || [];
+      const metaFeedback = parsedResult.feedback_meta || null;
 
       if (itens.length === 0) {
         const newFailedCount = failedCount + 1;
@@ -414,6 +416,7 @@ export function ScannerPage() {
         }
         setDetected(null);
         setScanPhoto(null);
+        setFeedbackMeta(null);
         setScanning(false);
         await refresh();
         qc.invalidateQueries({ queryKey: ["scan_usage"] });
@@ -423,6 +426,7 @@ export function ScannerPage() {
       // Sucesso! Zerar contador de falhas consecutivas
       localStorage.setItem("failed_scans_count", "0");
       setDetected(itens as ScannedFood[]);
+      setFeedbackMeta(metaFeedback);
 
       // Seguir com a lógica de sucesso (refresh etc)
       await refresh();
@@ -559,11 +563,25 @@ export function ScannerPage() {
       data: todayStr,
       created_at: nowIso,
     }));
-    const { error: insertErr } = await supabase.from("food_entries").insert(rows);
+    const { data: insertedData, error: insertErr } = await supabase
+      .from("food_entries")
+      .insert(rows)
+      .select("id");
     if (insertErr) {
       console.error("Erro ao salvar alimento no diário:", insertErr);
       toast.error("Erro ao adicionar alimentos ao histórico");
       return;
+    }
+    if (insertedData && feedbackMeta) {
+      try {
+        const storedFeedbacks = JSON.parse(localStorage.getItem("sar_entry_feedbacks") || "{}");
+        for (const row of insertedData) {
+          storedFeedbacks[row.id] = feedbackMeta;
+        }
+        localStorage.setItem("sar_entry_feedbacks", JSON.stringify(storedFeedbacks));
+      } catch (e) {
+        console.error("Error saving feedback to localStorage", e);
+      }
     }
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["entries"] }),
@@ -784,9 +802,11 @@ export function ScannerPage() {
       <MultiFoodModal
         items={detected}
         photo={scanPhoto}
+        feedbackMeta={feedbackMeta}
         onClose={() => {
           setDetected(null);
           setScanPhoto(null);
+          setFeedbackMeta(null);
         }}
         onConfirm={confirmar}
       />

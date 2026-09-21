@@ -9,7 +9,6 @@ import {
   AlertTriangle,
   RefreshCw,
   Sparkles,
-  ExternalLink,
   ShieldCheck,
   Zap,
   Loader2,
@@ -33,7 +32,6 @@ import {
   cancelSubscriptionOnBackend,
   reactivateSubscriptionOnBackend,
   syncSubscriptionStatusOnBackend,
-  openPlayStoreSubscriptionManager,
   PLAY_PRODUCT_IDS,
   type PlayProductDetails,
 } from "@/lib/google-play.functions";
@@ -93,17 +91,18 @@ export function AssinaturaPage() {
     rawPlan?.includes("cancelled"),
   );
 
-  const isGooglePlaySub = Boolean(
-    hasActiveSub &&
-    ((subscription as any)?.play_purchase_token ||
-      (subscription as any)?.play_product_id ||
-      (!subscription?.stripe_subscription_id &&
-        !subscription?.stripe_customer_id &&
-        isCapacitor())),
-  );
-
   const isStripeSub = Boolean(
     hasActiveSub && (subscription?.stripe_subscription_id || subscription?.stripe_customer_id),
+  );
+
+  const isGooglePlaySub = Boolean(
+    hasActiveSub &&
+    !subscription?.stripe_subscription_id &&
+    ((subscription as any)?.play_purchase_token ||
+      (subscription as any)?.play_product_id ||
+      (subscription as any)?.play_order_id ||
+      isCapacitor() ||
+      subscription?.status === "active"),
   );
 
   // Informações amigáveis do plano
@@ -448,8 +447,25 @@ export function AssinaturaPage() {
           </Link>
         </Button>
 
-        {/* Botão de Cancelamento ou Reativação */}
-        {hasActiveSub &&
+        {/* Informação para usuários com compra da Google Play */}
+        {isGooglePlaySub && hasActiveSub && (
+          <div className="rounded-[24px] bg-secondary/40 border border-border p-4 text-center space-y-1">
+            <div className="text-[10px] font-black text-foreground uppercase tracking-widest">
+              Plano de Acesso por Período
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Seu acesso e créditos permanecem garantidos até{" "}
+              <span className="text-foreground font-semibold">
+                {periodEndFormatted || "o fim do período"}
+              </span>
+              . Não há renovação automática e o acesso expirará de forma autônoma após esse prazo.
+            </p>
+          </div>
+        )}
+
+        {/* Botão de Cancelamento ou Reativação apenas para assinaturas Stripe recorrentes */}
+        {isStripeSub &&
+          hasActiveSub &&
           (isCancelled ? (
             <Button
               variant="outline"
@@ -473,22 +489,6 @@ export function AssinaturaPage() {
               <XCircle className="size-4 mr-2" /> Cancelar Assinatura
             </Button>
           ))}
-
-        {/* Opção nativa de abrir gerenciador da Google Play */}
-        {isCapacitor() && (
-          <Button
-            variant="ghost"
-            onClick={() => {
-              const sku = planType
-                ? PLAY_PRODUCT_IDS[planType as keyof typeof PLAY_PRODUCT_IDS]
-                : undefined;
-              openPlayStoreSubscriptionManager(sku);
-            }}
-            className="w-full h-12 rounded-[24px] text-muted-foreground hover:text-foreground font-semibold text-xs gap-1.5"
-          >
-            <ExternalLink className="size-3.5" /> Gerenciar na Google Play Store
-          </Button>
-        )}
       </div>
 
       {/* Diálogo de Confirmação de Cancelamento */}

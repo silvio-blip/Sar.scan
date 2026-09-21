@@ -1,6 +1,18 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Minus, X, Loader2, Flame, Wheat, Beef, Droplet } from "lucide-react";
+import {
+  Plus,
+  Minus,
+  X,
+  Loader2,
+  Flame,
+  Wheat,
+  Beef,
+  Droplet,
+  Sparkles,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { FoodImage } from "@/components/food-image";
 
@@ -17,6 +29,7 @@ export type ScannedFood = {
 type Props = {
   items: ScannedFood[] | null;
   photo?: string | null;
+  feedbackMeta?: string | null;
   onClose: () => void;
   onConfirm: (items: (ScannedFood & { porcoes: number })[]) => Promise<void> | void;
 };
@@ -28,13 +41,47 @@ const NUTRIENT_BLOCKS = [
   { key: "gord", label: "Gordura", unit: "g", Icon: Droplet, color: "text-sky-300" },
 ] as const;
 
-export function MultiFoodModal({ items, photo, onClose, onConfirm }: Props) {
+export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm }: Props) {
   const [list, setList] = useState<(ScannedFood & { porcoes: number })[]>([]);
   const [busy, setBusy] = useState(false);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
   useEffect(() => {
     if (items) setList(items.map((i) => ({ ...i, porcoes: 1 })));
   }, [items]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  const speakFeedback = () => {
+    if (!feedbackMeta) return;
+    if (!("speechSynthesis" in window)) {
+      return;
+    }
+
+    if (isPlayingAudio) {
+      window.speechSynthesis.cancel();
+      setIsPlayingAudio(false);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(feedbackMeta);
+    utterance.lang = "pt-PT";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onend = () => setIsPlayingAudio(false);
+    utterance.onerror = () => setIsPlayingAudio(false);
+
+    setIsPlayingAudio(true);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const setPorc = (idx: number, v: number) => {
     setList((prev) => prev.map((it, i) => (i === idx ? { ...it, porcoes: Math.max(0.5, v) } : it)));
@@ -54,6 +101,9 @@ export function MultiFoodModal({ items, photo, onClose, onConfirm }: Props) {
   const handle = async () => {
     setBusy(true);
     try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
       await onConfirm(list);
     } finally {
       setBusy(false);
@@ -75,6 +125,36 @@ export function MultiFoodModal({ items, photo, onClose, onConfirm }: Props) {
             <div className="relative rounded-2xl overflow-hidden border border-border">
               <img src={photo} alt="scan" className="w-full h-36 object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-background/85 to-transparent" />
+            </div>
+          )}
+
+          {feedbackMeta && (
+            <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 space-y-2 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs font-bold text-primary tracking-wide uppercase">
+                  <Sparkles className="size-4 shrink-0" /> Análise de Impacto na Meta
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={speakFeedback}
+                  className="h-7 px-2.5 rounded-xl text-xs gap-1.5 border-primary/30 bg-background hover:bg-primary/10 text-primary transition-all"
+                  title={isPlayingAudio ? "Parar áudio" : "Ouvir áudio da sugestão"}
+                >
+                  {isPlayingAudio ? (
+                    <>
+                      <VolumeX className="size-3.5 animate-pulse text-destructive" /> Parar
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="size-3.5" /> Ouvir Áudio
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-foreground/90 leading-relaxed font-medium">
+                {feedbackMeta}
+              </p>
             </div>
           )}
 

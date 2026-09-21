@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { toast } from "sonner";
+import { initAppNotifications } from "./notifications";
 
 interface CameraContextType {
   stream: MediaStream | null;
@@ -69,6 +70,7 @@ export const CameraProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const ensurePermissions = useCallback(async () => {
     if (permissionCheckedRef.current) return;
     try {
+      await initAppNotifications();
       const cap = typeof window !== "undefined" && (window as any).Capacitor;
       if (cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform()) {
         const { Camera } = cap.Plugins || {};

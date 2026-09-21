@@ -123,8 +123,36 @@ export function createApiApp() {
       const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
 
-      const promptText = `Analisa esta imagem de comida.
-Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown, ou explicações.
+      let userProfileContext = "";
+      if (userId) {
+        try {
+          const { data: profile } = await supabaseAdmin
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle();
+          if (profile) {
+            userProfileContext = `
+Dados e Perfil do Utilizador:
+- Objetivo principal: ${profile.objetivo || "manter"} (opções: perder gordura, manter, ganhar massa)
+- Peso atual: ${profile.peso || "não informado"} kg
+- Altura: ${profile.altura || "não informado"} cm
+- Meta de peso: ${profile.meta_peso || "não informado"} kg
+- Calorias diárias alvo: ${profile.calorias_meta || "não informado"} kcal
+`;
+          }
+        } catch (e) {
+          console.warn(
+            "[Server] Falha ao buscar perfil para análise nutricional personalizada:",
+            e,
+          );
+        }
+      }
+
+      const promptText = `Analisa esta imagem de comida no contexto do perfil e objetivos do utilizador.
+${userProfileContext}
+
+Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown ou explicações fora do JSON.
 O formato deve ser exatamente:
 {
   "itens": [
@@ -136,7 +164,8 @@ O formato deve ser exatamente:
       "prot": number, 
       "gord": number 
     }
-  ]
+  ],
+  "feedback_meta": "string breve, direta e encorajadora em português (PT) explicando ao utilizador como este alimento impacta a sua meta específica (seja perder gordura, manter ou ganhar massa), indicando se o aproxima ou afasta da meta, balanço calórico/nutricional e uma recomendação prática."
 }`;
 
       const ai = new GoogleGenAI({
@@ -149,14 +178,7 @@ O formato deve ser exatamente:
       });
 
       let aiResponse;
-      const modelsToTry = [
-        "gemini-3.8-flash",
-        "gemini-3.1-flash-lite",
-        "gemini-flash-latest",
-        "gemini-3.1-pro-preview",
-        "gemini-3.6-flash",
-        "gemini-3.5-flash-lite",
-      ];
+      const modelsToTry = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
       let lastError: any = null;
 
       for (const m of modelsToTry) {

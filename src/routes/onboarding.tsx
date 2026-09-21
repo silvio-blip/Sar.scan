@@ -45,30 +45,56 @@ function OnboardingPage() {
   const [altura, setAltura] = useState("");
   const [objetivo, setObjetivo] = useState<"perder" | "manter" | "ganhar">("manter");
   const [loading, setLoading] = useState(false);
-  const [showCelebration, setShowCelebration] = useState(false);
 
-  // Direct campaign settings state for failsafe checking
-  const [isCampaignActive, setIsCampaignActive] = useState(false);
-  const [bonusScansCount, setBonusScansCount] = useState(10);
-  const [freeAiDaysCount, setFreeAiDaysCount] = useState(7);
+  // Inicialização instantânea a partir do cache local para resposta imediata
+  const getInitialCampaignState = () => {
+    if (typeof window === "undefined") return { active: false, bonus: 10, aiDays: 7 };
+    try {
+      const cached = localStorage.getItem("sar_scan_campaign_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.enabled) {
+          return {
+            active: true,
+            bonus: parsed.bonusScans || 10,
+            aiDays: parsed.freeAiDays || 7,
+          };
+        }
+      }
+    } catch (e) {
+      console.debug("[Onboarding] Erro ao carregar cache de campanha:", e);
+    }
+    return { active: false, bonus: 10, aiDays: 7 };
+  };
 
+  const initialSettings = getInitialCampaignState();
+  const [isCampaignActive, setIsCampaignActive] = useState(initialSettings.active);
+  const [bonusScansCount, setBonusScansCount] = useState(initialSettings.bonus);
+  const [freeAiDaysCount, setFreeAiDaysCount] = useState(initialSettings.aiDays);
+  const [showCelebration, setShowCelebration] = useState(initialSettings.active);
+
+  // Sincroniza e reage instantaneamente ao campaignSettings do AuthContext
   useEffect(() => {
-    if (campaignSettings?.isEnabled && campaignSettings.bonusScans > 0) {
+    if (campaignSettings?.enabled && campaignSettings.bonusScans > 0) {
       setIsCampaignActive(true);
       setBonusScansCount(campaignSettings.bonusScans);
-      setFreeAiDaysCount(campaignSettings.freeAiDays);
+      setFreeAiDaysCount(campaignSettings.freeAiDays || 7);
       setShowCelebration(true);
     }
-  }, [campaignSettings]);
+  }, [campaignSettings?.enabled, campaignSettings?.bonusScans, campaignSettings?.freeAiDays]);
 
+  // Busca em background apenas se não houver configurações ativas
   useEffect(() => {
+    if (campaignSettings?.enabled) return;
+
+    let isMounted = true;
     const fetchCampaign = async () => {
       try {
         const { data: settings } = await supabase
           .from("app_settings")
           .select("key, value")
           .in("key", ["campaign_enabled", "campaign_bonus_scans", "campaign_free_ai_days"]);
-        if (settings) {
+        if (settings && isMounted) {
           let enabled = false;
           let bonus = 10;
           let aiDays = 7;
@@ -81,7 +107,6 @@ function OnboardingPage() {
           setBonusScansCount(bonus);
           setFreeAiDaysCount(aiDays);
 
-          // Show the campaign celebration modal immediately if the campaign is active
           if (enabled && bonus > 0) {
             setShowCelebration(true);
           }
@@ -91,7 +116,10 @@ function OnboardingPage() {
       }
     };
     fetchCampaign();
-  }, []);
+    return () => {
+      isMounted = false;
+    };
+  }, [campaignSettings?.enabled]);
 
   if (authLoading)
     return (
