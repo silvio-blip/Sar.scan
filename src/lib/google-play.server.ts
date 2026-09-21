@@ -664,16 +664,42 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     }
   }
 
-  // 3. Atualiza os dados no Supabase para status: "free"
-  const { data: updatedSub, error: updateError } = await (supabaseAdmin as any)
-    .from("subscriptions")
-    .update({
+  // 3. Atualiza os dados no Supabase para status: "free" ou agenda para o final do período
+  const isStripe = Boolean(currentSub.stripe_subscription_id);
+  const isGooglePlay = Boolean(currentSub.play_purchase_token && currentSub.play_product_id);
+
+  let updatedFields: any = {};
+  let isCanceledAtPeriodEnd = false;
+  let responseMessage =
+    "Sua assinatura foi cancelada com sucesso. Sua conta agora está no plano gratuito.";
+
+  if (!data.immediate && (isStripe || (isGooglePlay && !isOneTimePlayPass)) && hasFutureEnd) {
+    const currentPlan = currentSub.plan || "";
+    const nextPlan = currentPlan.includes("_cancelled") ? currentPlan : `${currentPlan}_cancelled`;
+
+    updatedFields = {
+      plan: nextPlan,
+      status: currentSub.status, // mantém o status atual (active/trialing)
+      ai_agent_enabled: true, // continua ativo até o final do período
+      updated_at: new Date().toISOString(),
+    };
+    isCanceledAtPeriodEnd = true;
+
+    const formattedEnd = new Date(currentSub.current_period_end).toLocaleDateString("pt-BR");
+    responseMessage = `Sua assinatura foi cancelada com sucesso. Seus benefícios e créditos continuam totalmente ativos e disponíveis até ${formattedEnd}.`;
+  } else {
+    updatedFields = {
       status: "free",
       plan: null,
       ai_agent_enabled: false,
       trial_end: currentSub.trial_end || new Date(0).toISOString(),
       updated_at: new Date().toISOString(),
-    })
+    };
+  }
+
+  const { data: updatedSub, error: updateError } = await (supabaseAdmin as any)
+    .from("subscriptions")
+    .update(updatedFields)
     .eq("user_id", user.id)
     .select()
     .single();
@@ -693,15 +719,12 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     ? new Date(periodEnd).toLocaleDateString("pt-BR")
     : "fim do período";
 
-  const message =
-    "Sua assinatura foi cancelada com sucesso. Sua conta agora está no plano gratuito.";
-
   return {
     success: true,
-    message,
+    message: responseMessage,
     subscription: updatedSub,
     expiresAt: periodEnd,
-    cancelAtPeriodEnd: false,
+    cancelAtPeriodEnd: isCanceledAtPeriodEnd,
   };
 }
 

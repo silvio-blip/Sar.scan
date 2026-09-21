@@ -18,6 +18,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) nav({ to: "/" });
@@ -165,8 +166,10 @@ function LoginPage() {
           {/* Google Sign In Button */}
           <Button
             type="button"
+            disabled={isGoogleLoading || loading}
             onClick={async () => {
               try {
+                setIsGoogleLoading(true);
                 const { error } = await handleGoogleSignIn();
                 if (error) {
                   if (error.message === "cancelled") return;
@@ -174,29 +177,35 @@ function LoginPage() {
                 }
               } catch (err: any) {
                 toast.error(err.message || "Erro ao entrar com Google");
+              } finally {
+                setIsGoogleLoading(false);
               }
             }}
-            className="w-full h-14 rounded-[22px] bg-secondary/80 hover:bg-secondary text-foreground border border-border/80 font-bold tracking-[0.05em] text-[12px] shadow-sm transition-all duration-300 active:scale-98 flex items-center justify-center gap-3 cursor-pointer"
+            className="w-full h-14 rounded-[22px] bg-secondary/80 hover:bg-secondary text-foreground border border-border/80 font-bold tracking-[0.05em] text-[12px] shadow-sm transition-all duration-300 active:scale-98 flex items-center justify-center gap-3 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <svg className="size-5" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.13 0-5.78-2.11-6.73-4.96H1.18v3.14C3.15 21.32 7.22 24 12 24z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.27 14.24c-.25-.72-.38-1.5-.38-2.24s.13-1.52.38-2.24V6.62H1.18C.43 8.14 0 9.87 0 12s.43 3.86 1.18 5.38l4.09-3.14z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.22 0 3.15 2.68 1.18 6.62l4.09 3.14c.95-2.85 3.6-4.96 6.73-4.96z"
-              />
-            </svg>
-            Continuar com o Google
+            {isGoogleLoading ? (
+              <Loader2 className="size-5 animate-spin text-primary" />
+            ) : (
+              <svg className="size-5" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.13 0-5.78-2.11-6.73-4.96H1.18v3.14C3.15 21.32 7.22 24 12 24z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.27 14.24c-.25-.72-.38-1.5-.38-2.24s.13-1.52.38-2.24V6.62H1.18C.43 8.14 0 9.87 0 12s.43 3.86 1.18 5.38l4.09-3.14z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.22 0 3.15 2.68 1.18 6.62l4.09 3.14c.95-2.85 3.6-4.96 6.73-4.96z"
+                />
+              </svg>
+            )}
+            {isGoogleLoading ? "Conectando ao Google..." : "Continuar com o Google"}
           </Button>
         </div>
 

@@ -221,11 +221,16 @@ export async function handleStripeWebhook(payload: string | Buffer, signature: s
           ? new Date(sub.current_period_end * 1000).toISOString()
           : new Date(Date.now() + 32 * 86400000).toISOString();
 
+        let finalPlanId = isGoodStatus ? planId : currentSub?.plan || planId;
+        if (sub.cancel_at_period_end && finalPlanId && !finalPlanId.includes("_cancelled")) {
+          finalPlanId = `${finalPlanId}_cancelled`;
+        }
+
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {
             user_id: userId,
             status: dbStatus,
-            plan: isGoodStatus ? planId : currentSub?.plan || planId,
+            plan: finalPlanId,
             scans_credits: isGoodStatus ? finalCredits : currentCredits,
             ai_agent_enabled: isGoodStatus,
             stripe_subscription_id: sub.id,
