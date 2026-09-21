@@ -49,10 +49,7 @@ export async function handleGoogleSignIn() {
       return { data, error: null };
     } catch (err: any) {
       const errMsg = err?.message || String(err);
-      console.warn(
-        "[GoogleAuth] Native Google Sign-In failed or was cancelled. Error:",
-        err,
-      );
+      console.warn("[GoogleAuth] Native Google Sign-In failed or was cancelled. Error:", err);
 
       // Check if it was a user cancellation
       const isCancellation =

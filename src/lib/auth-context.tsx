@@ -454,22 +454,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 2. Trigger Supabase server signout asynchronously (do not await to prevent blocking/hanging if offline or in-flight)
+    // 2. Trigger Supabase server signout with an 800ms race timeout to prevent UI freezes
     try {
-      supabase.auth.signOut().catch((e) => {
+      await Promise.race([
+        supabase.auth.signOut(),
+        new Promise((resolve) => setTimeout(resolve, 800)),
+      ]).catch((e) => {
         console.warn("[Auth] Background SignOut call error:", e);
       });
     } catch (e) {
       console.warn("[Auth] SignOut trigger error:", e);
     }
 
-    // 3. Clear Supabase auth keys from localStorage synchronously
+    // 3. Clear Supabase state in React context immediately
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setSubscription(null);
+    setIsAdmin(false);
+
+    // 4. Synchronously clear all Supabase auth keys from localStorage & sessionStorage
     try {
-      if (typeof window !== "undefined" && window.localStorage) {
-        for (let i = localStorage.length - 1; i >= 0; i--) {
-          const key = localStorage.key(i);
-          if (key && (key.startsWith("sb-") || key.includes("supabase.auth"))) {
-            localStorage.removeItem(key);
+      if (typeof window !== "undefined") {
+        if (window.localStorage) {
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (
+              key &&
+              (key.startsWith("sb-") || key.includes("supabase") || key.includes("auth"))
+            ) {
+              localStorage.removeItem(key);
+            }
+          }
+        }
+        if (window.sessionStorage) {
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const key = sessionStorage.key(i);
+            if (
+              key &&
+              (key.startsWith("sb-") || key.includes("supabase") || key.includes("auth"))
+            ) {
+              sessionStorage.removeItem(key);
+            }
           }
         }
       }
@@ -477,7 +503,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("[Auth] Error clearing storage on signOut:", storageErr);
     }
 
-    // 4. Clean redirect to /login via full page navigation to reset state instantly
+    // 5. Force clear any Supabase session cookies that might restore the session on reload
+    try {
+      if (typeof document !== "undefined") {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i];
+          const eqPos = cookie.indexOf("=");
+          const name = eqPos > -1 ? cookie.substring(0, eqPos).trim() : cookie.trim();
+          if (name.startsWith("sb-") || name.includes("supabase")) {
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+            document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
+            const domainParts = window.location.hostname.split(".");
+            if (domainParts.length > 1) {
+              const domain = "." + domainParts.slice(-2).join(".");
+              document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${domain};`;
+            }
+          }
+        }
+      }
+    } catch (cookieErr) {
+      console.warn("[Auth] Error clearing cookies on signOut:", cookieErr);
+    }
+
+    // 5.5. On Native Platforms, force Google SDK logout so account selection appears next time
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+      if (Capacitor.isNativePlatform()) {
+        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
+        await GoogleAuth.signOut().catch((gErr) => {
+          console.warn("[Auth] Background native Google signOut error:", gErr);
+        });
+        console.log("[Auth] Native Google Auth session cleared successfully!");
+      }
+    } catch (nativeErr) {
+      console.warn("[Auth] Could not execute native Google signOut:", nativeErr);
+    }
+
+    // 6. Force a full page reload to the /login page to clean memory and routing state
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
