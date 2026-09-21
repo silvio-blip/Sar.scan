@@ -29,7 +29,7 @@ export function SarLogo({
           className={`font-black tracking-tight text-foreground ${sizes[size]} leading-none`}
           style={{ fontFamily: "'Plus Jakarta Sans', 'Montserrat', sans-serif" }}
         >
-          sarscan
+          Sar Scan
         </h1>
         {size !== "sm" && (
           <span className="text-[10px] tracking-[0.4em] uppercase text-muted-foreground/60 font-black">

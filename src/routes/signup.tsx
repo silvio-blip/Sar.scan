@@ -42,7 +42,7 @@ function SignupPage() {
       toast.error(error.message);
       return;
     }
-    toast.success("Conta criada! Bem-vindo ao sarscan.");
+    toast.success("Conta criada! Bem-vindo ao Sar Scan.");
     nav({ to: "/" });
   };
 
@@ -186,7 +186,7 @@ function SignupPage() {
                 >
                   Política de Privacidade
                 </Link>{" "}
-                do sarscan.
+                do Sar Scan.
               </div>
             </div>
 

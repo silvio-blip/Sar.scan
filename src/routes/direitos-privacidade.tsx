@@ -85,7 +85,7 @@ function DireitosPrivacidadePage() {
               className="font-black text-xs uppercase tracking-[0.2em] text-primary"
               style={{ fontFamily: "'Plus Jakarta Sans', 'Montserrat', sans-serif" }}
             >
-              sarscan
+              Sar Scan
             </span>
           </div>
 
@@ -120,7 +120,7 @@ function DireitosPrivacidadePage() {
           </h1>
           <p className="text-sm md:text-base text-muted-foreground max-w-xl mx-auto font-medium leading-relaxed">
             Leia atentamente as diretrizes de uso, política de créditos e regras de processamento de
-            dados do aplicativo nutricional sarscan.
+            dados do aplicativo nutricional Sar Scan.
           </p>
         </div>
 
