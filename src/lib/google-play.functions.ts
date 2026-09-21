@@ -44,25 +44,47 @@ export const ALL_PLAY_SUBSCRIPTION_IDS = [
 ];
 
 export const ALL_PLAY_INAPP_IDS = [
+  "semanal",
+  "mensal",
+  "anual",
+  "creditos",
+  "credito",
+  "sar_scan_pass_semanal",
+  "sar_scan_pass_mensal",
+  "sar_scan_pass_anual",
   "sar_scan_creditos",
   "sar_scan_credits",
-  "creditos",
   "sar_scan_50_creditos",
   "50_creditos",
   "creditos_50",
+  // IDs legados para compatibilidade
+  "sar_scan_assinatura_semanal",
+  "sar_scan_assinatura",
+  "sar_scan_assinatura_anual",
+  "sar_scan_semanal",
+  "sar_scan_mensal",
+  "sar_scan_anual",
 ];
 
 export const PLAY_PRODUCT_IDS = {
-  weekly: "sar_scan_assinatura_semanal",
-  monthly: "sar_scan_assinatura",
-  yearly: "sar_scan_assinatura_anual",
-  credits: "sar_scan_creditos",
+  weekly: "semanal",
+  monthly: "mensal",
+  yearly: "anual",
+  credits: "creditos",
 } as const;
 
 export const PLAY_BASE_PLANS: Record<string, string> = {
+  semanal: "semanal",
+  mensal: "mensal",
+  anual: "anual",
+  creditos: "creditos",
   [PLAY_PRODUCT_IDS.weekly]: "semanal",
   [PLAY_PRODUCT_IDS.monthly]: "mensal",
   [PLAY_PRODUCT_IDS.yearly]: "anual",
+  sar_scan_pass_semanal: "semanal",
+  sar_scan_pass_mensal: "mensal",
+  sar_scan_pass_anual: "anual",
+  sar_scan_creditos: "creditos",
   weekly: "semanal",
   monthly: "mensal",
   yearly: "anual",
@@ -349,7 +371,36 @@ export async function fetchGooglePlayPrices(): Promise<Record<string, PlayProduc
           };
 
           results[prod.identifier] = details;
-          results["credits"] = details;
+
+          const lowerId = (prod.identifier || "").toLowerCase();
+          if (
+            lowerId === PLAY_PRODUCT_IDS.weekly.toLowerCase() ||
+            lowerId.includes("pass_semanal") ||
+            lowerId.includes("semanal")
+          ) {
+            results["weekly"] = details;
+            results["semanal"] = details;
+          } else if (
+            lowerId === PLAY_PRODUCT_IDS.yearly.toLowerCase() ||
+            lowerId.includes("pass_anual") ||
+            lowerId.includes("anual")
+          ) {
+            results["yearly"] = details;
+            results["anual"] = details;
+          } else if (
+            lowerId === PLAY_PRODUCT_IDS.monthly.toLowerCase() ||
+            lowerId.includes("pass_mensal") ||
+            lowerId.includes("mensal")
+          ) {
+            results["monthly"] = details;
+            results["mensal"] = details;
+          } else if (
+            lowerId.includes("credito") ||
+            lowerId.includes("credit") ||
+            lowerId === "sar_scan_creditos"
+          ) {
+            results["credits"] = details;
+          }
         }
       }
     } catch (inAppErr: any) {
@@ -584,144 +635,158 @@ export async function requestGooglePlayPurchase(
   }
 
   try {
-    const isSub = productId !== "sar_scan_creditos" && productId !== PLAY_PRODUCT_IDS.credits;
     let targetPlan = (purchaseOpts.customPlanId || getBasePlanId(productId)).toLowerCase();
-
     let finalProductId = productId;
-    if (isSub) {
-      if (productId === "weekly" || productId.includes("semanal") || targetPlan === "semanal") {
-        finalProductId = PLAY_PRODUCT_IDS.weekly; // "sar_scan_assinatura_semanal"
-        targetPlan = "semanal";
-      } else if (productId === "yearly" || productId.includes("anual") || targetPlan === "anual") {
-        finalProductId = PLAY_PRODUCT_IDS.yearly; // "sar_scan_assinatura_anual"
-        targetPlan = "anual";
-      } else {
-        finalProductId = PLAY_PRODUCT_IDS.monthly; // "sar_scan_assinatura"
-        targetPlan = "mensal";
-      }
+
+    // Mapeia para os novos IDs de produtos únicos (Passe Semanal, Mensal, Anual e Créditos)
+    if (productId === "weekly" || productId.includes("semanal") || targetPlan === "semanal") {
+      finalProductId = PLAY_PRODUCT_IDS.weekly; // "sar_scan_pass_semanal"
+      targetPlan = "semanal";
+    } else if (productId === "yearly" || productId.includes("anual") || targetPlan === "anual") {
+      finalProductId = PLAY_PRODUCT_IDS.yearly; // "sar_scan_pass_anual"
+      targetPlan = "anual";
+    } else if (
+      productId === "credits" ||
+      productId.includes("credito") ||
+      productId.includes("credit")
+    ) {
+      finalProductId = PLAY_PRODUCT_IDS.credits; // "sar_scan_creditos"
+      targetPlan = "credits";
+    } else if (productId === "monthly" || productId.includes("mensal") || targetPlan === "mensal") {
+      finalProductId = PLAY_PRODUCT_IDS.monthly; // "sar_scan_pass_mensal"
+      targetPlan = "mensal";
     }
 
-    let planIdentifier: string = targetPlan;
-    let selectedOfferToken: string | undefined = purchaseOpts.offerToken;
+    // Identifica se é Produto Único (INAPP: Passes de Acesso ou Créditos) ou Subscrição Legada
+    const isOneTimeProduct =
+      finalProductId.startsWith("sar_scan_pass_") ||
+      finalProductId.includes("pass_") ||
+      finalProductId.includes("credito") ||
+      finalProductId.includes("credit") ||
+      finalProductId === "sar_scan_creditos" ||
+      !finalProductId.includes("assinatura");
 
-    // 1. Elegibilidade para teste grátis (7 dias): respeita a solicitação de teste vinda do utilizador
-    const eligibleForTrial = Boolean(purchaseOpts.isTrial);
+    let transaction: any = null;
+    const successfulProductId: string = finalProductId;
 
-    // 2. Consulta à Google Play para identificar com precisão o produto e a oferta correspondente
-    if (isSub) {
+    if (isOneTimeProduct) {
+      // Modelo Free Fire: Produto único consumível com acesso temporal gerenciado pelo backend
+      console.log(
+        `[Play IAP - Free Fire Model] Iniciando compra de produto único: ${finalProductId}, accountId: ${obfuscatedAccountId || "NENHUM"}`,
+      );
+
+      // Limpeza preventiva de transações não consumidas no dispositivo para evitar 'ITEM_ALREADY_OWNED'
       try {
-        // Consultamos EXCLUSIVAMENTE o ID do produto final selecionado para evitar contaminações ou sobreposições
+        const { purchases } = await NativePurchases.getPurchases({
+          productType: PURCHASE_TYPE.INAPP,
+        });
+        if (purchases && Array.isArray(purchases)) {
+          for (const p of purchases) {
+            if (
+              p.purchaseToken &&
+              (p.productIdentifier === finalProductId || !p.productIdentifier)
+            ) {
+              console.log(
+                "[Play IAP] Consumindo pendência prévia de produto único no aparelho:",
+                p.productIdentifier,
+              );
+              await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
+            }
+          }
+        }
+      } catch (cleanPendingErr) {
+        console.debug("[Play IAP] Nota na limpeza preventiva de produtos in-app:", cleanPendingErr);
+      }
+
+      // Monta os parâmetros de compra in-app com conta ofuscada
+      const purchaseOptions: any = {
+        productIdentifier: finalProductId,
+        productType: PURCHASE_TYPE.INAPP,
+        isConsumable: true,
+        autoAcknowledgePurchases: true,
+      };
+
+      if (obfuscatedAccountId) {
+        purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
+        purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
+        purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
+        purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
+        purchaseOptions.appAccountToken = obfuscatedAccountId;
+        purchaseOptions.accountId = obfuscatedAccountId;
+      }
+
+      console.log("[Play IAP] Chamando NativePurchases.purchaseProduct (INAPP):", purchaseOptions);
+
+      try {
+        transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+      } catch (inAppErr: any) {
+        console.log("[Play IAP] Retorno/Erro da chamada de produto único:", inAppErr);
+        if (isUserCancellation(inAppErr)) {
+          return {
+            success: false,
+            error: "A compra não foi concluída.",
+            isCancelled: true,
+          };
+        }
+
+        // Se porventura a Google Play indicar que já foi adquirido no dispositivo, consome e tenta mais uma vez
+        if (isItemAlreadyOwnedError(inAppErr)) {
+          console.log("[Play IAP] Item já adquirido detectado. Forçando consumo de liberação...");
+          try {
+            const { purchases } = await NativePurchases.getPurchases({
+              productType: PURCHASE_TYPE.INAPP,
+            });
+            let consumedAny = false;
+            for (const p of purchases || []) {
+              if (p.purchaseToken) {
+                await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
+                consumedAny = true;
+              }
+            }
+            if (consumedAny) {
+              console.log("[Play IAP] Retentando compra após consumo de liberação...");
+              transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+            }
+          } catch (retryErr: any) {
+            console.warn("[Play IAP] Falha na retentativa pós-consumo:", retryErr);
+            if (isUserCancellation(retryErr)) {
+              return { success: false, error: "A compra não foi concluída.", isCancelled: true };
+            }
+            throw retryErr;
+          }
+        } else {
+          throw inAppErr;
+        }
+      }
+    } else {
+      // Subscrições Legadas (SUBS)
+      let planIdentifier: string = targetPlan;
+      let selectedOfferToken: string | undefined = purchaseOpts.offerToken;
+      const eligibleForTrial = Boolean(purchaseOpts.isTrial);
+
+      try {
         const prodQuery = await NativePurchases.getProducts({
           productIdentifiers: [finalProductId],
           productType: PURCHASE_TYPE.SUBS,
         });
-
-        console.log(
-          "[Play IAP] Produto encontrado no Google Play para esta compra:",
-          prodQuery?.products,
-        );
 
         if (
           prodQuery?.products &&
           Array.isArray(prodQuery.products) &&
           prodQuery.products.length > 0
         ) {
-          // Como consultamos apenas finalProductId, todos os candidatos pertencem estritamente a este produto
           const candidates = prodQuery.products;
-
-          if (eligibleForTrial && finalProductId === "sar_scan_assinatura_semanal") {
-            console.log(
-              "[Play IAP] Buscando estritamente a oferta com ID exato '7-dias-gratis' nos candidatos:",
-              candidates.map((p) => ({
-                identifier: p.identifier,
-                planIdentifier: p.planIdentifier,
-                offerId: p.offerId,
-                price: p.price,
-                offerToken: p.offerToken ? "PRESENTE" : "AUSENTE",
-              })),
-            );
-
-            // Busca pelo ID exato da promoção configurada "7-dias-gratis"
-            const trialOffer = candidates.find((p) => {
-              const offId = (p.offerId || "").trim();
-              return offId === "7-dias-gratis";
-            });
-
-            if (trialOffer) {
-              console.log(
-                "[Play IAP] Oferta de teste gratuito detectada e aplicada com sucesso:",
-                trialOffer,
-              );
-              selectedOfferToken = trialOffer.offerToken || selectedOfferToken;
-              planIdentifier = trialOffer.planIdentifier || planIdentifier;
-            } else {
-              console.warn(
-                "[Play IAP] Nenhuma oferta encontrada com ID exato '7-dias-gratis'. Utilizando os fallbacks de segurança.",
-              );
-              // Fallback seguro: tenta usar o token de trial do cache ou o primeiro disponível
-              const cachedInfo = cachedPlayPrices[targetPlan] || cachedPlayPrices[finalProductId];
-              if (cachedInfo?.trialOfferToken) {
-                selectedOfferToken = cachedInfo.trialOfferToken;
-              } else {
-                const firstOffer = candidates[0];
-                selectedOfferToken = firstOffer.offerToken || selectedOfferToken;
-                planIdentifier = firstOffer.planIdentifier || planIdentifier;
-              }
-            }
-          } else {
-            // Compra normal (sem teste) ou planos sem oferta específica de teste: pega a oferta base/padrão
-            const baseOffer =
-              candidates.find((p) => {
-                const offId = (p.offerId || "").toLowerCase();
-                return !offId;
-              }) || candidates[0];
-
-            if (baseOffer) {
-              console.log("[Play IAP] Oferta de compra padrão aplicada:", baseOffer);
-              selectedOfferToken = baseOffer.offerToken || selectedOfferToken;
-              planIdentifier = baseOffer.planIdentifier || planIdentifier;
-            }
+          const baseOffer =
+            candidates.find((p) => !(p.offerId || "").toLowerCase()) || candidates[0];
+          if (baseOffer) {
+            selectedOfferToken = baseOffer.offerToken || selectedOfferToken;
+            planIdentifier = baseOffer.planIdentifier || planIdentifier;
           }
         }
       } catch (queryErr) {
-        console.warn("[Play IAP] Aviso ao consultar ofertas de assinatura:", queryErr);
+        console.warn("[Play IAP] Aviso ao consultar ofertas de assinatura legada:", queryErr);
       }
-    } else {
-      // In-App (Créditos de 50 scans)
-      try {
-        const prodQuery = await NativePurchases.getProducts({
-          productIdentifiers: ALL_PLAY_INAPP_IDS,
-          productType: PURCHASE_TYPE.INAPP,
-        });
-        if (prodQuery?.products && prodQuery.products.length > 0) {
-          const item = prodQuery.products[0];
-          finalProductId = item.identifier || productId;
-          selectedOfferToken = item.offerToken || selectedOfferToken;
-        }
-      } catch (inAppQueryErr) {
-        console.warn("[Play IAP] Aviso ao consultar produto de créditos:", inAppQueryErr);
-      }
-    }
 
-    if (isSub && !selectedOfferToken) {
-      const cached =
-        cachedPlayPrices[targetPlan] ||
-        cachedPlayPrices[finalProductId] ||
-        cachedPlayPrices["weekly"] ||
-        cachedPlayPrices["monthly"] ||
-        cachedPlayPrices["yearly"];
-      if (cached) {
-        selectedOfferToken = eligibleForTrial
-          ? cached.trialOfferToken || cached.offerToken || cached.baseOfferToken
-          : cached.baseOfferToken || cached.offerToken;
-      }
-    }
-
-    // 3. Monta as opções e executa a chamada nativa sem loops de re-tentativa
-    let transaction: any = null;
-    const successfulProductId: string = finalProductId;
-
-    if (isSub) {
       const purchaseOptions: any = {
         productIdentifier: finalProductId,
         productType: PURCHASE_TYPE.SUBS,
@@ -740,159 +805,19 @@ export async function requestGooglePlayPurchase(
         purchaseOptions.accountId = obfuscatedAccountId;
       }
 
-      console.log(
-        `[Play IAP] Invocando Google Play com prodId=${finalProductId}, planId=${planIdentifier}, setObfuscatedAccountId=${obfuscatedAccountId || "NENHUM"}, offerToken=${selectedOfferToken ? "PRESENTE" : "NENHUM"}`,
-      );
-
       try {
         transaction = await NativePurchases.purchaseProduct(purchaseOptions);
       } catch (attemptErr: any) {
-        console.warn("[Play IAP] Falha na primeira tentativa com offerToken:", attemptErr);
         if (isUserCancellation(attemptErr)) {
-          return {
-            success: false,
-            error: "O plano não foi concluído.",
-            isCancelled: true,
-          };
+          return { success: false, error: "O plano não foi concluído.", isCancelled: true };
         }
-
         if (isItemAlreadyOwnedError(attemptErr)) {
           return {
             success: false,
             error:
-              "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Na Google Play, cada conta Google só pode ter 1 assinatura ativa do mesmo plano por vez. Para assinar nesta conta do aplicativo, selecione outro plano (Semanal, Mensal ou Anual) ou altere a conta ativa na Google Play Store.",
+              "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Para assinar nesta conta, selecione outro plano ou adquira um passe de acesso.",
           };
         }
-
-        // Segunda tentativa: sem offerToken, mantendo planIdentifier
-        try {
-          const fallbackOptions: any = {
-            productIdentifier: finalProductId,
-            productType: PURCHASE_TYPE.SUBS,
-            planIdentifier: planIdentifier,
-            autoAcknowledgePurchases: true,
-          };
-          if (obfuscatedAccountId) {
-            fallbackOptions.setObfuscatedAccountId = obfuscatedAccountId;
-            fallbackOptions.obfuscatedAccountId = obfuscatedAccountId;
-            fallbackOptions.setObfuscatedProfileId = obfuscatedAccountId;
-            fallbackOptions.obfuscatedProfileId = obfuscatedAccountId;
-            fallbackOptions.appAccountToken = obfuscatedAccountId;
-            fallbackOptions.accountId = obfuscatedAccountId;
-          }
-          console.log("[Play IAP] Invocando 2ª tentativa Google Play:", fallbackOptions);
-          transaction = await NativePurchases.purchaseProduct(fallbackOptions);
-        } catch (fallbackErr2: any) {
-          console.warn(
-            "[Play IAP] Falha na 2ª tentativa, executando tentativa final limpa (apenas productIdentifier)...",
-            fallbackErr2,
-          );
-          if (isUserCancellation(fallbackErr2)) {
-            return {
-              success: false,
-              error: "O plano não foi concluído.",
-              isCancelled: true,
-            };
-          }
-
-          if (isItemAlreadyOwnedError(fallbackErr2)) {
-            return {
-              success: false,
-              error:
-                "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Na Google Play, cada conta Google só pode ter 1 assinatura ativa do mesmo plano por vez. Para assinar nesta conta do aplicativo, selecione outro plano (Semanal, Mensal ou Anual) ou altere a conta ativa na Google Play Store.",
-            };
-          }
-
-          // Terceira tentativa (Tentativa Final Limpa): Apenas productIdentifier e productType, exatamente como os consumíveis
-          try {
-            const cleanOptions: any = {
-              productIdentifier: finalProductId,
-              productType: PURCHASE_TYPE.SUBS,
-              autoAcknowledgePurchases: true,
-            };
-            if (obfuscatedAccountId) {
-              cleanOptions.setObfuscatedAccountId = obfuscatedAccountId;
-              cleanOptions.obfuscatedAccountId = obfuscatedAccountId;
-              cleanOptions.setObfuscatedProfileId = obfuscatedAccountId;
-              cleanOptions.obfuscatedProfileId = obfuscatedAccountId;
-              cleanOptions.appAccountToken = obfuscatedAccountId;
-              cleanOptions.accountId = obfuscatedAccountId;
-            }
-            console.log("[Play IAP] Invocando tentativa final limpa Google Play:", cleanOptions);
-            transaction = await NativePurchases.purchaseProduct(cleanOptions);
-          } catch (cleanErr: any) {
-            console.log("[Play IAP] Erro definitivo na compra de assinatura:", cleanErr);
-            if (isUserCancellation(cleanErr)) {
-              return {
-                success: false,
-                error: "O plano não foi concluído.",
-                isCancelled: true,
-              };
-            }
-
-            if (isItemAlreadyOwnedError(cleanErr)) {
-              return {
-                success: false,
-                error:
-                  "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Na Google Play, cada conta Google só pode ter 1 assinatura ativa do mesmo plano por vez. Para assinar nesta conta do aplicativo, selecione outro plano (Semanal, Mensal ou Anual) ou altere a conta ativa na Google Play Store.",
-              };
-            }
-
-            throw cleanErr;
-          }
-        }
-      }
-    } else {
-      // In-App (Créditos 50 scans)
-      const purchaseOptions: any = {
-        productIdentifier: finalProductId,
-        productType: PURCHASE_TYPE.INAPP,
-        isConsumable: true,
-        autoAcknowledgePurchases: true,
-      };
-      if (selectedOfferToken) {
-        purchaseOptions.offerToken = selectedOfferToken;
-      }
-      if (obfuscatedAccountId) {
-        purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
-        purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
-        purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
-        purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
-        purchaseOptions.appAccountToken = obfuscatedAccountId;
-        purchaseOptions.accountId = obfuscatedAccountId;
-      }
-
-      console.log(
-        `[Play IAP] Invocando Google Play in-app prodId=${finalProductId}, setObfuscatedAccountId=${obfuscatedAccountId || "NENHUM"}...`,
-      );
-
-      try {
-        transaction = await NativePurchases.purchaseProduct(purchaseOptions);
-      } catch (attemptErr: any) {
-        console.log("[Play IAP] Retorno/Erro da chamada in-app:", attemptErr);
-        if (isUserCancellation(attemptErr)) {
-          return {
-            success: false,
-            error: "A compra não foi concluída.",
-            isCancelled: true,
-          };
-        }
-
-        if (isItemAlreadyOwnedError(attemptErr) && !isSub) {
-          try {
-            const { purchases } = await NativePurchases.getPurchases({
-              productType: PURCHASE_TYPE.INAPP,
-            });
-            for (const p of purchases || []) {
-              if (p.purchaseToken) {
-                await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
-              }
-            }
-          } catch (cErr) {
-            console.debug("[Play IAP] Consumable cleanup:", cErr);
-          }
-        }
-
         throw attemptErr;
       }
     }
@@ -915,16 +840,20 @@ export async function requestGooglePlayPurchase(
       };
     }
 
-    // 4. Se for consumível (créditos), consome na Google Play
-    if (!isSub) {
+    // Para produtos únicos (Passes de Acesso e Créditos), consome imediatamente na Google Play (Modelo Free Fire)
+    if (isOneTimeProduct) {
       try {
+        console.log(
+          "[Play IAP] Consumindo produto único para liberar inventário na Google Play Store...",
+        );
         await NativePurchases.consumePurchase({ purchaseToken });
+        console.log("[Play IAP] Produto consumido com sucesso na Google Play!");
       } catch (consumeErr) {
-        console.warn("[Play IAP] Aviso ao consumir produto:", consumeErr);
+        console.warn("[Play IAP] Aviso ao consumir produto pós-compra:", consumeErr);
       }
     }
 
-    // 5. Envia o token para validação no backend
+    // Validação Server-to-Server com Supabase
     const verification = await verifyPurchaseOnBackend(successfulProductId, purchaseToken, token);
     return verification;
   } catch (err: any) {

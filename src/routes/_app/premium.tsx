@@ -420,22 +420,22 @@ export function PremiumPage() {
       return;
     }
 
-    // Se o usuário já possui exatamente este plano ativo, bloqueia compra duplicada
-    if (hasActiveSubscription && activePlanId === planId) {
-      toast.info(
-        `Você já possui o plano ${displayPlans.find((p) => p.id === planId)?.label || planId} ativo!`,
-      );
-      return;
-    }
-
-    // Se o usuário tentar fazer downgrade para um plano inferior ao ativo atual
-    if (hasActiveSubscription && activePlanId && PLAN_TIERS[planId] < PLAN_TIERS[activePlanId]) {
-      const activePlanLabel =
-        displayPlans.find((p) => p.id === activePlanId)?.label || activePlanId;
-      toast.error(
-        `Você já possui um plano superior ativo (${activePlanLabel}). Não é permitido fazer downgrade enquanto sua assinatura atual estiver ativa.`,
-      );
-      return;
+    // REGRA ESTRITAMENTE AGRESSIVA: Bloqueia absolutamente compra do mesmo plano ou qualquer plano inferior
+    if (hasActiveSubscription && activePlanId) {
+      if (activePlanId === planId) {
+        toast.error(
+          `Ação Bloqueada: Você já possui o plano ${displayPlans.find((p) => p.id === planId)?.label || planId} ativo! Não é permitido comprar o mesmo plano novamente enquanto estiver em vigor.`,
+        );
+        return;
+      }
+      if (PLAN_TIERS[planId] <= PLAN_TIERS[activePlanId]) {
+        const currentActiveLabel =
+          displayPlans.find((p) => p.id === activePlanId)?.label || activePlanId;
+        toast.error(
+          `Ação Bloqueada: Você já possui o plano ${currentActiveLabel} ativo. Não é permitido adquirir o mesmo plano ou planos inferiores enquanto o seu plano atual estiver ativo.`,
+        );
+        return;
+      }
     }
 
     setLoading(planId);
@@ -578,25 +578,26 @@ export function PremiumPage() {
   const handlePlanAction = (p: PlanDef) => {
     if (loading) return;
 
-    // Se é exatamente o plano ativo atual, avisa o usuário e não deixa assinar novamente
-    if (hasActiveSubscription && activePlanId === p.id) {
-      const expirationDate = subscription?.current_period_end || subscription?.trial_end;
-      const formattedDate = expirationDate
-        ? new Date(expirationDate).toLocaleDateString("pt-PT")
-        : "";
-      toast.info(
-        `Você já possui o plano ${p.label} ativo${formattedDate ? ` até ${formattedDate}` : ""}.`,
-      );
-      return;
-    }
-
-    // Se é um plano inferior ao ativo atual, impede downgrade direto
-    if (hasActiveSubscription && activePlanId && PLAN_TIERS[p.id] < PLAN_TIERS[activePlanId]) {
-      const activeLabel = displayPlans.find((dp) => dp.id === activePlanId)?.label || activePlanId;
-      toast.error(
-        `Você já possui um plano superior ativo (${activeLabel}). Não é permitido fazer downgrade enquanto sua assinatura atual estiver ativa.`,
-      );
-      return;
+    // Regra estritamente agressiva: Bloqueia absolutamente compra do mesmo plano ou planos anteriores
+    if (hasActiveSubscription && activePlanId) {
+      if (activePlanId === p.id) {
+        const expirationDate = subscription?.current_period_end || subscription?.trial_end;
+        const formattedDate = expirationDate
+          ? new Date(expirationDate).toLocaleDateString("pt-PT")
+          : "";
+        toast.error(
+          `Ação Bloqueada: Você já possui o plano ${p.label} ativo${formattedDate ? ` até ${formattedDate}` : ""}. Não é permitido assinar o mesmo plano novamente enquanto estiver ativo.`,
+        );
+        return;
+      }
+      if (PLAN_TIERS[p.id] <= PLAN_TIERS[activePlanId]) {
+        const activeLabel =
+          displayPlans.find((dp) => dp.id === activePlanId)?.label || activePlanId;
+        toast.error(
+          `Ação Bloqueada: Você já possui o plano superior (${activeLabel}) ativo. Não é permitido adquirir o mesmo plano ou planos inferiores enquanto sua assinatura atual estiver ativa.`,
+        );
+        return;
+      }
     }
 
     // Só mostra o modal de 7 dias se o usuário for elegível (primeira vez absoluta)

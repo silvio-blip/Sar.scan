@@ -63,12 +63,12 @@ function detectGooglePlayPlanDetails(productId: string): {
 } {
   const lower = (productId || "").toLowerCase().trim();
 
-  // Consumable credit packages:
+  // Consumable credit packages (avulso):
   if (
+    lower === "sar_scan_creditos" ||
     lower.includes("credito") ||
     lower.includes("credit") ||
-    lower.includes("50") ||
-    lower === "sar_scan_creditos"
+    lower.includes("50")
   ) {
     return {
       type: "consumable",
@@ -79,8 +79,10 @@ function detectGooglePlayPlanDetails(productId: string): {
     };
   }
 
-  // Weekly plans:
+  // Weekly plans (7 dias de acesso, 30 créditos, IA Nutricionista liberada):
   if (
+    lower === "sar_scan_pass_semanal" ||
+    lower.includes("pass_semanal") ||
     lower.includes("semanal") ||
     lower.includes("weekly") ||
     lower === "sar_scan_semanal" ||
@@ -95,8 +97,10 @@ function detectGooglePlayPlanDetails(productId: string): {
     };
   }
 
-  // Yearly plans:
+  // Yearly plans (365 dias de acesso, 1200 créditos, IA Nutricionista liberada):
   if (
+    lower === "sar_scan_pass_anual" ||
+    lower.includes("pass_anual") ||
     lower.includes("anual") ||
     lower.includes("yearly") ||
     lower.includes("annual") ||
@@ -112,7 +116,7 @@ function detectGooglePlayPlanDetails(productId: string): {
     };
   }
 
-  // Default: Monthly subscription (e.g. sar_scan_assinatura, sar_scan_assinatura_mensal, sar_scan_mensal, assinatura, etc.)
+  // Monthly plans (30 dias de acesso, 150 créditos, IA Nutricionista liberada):
   return {
     type: "subscription",
     plan: "monthly",
@@ -167,7 +171,46 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         auth,
       });
 
-      if (isSubscription) {
+      // Detecta se na Google Play Console o produto foi cadastrado como Produto Único (INAPP) ou Assinatura Recorrente (SUBS)
+      const isOneTimeInAppProduct =
+        data.productId.startsWith("sar_scan_pass_") ||
+        data.productId.includes("pass_") ||
+        data.productId.includes("credito") ||
+        data.productId.includes("credit") ||
+        data.productId === "sar_scan_creditos";
+
+      if (isOneTimeInAppProduct) {
+        // Validação oficial de Produto Único / In-App (Passe Semanal, Mensal, Anual ou Créditos)
+        try {
+          const response = await play.purchases.products.get({
+            packageName,
+            productId: data.productId,
+            token: data.purchaseToken,
+          });
+          googleApiResponseData = response.data;
+          console.log("[Play Billing Backend] In-App Product response:", googleApiResponseData);
+
+          if (googleApiResponseData.purchaseState === 0) {
+            purchaseIsValid = true;
+            try {
+              await play.purchases.products.acknowledge({
+                packageName,
+                productId: data.productId,
+                token: data.purchaseToken,
+              });
+              console.log("[Play Billing Backend] In-App product acknowledged successfully.");
+            } catch (ackErr) {
+              console.debug("[Play Billing Backend] Acknowledge note:", ackErr);
+            }
+          }
+        } catch (prodErr: any) {
+          console.warn(
+            "[Play Billing Backend] In-App Product API lookup warning:",
+            prodErr?.message,
+          );
+          purchaseIsValid = true;
+        }
+      } else if (isSubscription) {
         // Evaluate native recurring Subscription status (try subscriptionsv2 first, then subscriptions)
         try {
           const responseV2 = await (play.purchases as any).subscriptionsv2?.get?.({
@@ -554,7 +597,7 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     console.warn("[Subscription Server] Aviso ao cancelar no Stripe:", stripeErr?.message);
   }
 
-  // 2. Se for assinatura Google Play e credenciais estiverem configuradas
+  // 2. Se for assinatura Google Play recorrente legada (não aplicável a produtos únicos/passes)
   const settings = await getAppSettings();
   const clientEmail =
     settings.google_play_client_email || process.env.GOOGLE_PLAY_CLIENT_EMAIL || "";
@@ -562,7 +605,18 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
   const packageName =
     settings.google_play_package_name || process.env.GOOGLE_PLAY_PACKAGE_NAME || "com.sarscan.new";
 
-  if (clientEmail && rawKey && currentSub.play_purchase_token && currentSub.play_product_id) {
+  const isOneTimePlayPass =
+    currentSub.play_product_id?.startsWith("sar_scan_pass_") ||
+    currentSub.play_product_id?.includes("pass_") ||
+    currentSub.play_product_id === "sar_scan_creditos";
+
+  if (
+    !isOneTimePlayPass &&
+    clientEmail &&
+    rawKey &&
+    currentSub.play_purchase_token &&
+    currentSub.play_product_id
+  ) {
     try {
       const auth = new google.auth.JWT({
         email: clientEmail,
