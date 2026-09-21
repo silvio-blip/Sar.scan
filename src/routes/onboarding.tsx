@@ -53,6 +53,15 @@ function OnboardingPage() {
   const [freeAiDaysCount, setFreeAiDaysCount] = useState(7);
 
   useEffect(() => {
+    if (campaignSettings?.isEnabled && campaignSettings.bonusScans > 0) {
+      setIsCampaignActive(true);
+      setBonusScansCount(campaignSettings.bonusScans);
+      setFreeAiDaysCount(campaignSettings.freeAiDays);
+      setShowCelebration(true);
+    }
+  }, [campaignSettings]);
+
+  useEffect(() => {
     const fetchCampaign = async () => {
       try {
         const { data: settings } = await supabase

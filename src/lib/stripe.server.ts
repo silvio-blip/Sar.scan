@@ -1,7 +1,7 @@
 import Stripe from "stripe";
 import { supabaseAdmin } from "../integrations/supabase/client.server.js";
-
 import { getAppSettings } from "./settings.server.js";
+import { calculatePlanPeriodEndWithCampaignBonus } from "./campaign.server.js";
 
 let _cached: { stripe: Stripe; secret: string; webhookSecret: string } | null = null;
 
@@ -746,17 +746,15 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
     const planCredits = getPlanScans(planId);
     const newTotal = currentCredits + planCredits;
 
-    let periodEnd = new Date(Date.now() + 32 * 86400000).toISOString();
-    if (planId === "weekly") {
-      periodEnd = new Date(Date.now() + 8 * 86400000).toISOString();
-    } else if (planId === "yearly") {
-      periodEnd = new Date(Date.now() + 366 * 86400000).toISOString();
-    }
+    const { periodEnd, bonusDaysAdded } = await calculatePlanPeriodEndWithCampaignBonus(
+      targetUserId,
+      planId,
+    );
 
     const trialEnd = isTrial ? new Date(Date.now() + 7 * 86400000).toISOString() : null;
 
     console.log(
-      `[Stripe Verify] Ativando ${planId} (${subStatus}) para ${targetUserId}. Novos créditos: ${newTotal}`,
+      `[Stripe Verify] Ativando ${planId} (${subStatus}) para ${targetUserId}. Novos créditos: ${newTotal}, Período até: ${periodEnd} (+${bonusDaysAdded} dias bónus campanha)`,
     );
 
     const updatePayload: Record<string, any> = {

@@ -14,6 +14,7 @@ import {
   syncSubscriptionStatusInternal,
   reactivateSubscriptionInternal,
 } from "./google-play.server.js";
+import { applyCampaignBonusInternal } from "./campaign.server.js";
 import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 import { getAppSettings } from "./settings.server.js";
 
@@ -361,6 +362,29 @@ O formato deve ser exatamente:
     } catch (error: unknown) {
       console.error("[Play Billing Backend Error]", error);
       const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      res.status(500).json({ error: msg });
+    }
+  });
+
+  // Campaign Apply Route (atomic & persistent to prevent duplicate bonuses)
+  app.post("/api/campaign/apply", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { data: userData, error: userErr } = await (supabaseAdmin as any).auth.getUser(token);
+      if (userErr || !userData?.user?.id) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      const result = await applyCampaignBonusInternal(userData.user.id);
+      res.json(result);
+    } catch (error: unknown) {
+      console.error("[Campaign Apply API Error]", error);
+      const msg = error instanceof Error ? error.message : "Erro ao processar bônus da campanha";
       res.status(500).json({ error: msg });
     }
   });

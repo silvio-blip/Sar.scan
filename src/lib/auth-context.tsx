@@ -15,6 +15,7 @@ import {
   syncGooglePlayPrices,
   syncSubscriptionStatusOnBackend,
 } from "./google-play.functions";
+import { getApiUrl } from "./utils";
 
 type Profile = {
   id: string;
@@ -97,16 +98,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isExecutingRef.current = true;
 
     try {
+      // Obter sessão atual de forma segura e atualizada
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentToken = sessionData?.session?.access_token || session?.access_token;
+
       // Evita loops infinitos e garante sincronização ativa direta (máximo uma chamada ativa a cada 30 segundos)
       const nowTime = Date.now();
-      if (
-        session?.access_token &&
-        !isSyncingRef.current &&
-        nowTime - lastSyncTimeRef.current > 30000
-      ) {
+      if (currentToken && !isSyncingRef.current && nowTime - lastSyncTimeRef.current > 30000) {
         isSyncingRef.current = true;
         try {
-          await syncSubscriptionStatusOnBackend(session.access_token);
+          await syncSubscriptionStatusOnBackend(currentToken);
           lastSyncTimeRef.current = Date.now();
         } catch (syncErr) {
           console.warn("[Auth] Falha ao sincronizar assinatura de forma ativa:", syncErr);
@@ -221,102 +222,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // 1.7. Verificar se o utilizador é elegível para a campanha de novos utilizadores
-      if (typedSub && campEnabled && campStart && campEnd && campBonus > 0) {
-        const profileCreatedAt = prof?.created_at || new Date().toISOString();
-
-        const parseDateResilient = (dateStr: string | null | undefined): number => {
-          if (!dateStr) return 0;
-          if (
-            dateStr.includes("T") &&
-            !dateStr.endsWith("Z") &&
-            !dateStr.includes("+") &&
-            !dateStr.includes("-")
-          ) {
-            return new Date(dateStr + ":00Z").getTime();
-          }
-          return new Date(dateStr).getTime();
-        };
-
-        const regTime = parseDateResilient(profileCreatedAt);
-        const startTime = parseDateResilient(campStart);
-        const endTime = parseDateResilient(campEnd);
-        const isLocallyApplied = localStorage.getItem(`camp_applied_${uid}`) === "true";
-
-        // Query DB rewards to see if we already applied this campaign to this user
-        let isDbCampaignApplied = false;
+      // 1.7. Verificar e aplicar de forma atômica o bônus de campanha no servidor
+      if (typedSub && campEnabled && campStart && campEnd && campBonus > 0 && currentToken) {
         try {
-          const { data: existingRewards } = await supabase
-            .from("rewards")
-            .select("id")
-            .eq("user_id", uid)
-            .eq("titulo", "Bónus de Registo a Tempo: Campanha Especial")
-            .limit(1);
-          if (existingRewards && existingRewards.length > 0) {
-            isDbCampaignApplied = true;
-          }
-        } catch (dbCheckErr) {
-          console.warn("[Auth] Erro ao verificar recompensa existente no banco:", dbCheckErr);
-        }
-
-        if (
-          regTime >= startTime &&
-          regTime <= endTime &&
-          !isDbCampaignApplied &&
-          !isLocallyApplied
-        ) {
-          console.log(
-            `[Auth] Utilizador elegível para a campanha de novos utilizadores! Aplicando +${campBonus} scans de bônus.`,
-          );
-          try {
-            const finalCredits = (typedSub.scans_credits ?? 3) + campBonus;
-
-            // Update only scans_credits in subscriptions table (no campaign_applied column exists)
-            const { error: updateError } = await supabase
-              .from("subscriptions")
-              .update({
-                scans_credits: finalCredits,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("user_id", uid);
-
-            if (updateError) {
-              console.error(
-                "[Auth] Erro ao salvar scans_credits na campanha:",
-                updateError.message,
-              );
+          const campRes = await fetch(getApiUrl("/api/campaign/apply"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${currentToken}`,
+            },
+          });
+          if (campRes.ok) {
+            const campData = await campRes.json();
+            if (campData.totalCredits !== undefined) {
+              typedSub.scans_credits = campData.totalCredits;
             }
-
-            // Create a reward in rewards table so it appears beautifully in the rewards page
-            try {
-              await supabase.from("rewards").insert({
-                user_id: uid,
-                titulo: "Bónus de Registo a Tempo: Campanha Especial",
-                descricao: `Parabéns por se registar a tempo da nossa Campanha de Lançamento! Recebeu +${campBonus} scans adicionais e o Chatbot IA Nutricionista foi desbloqueado gratuitamente por ${campAiDays} dias.`,
-                bonus_scans: campBonus,
-                bonus_aplicado: true,
-                lida: false,
-                created_at: new Date().toISOString(),
-              });
-              console.log(
-                "[Auth] Recompensa de Registo a Tempo criada com sucesso na tabela rewards.",
-              );
-            } catch (rewErr) {
-              console.error("[Auth] Erro ao criar registro na tabela de recompensas:", rewErr);
+            if (campData.applied) {
+              typedSub.campaign_applied = true;
+            } else if (campData.alreadyApplied) {
+              typedSub.campaign_applied = true;
             }
-
-            typedSub.scans_credits = finalCredits;
-            typedSub.campaign_applied = true;
-            localStorage.setItem(`camp_applied_${uid}`, "true");
-          } catch (campErr) {
-            console.error("[Auth] Erro ao aplicar bônus de campanha:", campErr);
-            // Fallback: apply locally anyway so the current session displays the 25 scans correctly!
-            typedSub.scans_credits = (typedSub.scans_credits ?? 3) + campBonus;
-            typedSub.campaign_applied = true;
           }
-        } else if (isDbCampaignApplied || isLocallyApplied) {
-          // If already applied, reflect it in virtual typedSub property
-          typedSub.campaign_applied = true;
+        } catch (campErr) {
+          console.warn("[Auth] Aviso ao sincronizar bônus de campanha:", campErr);
         }
       }
 
