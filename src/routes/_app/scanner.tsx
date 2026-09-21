@@ -353,7 +353,7 @@ export function ScannerPage() {
       let textoFinal = "";
 
       const failedCount = Number(localStorage.getItem("failed_scans_count") || "0");
-      const is3rdFail = failedCount >= 2;
+      const shouldDeductOnFail = failedCount >= 3;
 
       const callServerProxy = async (imageStr: string) => {
         console.log("🔌 A usar proxy de servidor...");
@@ -363,7 +363,7 @@ export function ScannerPage() {
           body: JSON.stringify({
             base64Data: imageStr,
             user_id: user?.id,
-            deduct_on_fail: is3rdFail,
+            deduct_on_fail: shouldDeductOnFail,
           }),
         });
 
@@ -398,18 +398,18 @@ export function ScannerPage() {
 
       if (itens.length === 0) {
         const newFailedCount = failedCount + 1;
-        if (newFailedCount >= 3) {
+        if (newFailedCount >= 4) {
           localStorage.setItem("failed_scans_count", "0");
           toast.error(
-            "3 tentativas seguidas sem detectar alimentos. 1 scan foi debitado de sua conta.",
+            "Alimento não detectado. Limite de 3 tentativas excedido. 1 scan foi debitado da sua conta.",
             {
-              description: "Evite fotos borradas ou escuras ao escanear alimentos.",
+              description: "Tente focar melhor ou garanta boa iluminação ao escanear.",
             },
           );
         } else {
           localStorage.setItem("failed_scans_count", String(newFailedCount));
-          toast.info("Nenhum alimento identificado.", {
-            description: `Tentativa ${newFailedCount}/3 seguidas falhas. Na 3ª consecutiva, 1 scan será debitado.`,
+          toast.error(`Alimento não detectado. Tentativa número ${newFailedCount} de 3.`, {
+            description: "Garanta que a imagem contém alimentos visíveis.",
           });
         }
         setDetected(null);
