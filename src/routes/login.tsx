@@ -168,7 +168,10 @@ function LoginPage() {
             onClick={async () => {
               try {
                 const { error } = await handleGoogleSignIn();
-                if (error) throw error;
+                if (error) {
+                  if (error.message === "cancelled") return;
+                  throw error;
+                }
               } catch (err: any) {
                 toast.error(err.message || "Erro ao entrar com Google");
               }
