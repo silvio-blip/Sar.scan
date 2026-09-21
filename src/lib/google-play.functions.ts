@@ -461,6 +461,22 @@ export interface GooglePlayPurchaseOptions {
   offerToken?: string;
   appAccountToken?: string;
   userId?: string;
+  obfuscatedAccountId?: string;
+  setObfuscatedAccountId?: string;
+  obfuscatedProfileId?: string;
+  setObfuscatedProfileId?: string;
+}
+
+/**
+ * Obfuscates the internal user account ID for Google Play Billing Flow
+ * (setObfuscatedAccountId / setObfuscatedProfileId) complying with Google Play's 64-character limit.
+ */
+export function getObfuscatedAccountId(rawUserId?: string): string | undefined {
+  if (!rawUserId || typeof rawUserId !== "string") return undefined;
+  const clean = rawUserId.trim();
+  if (!clean) return undefined;
+  // Formata/ofusca o identificador único do utilizador respeitando o limite máximo de 64 caracteres da Google Play
+  return clean.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
 }
 
 /**
@@ -546,11 +562,17 @@ export async function requestGooglePlayPurchase(
   const purchaseOpts: GooglePlayPurchaseOptions =
     typeof options === "string" ? { customPlanId: options } : options || {};
 
-  const currentUserId =
-    purchaseOpts.userId || purchaseOpts.appAccountToken || getUserIdFromToken(token);
+  const rawUserId =
+    purchaseOpts.userId ||
+    purchaseOpts.appAccountToken ||
+    purchaseOpts.obfuscatedAccountId ||
+    purchaseOpts.setObfuscatedAccountId ||
+    getUserIdFromToken(token);
+
+  const obfuscatedAccountId = getObfuscatedAccountId(rawUserId);
 
   console.log(
-    `[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}, userId: ${currentUserId}, options:`,
+    `[Play IAP] Invocando compra nativa Google Play para o produto: ${productId}, userId: ${rawUserId}, obfuscatedAccountId: ${obfuscatedAccountId}, options:`,
     purchaseOpts,
   );
 
@@ -709,12 +731,17 @@ export async function requestGooglePlayPurchase(
       if (selectedOfferToken) {
         purchaseOptions.offerToken = selectedOfferToken;
       }
-      if (currentUserId) {
-        purchaseOptions.appAccountToken = currentUserId;
+      if (obfuscatedAccountId) {
+        purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
+        purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
+        purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
+        purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
+        purchaseOptions.appAccountToken = obfuscatedAccountId;
+        purchaseOptions.accountId = obfuscatedAccountId;
       }
 
       console.log(
-        `[Play IAP] Invocando Google Play com prodId=${finalProductId}, planId=${planIdentifier}, appAccountToken=${currentUserId || "NENHUM"}, offerToken=${selectedOfferToken ? "PRESENTE" : "NENHUM"}`,
+        `[Play IAP] Invocando Google Play com prodId=${finalProductId}, planId=${planIdentifier}, setObfuscatedAccountId=${obfuscatedAccountId || "NENHUM"}, offerToken=${selectedOfferToken ? "PRESENTE" : "NENHUM"}`,
       );
 
       try {
@@ -745,8 +772,13 @@ export async function requestGooglePlayPurchase(
             planIdentifier: planIdentifier,
             autoAcknowledgePurchases: true,
           };
-          if (currentUserId) {
-            fallbackOptions.appAccountToken = currentUserId;
+          if (obfuscatedAccountId) {
+            fallbackOptions.setObfuscatedAccountId = obfuscatedAccountId;
+            fallbackOptions.obfuscatedAccountId = obfuscatedAccountId;
+            fallbackOptions.setObfuscatedProfileId = obfuscatedAccountId;
+            fallbackOptions.obfuscatedProfileId = obfuscatedAccountId;
+            fallbackOptions.appAccountToken = obfuscatedAccountId;
+            fallbackOptions.accountId = obfuscatedAccountId;
           }
           console.log("[Play IAP] Invocando 2ª tentativa Google Play:", fallbackOptions);
           transaction = await NativePurchases.purchaseProduct(fallbackOptions);
@@ -778,8 +810,13 @@ export async function requestGooglePlayPurchase(
               productType: PURCHASE_TYPE.SUBS,
               autoAcknowledgePurchases: true,
             };
-            if (currentUserId) {
-              cleanOptions.appAccountToken = currentUserId;
+            if (obfuscatedAccountId) {
+              cleanOptions.setObfuscatedAccountId = obfuscatedAccountId;
+              cleanOptions.obfuscatedAccountId = obfuscatedAccountId;
+              cleanOptions.setObfuscatedProfileId = obfuscatedAccountId;
+              cleanOptions.obfuscatedProfileId = obfuscatedAccountId;
+              cleanOptions.appAccountToken = obfuscatedAccountId;
+              cleanOptions.accountId = obfuscatedAccountId;
             }
             console.log("[Play IAP] Invocando tentativa final limpa Google Play:", cleanOptions);
             transaction = await NativePurchases.purchaseProduct(cleanOptions);
@@ -816,11 +853,18 @@ export async function requestGooglePlayPurchase(
       if (selectedOfferToken) {
         purchaseOptions.offerToken = selectedOfferToken;
       }
-      if (currentUserId) {
-        purchaseOptions.appAccountToken = currentUserId;
+      if (obfuscatedAccountId) {
+        purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
+        purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
+        purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
+        purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
+        purchaseOptions.appAccountToken = obfuscatedAccountId;
+        purchaseOptions.accountId = obfuscatedAccountId;
       }
 
-      console.log(`[Play IAP] Invocando Google Play in-app prodId=${finalProductId}...`);
+      console.log(
+        `[Play IAP] Invocando Google Play in-app prodId=${finalProductId}, setObfuscatedAccountId=${obfuscatedAccountId || "NENHUM"}...`,
+      );
 
       try {
         transaction = await NativePurchases.purchaseProduct(purchaseOptions);

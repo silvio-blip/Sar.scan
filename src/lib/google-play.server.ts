@@ -268,30 +268,16 @@ export async function verifyGooglePlayPurchaseInternal(data: {
 
   // 3. Update Supabase database values
   if (purchaseIsValid) {
+    const playObfuscatedAccountId =
+      googleApiResponseData?.externalAccountIdentifiers?.obfuscatedExternalAccountId ||
+      googleApiResponseData?.obfuscatedExternalAccountId ||
+      null;
+
     console.log(
-      `[Play Billing Backend] Purchase authorized successfully! Updating database for user ${user.id}...`,
+      `[Play Billing Backend] Purchase authorized successfully! Updating database for user ${user.id}... ${playObfuscatedAccountId ? `(Google Obfuscated Account ID: ${playObfuscatedAccountId})` : ""}`,
     );
 
-    // Ensure the purchase token is not already linked to ANOTHER user account
-    if (data.purchaseToken) {
-      const { data: existingUserWithToken } = await (supabaseAdmin as any)
-        .from("subscriptions")
-        .select("user_id, plan, status")
-        .eq("play_purchase_token", data.purchaseToken)
-        .neq("user_id", user.id)
-        .maybeSingle();
-
-      if (existingUserWithToken) {
-        console.warn(
-          `[Play Billing Backend] Bloqueio de Multi-Conta: Token ${data.purchaseToken} já pertence ao utilizador ${existingUserWithToken.user_id}. Tentativa de uso pelo utilizador ${user.id} recusada.`,
-        );
-        throw new Error(
-          "Esta assinatura da Google Play já pertence a outra conta do aplicativo. Cada conta é única e requer a sua própria assinatura independente.",
-        );
-      }
-    }
-
-    // Retrieve active user record from db
+    // Retrieve active user record from db for current user
     const { data: currentSub, error: selectError } = await (supabaseAdmin as any)
       .from("subscriptions")
       .select("*")
@@ -400,8 +386,6 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         plan: planInfo.plan,
         scans_credits: newTotal,
         ai_agent_enabled: true,
-        play_purchase_token: data.purchaseToken,
-        play_product_id: data.productId,
         current_period_end: periodEnd,
         trial_end: trialEnd,
         updated_at: new Date().toISOString(),
@@ -912,10 +896,6 @@ export async function syncSubscriptionStatusInternal(data: { token: string }) {
       plan: newPlan,
       ai_agent_enabled: newAi,
       scans_credits: newCredits,
-      stripe_subscription_id: finalStripeSubId,
-      stripe_customer_id: currentSub.stripe_customer_id,
-      play_purchase_token: currentSub.play_purchase_token,
-      play_product_id: currentSub.play_product_id,
       trial_end: trialEndVal,
       current_period_end: periodEndVal,
       updated_at: new Date().toISOString(),

@@ -454,6 +454,8 @@ export function PremiumPage() {
           isTrial: trial,
           customPlanId: basePlan,
           userId: user.id,
+          obfuscatedAccountId: user.id,
+          setObfuscatedAccountId: user.id,
         });
 
         if (res.success) {
@@ -508,7 +510,11 @@ export function PremiumPage() {
         const res = await requestGooglePlayPurchase(
           PLAY_PRODUCT_IDS.credits,
           session.access_token,
-          { userId: user.id },
+          {
+            userId: user.id,
+            obfuscatedAccountId: user.id,
+            setObfuscatedAccountId: user.id,
+          },
         );
         if (res.success) {
           toast.success("Pacote de 50 Scans creditado com sucesso via Google Play!");

@@ -361,18 +361,9 @@ async function ensureValidCustomer(
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (existingSub) {
-      await (supabaseAdmin as any)
-        .from("subscriptions")
-        .update({
-          stripe_customer_id: customerId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id);
-    } else {
+    if (!existingSub) {
       await (supabaseAdmin as any).from("subscriptions").insert({
         user_id: user.id,
-        stripe_customer_id: customerId,
         status: "free",
         scans_credits: 3,
         updated_at: new Date().toISOString(),
@@ -380,7 +371,7 @@ async function ensureValidCustomer(
     }
   } catch (upsertErr) {
     console.warn(
-      "[Stripe] Non-blocking warning: failed to upsert customer into subscriptions:",
+      "[Stripe] Non-blocking warning: failed to initialize subscriptions row:",
       upsertErr,
     );
   }
@@ -723,7 +714,6 @@ export async function verifyStripeSessionInternal(token: string | undefined, ses
         status: "free",
         plan: "free",
         scans_credits: newTotal,
-        stripe_customer_id: customerId,
         ai_agent_enabled: false,
         updated_at: new Date().toISOString(),
       });
