@@ -481,144 +481,62 @@ function getUserIdFromToken(token?: string): string | undefined {
 }
 
 /**
- * Checks if the error message indicates ITEM_ALREADY_OWNED from Google Play.
+ * Checks if the error message or error code indicates ITEM_ALREADY_OWNED from Google Play.
  */
-function isItemAlreadyOwnedError(err: any): boolean {
+export function isItemAlreadyOwnedError(err: any): boolean {
   if (!err) return false;
-  const msg = typeof err === "string" ? err : err?.message || err?.error || JSON.stringify(err);
+  if (
+    err.code === 7 ||
+    err.code === "7" ||
+    err.responseCode === 7 ||
+    err.responseCode === "7" ||
+    err.errorCode === 7 ||
+    err.errorCode === "7" ||
+    err.billingResponseCode === 7 ||
+    err.billingResponseCode === "7"
+  ) {
+    return true;
+  }
+  const msg =
+    typeof err === "string"
+      ? err
+      : err?.message || err?.error || err?.errorMessage || JSON.stringify(err);
   const normalized = String(msg).toLowerCase();
   return (
     normalized.includes("item_already_owned") ||
     normalized.includes("already owned") ||
     normalized.includes("already_owned") ||
+    normalized.includes("already subscribed") ||
+    normalized.includes("already_subscribed") ||
+    normalized.includes("already purchased") ||
     normalized.includes("já possui este item") ||
     normalized.includes("ja possui este item") ||
+    normalized.includes("já possui") ||
+    normalized.includes("ja possui") ||
     normalized.includes("já subscreveu") ||
     normalized.includes("ja subscreveu") ||
+    normalized.includes("já tem uma assinatura") ||
+    normalized.includes("ja tem uma assinatura") ||
+    normalized.includes("já é assinante") ||
+    normalized.includes("ja e assinante") ||
     normalized.includes("subscreveu") ||
-    normalized.includes("already subscribed") ||
-    normalized.includes("already purchased") ||
     normalized.includes("gerir subscrições") ||
     normalized.includes("gerir subscricoes") ||
+    normalized.includes("gerenciar assinaturas") ||
+    normalized.includes("gerir assinaturas") ||
     normalized.includes("billingresponsecode.item_already_owned") ||
     normalized.includes("response code: 7") ||
     normalized.includes("responsecode: 7") ||
     normalized.includes("code: 7") ||
-    normalized.includes("code 7")
+    normalized.includes("code 7") ||
+    normalized.includes('code":7') ||
+    normalized.includes('code": 7')
   );
 }
 
 /**
- * Recupera e valida uma compra/assinatura ativa existente no dispositivo
- * para a conta de usuário autenticada no aplicativo (suporte a multi-contas no mesmo celular).
- */
-async function recoverAndVerifyExistingPurchase(
-  productId: string,
-  isSub: boolean,
-  token: string,
-): Promise<{ success: boolean; data?: any; error?: string } | null> {
-  try {
-    console.log(
-      `[Play IAP Multi-Account] ITEM_ALREADY_OWNED detectado para o produto ${productId}. Tentando recuperar compra ativa do dispositivo para vincular à conta atual do usuário...`,
-    );
-
-    // 1. Tenta buscar das assinaturas ativas se for sub
-    if (isSub) {
-      const { purchases } = await NativePurchases.getPurchases({
-        productType: PURCHASE_TYPE.SUBS,
-      });
-
-      if (purchases && purchases.length > 0) {
-        console.log("[Play IAP Multi-Account] Assinaturas encontradas no dispositivo:", purchases);
-        const matching =
-          purchases.find((p) => p.productIdentifier === productId) ||
-          purchases.find((p) => p.productIdentifier?.startsWith("sar_scan_assinatura")) ||
-          purchases[0];
-
-        if (matching?.purchaseToken) {
-          console.log(
-            "[Play IAP Multi-Account] Assinatura existente localizada. Validando para a conta atual...",
-            matching,
-          );
-          const verifyRes = await verifyPurchaseOnBackend(
-            matching.productIdentifier || productId,
-            matching.purchaseToken,
-            token,
-          );
-          if (verifyRes.success) {
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent("auth:refresh"));
-            }
-            return verifyRes;
-          }
-        }
-      }
-    } else {
-      // In-app (Créditos)
-      const { purchases } = await NativePurchases.getPurchases({
-        productType: PURCHASE_TYPE.INAPP,
-      });
-
-      if (purchases && purchases.length > 0) {
-        const matching = purchases.find((p) => p.productIdentifier === productId) || purchases[0];
-        if (matching?.purchaseToken) {
-          try {
-            await NativePurchases.consumePurchase({ purchaseToken: matching.purchaseToken });
-          } catch (consumeErr) {
-            console.debug("[Play IAP] Consumo prévio dispensado:", consumeErr);
-          }
-          const verifyRes = await verifyPurchaseOnBackend(
-            matching.productIdentifier || productId,
-            matching.purchaseToken,
-            token,
-          );
-          if (verifyRes.success) {
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent("auth:refresh"));
-            }
-            return verifyRes;
-          }
-        }
-      }
-    }
-
-    // 2. Se não encontrou de imediato em getPurchases, tenta restorePurchases e repete a busca
-    try {
-      await NativePurchases.restorePurchases();
-      const retryPurchases = await NativePurchases.getPurchases({
-        productType: isSub ? PURCHASE_TYPE.SUBS : PURCHASE_TYPE.INAPP,
-      });
-      if (retryPurchases?.purchases && retryPurchases.purchases.length > 0) {
-        const matching =
-          retryPurchases.purchases.find((p) => p.productIdentifier === productId) ||
-          retryPurchases.purchases[0];
-        if (matching?.purchaseToken) {
-          const verifyRes = await verifyPurchaseOnBackend(
-            matching.productIdentifier || productId,
-            matching.purchaseToken,
-            token,
-          );
-          if (verifyRes.success) {
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new CustomEvent("auth:refresh"));
-            }
-            return verifyRes;
-          }
-        }
-      }
-    } catch (restErr) {
-      console.warn("[Play IAP Multi-Account] Falha no fallback de restorePurchases:", restErr);
-    }
-  } catch (err) {
-    console.warn("[Play IAP Multi-Account] Falha ao recuperar compras do dispositivo:", err);
-  }
-  return null;
-}
-
-/**
  * Inicia o fluxo nativo oficial de faturamento da Google Play Store no Android
- * com auto-descoberta dinâmica de produtos, ofertas e planos base, além de suporte
- * robusto para múltiplas contas no mesmo aparelho celular.
+ * com isolamento estrito de conta (cada conta de utilizador é 100% individual).
  */
 export async function requestGooglePlayPurchase(
   productId: string,
@@ -811,12 +729,12 @@ export async function requestGooglePlayPurchase(
           };
         }
 
-        // Se a Google Play avisar que este item já foi adquirido, recupera e valida imediatamente
         if (isItemAlreadyOwnedError(attemptErr)) {
-          const recovered = await recoverAndVerifyExistingPurchase(finalProductId, true, token);
-          if (recovered?.success) {
-            return recovered;
-          }
+          return {
+            success: false,
+            error:
+              "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Na Google Play, cada conta Google só pode ter 1 assinatura ativa do mesmo plano por vez. Para assinar nesta conta do aplicativo, selecione outro plano (Semanal, Mensal ou Anual) ou altere a conta ativa na Google Play Store.",
+          };
         }
 
         // Segunda tentativa: sem offerToken, mantendo planIdentifier
@@ -846,10 +764,11 @@ export async function requestGooglePlayPurchase(
           }
 
           if (isItemAlreadyOwnedError(fallbackErr2)) {
-            const recovered = await recoverAndVerifyExistingPurchase(finalProductId, true, token);
-            if (recovered?.success) {
-              return recovered;
-            }
+            return {
+              success: false,
+              error:
+                "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Na Google Play, cada conta Google só pode ter 1 assinatura ativa do mesmo plano por vez. Para assinar nesta conta do aplicativo, selecione outro plano (Semanal, Mensal ou Anual) ou altere a conta ativa na Google Play Store.",
+            };
           }
 
           // Terceira tentativa (Tentativa Final Limpa): Apenas productIdentifier e productType, exatamente como os consumíveis
@@ -875,10 +794,11 @@ export async function requestGooglePlayPurchase(
             }
 
             if (isItemAlreadyOwnedError(cleanErr)) {
-              const recovered = await recoverAndVerifyExistingPurchase(finalProductId, true, token);
-              if (recovered?.success) {
-                return recovered;
-              }
+              return {
+                success: false,
+                error:
+                  "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Na Google Play, cada conta Google só pode ter 1 assinatura ativa do mesmo plano por vez. Para assinar nesta conta do aplicativo, selecione outro plano (Semanal, Mensal ou Anual) ou altere a conta ativa na Google Play Store.",
+              };
             }
 
             throw cleanErr;
@@ -914,10 +834,18 @@ export async function requestGooglePlayPurchase(
           };
         }
 
-        if (isItemAlreadyOwnedError(attemptErr)) {
-          const recovered = await recoverAndVerifyExistingPurchase(finalProductId, false, token);
-          if (recovered?.success) {
-            return recovered;
+        if (isItemAlreadyOwnedError(attemptErr) && !isSub) {
+          try {
+            const { purchases } = await NativePurchases.getPurchases({
+              productType: PURCHASE_TYPE.INAPP,
+            });
+            for (const p of purchases || []) {
+              if (p.purchaseToken) {
+                await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
+              }
+            }
+          } catch (cErr) {
+            console.debug("[Play IAP] Consumable cleanup:", cErr);
           }
         }
 
@@ -964,13 +892,10 @@ export async function requestGooglePlayPurchase(
     }
 
     if (isItemAlreadyOwnedError(err)) {
-      const recovered = await recoverAndVerifyExistingPurchase(productId, true, token);
-      if (recovered?.success) {
-        return recovered;
-      }
       return {
         success: false,
-        error: "Esta assinatura já está ativa na sua conta Google Play.",
+        error:
+          "Esta assinatura já está ativa na conta da Google Play deste dispositivo (pertencente a outra conta). Como cada conta no aplicativo é única, para assinar nesta conta escolha outro plano (Semanal, Mensal ou Anual), compre créditos de scans, ou assine com Cartão / Stripe.",
       };
     }
 

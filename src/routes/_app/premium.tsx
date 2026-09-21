@@ -458,9 +458,10 @@ export function PremiumPage() {
 
         if (res.success) {
           toast.success(
-            trial
-              ? "Teste gratuito de 7 dias ativado com sucesso pela Google Play!"
-              : "Assinatura ativada com sucesso pela Google Play!",
+            res.message ||
+              (trial
+                ? "Teste gratuito de 7 dias ativado com sucesso pela Google Play!"
+                : "Assinatura ativada com sucesso pela Google Play!"),
           );
           if (refresh) await refresh();
           const planDef = displayPlans.find((p) => p.id === planId) || displayPlans[1];
@@ -901,10 +902,10 @@ export function PremiumPage() {
         </div>
       </div>
 
-      {/* Opção para restaurar compras existentes da Google Play / Stripe */}
-      <div className="flex flex-col items-center justify-center gap-2 pt-2">
+      {/* Opção para restaurar compras desta conta */}
+      <div className="flex flex-col items-center justify-center gap-3 pt-2">
         <Button
-          variant="ghost"
+          variant="outline"
           disabled={restoringPurchases}
           onClick={async () => {
             if (restoringPurchases) return;
@@ -928,14 +929,14 @@ export function PremiumPage() {
               setRestoringPurchases(false);
             }
           }}
-          className="text-xs font-bold text-muted-foreground hover:text-foreground flex items-center gap-2 h-10 px-6 rounded-full hover:bg-secondary/40 transition-colors"
+          className="text-xs font-bold border-border/80 hover:border-primary/50 text-foreground flex items-center gap-2 h-11 px-6 rounded-full hover:bg-secondary/60 transition-all shadow-sm"
         >
           {restoringPurchases ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
-            <RefreshCw className="size-4" />
+            <RefreshCw className="size-4 text-primary" />
           )}
-          Restaurar Compras Anteriores
+          Restaurar Compras Desta Conta
         </Button>
       </div>
 
