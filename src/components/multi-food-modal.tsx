@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { speakText, stopSpeech } from "@/lib/tts";
+import { FoodImage } from "@/components/food-image";
 
 export type ScannedFood = {
   nome: string;
