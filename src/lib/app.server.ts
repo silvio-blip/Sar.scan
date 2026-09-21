@@ -152,6 +152,8 @@ Dados e Perfil do Utilizador:
       const promptText = `Analisa esta imagem de comida no contexto do perfil e objetivos do utilizador.
 ${userProfileContext}
 
+IMPORTANTE: Se a imagem NÃO contiver alimentos ou refeições visíveis (por exemplo, se for apenas uma pessoa, vestuário/calças, o chão, teto, objetos aleatórios, paisagens, ou uma imagem preta/ilegível), você DEVE obrigatoriamente retornar a lista de "itens" totalmente vazia: "itens": []. Nunca crie itens fictícios para indicar a ausência de comida (como "Nenhum alimento visível", "Sem alimentos" ou similares). No "feedback_meta", explique de forma amigável em português (PT) que nenhum alimento foi detectado na imagem e peça para enviar uma foto clara da refeição.
+
 Retorna UM OBJETO JSON ESTRITAMENTE, sem texto extra, markdown ou explicações fora do JSON.
 O formato deve ser exatamente:
 {
@@ -217,7 +219,26 @@ O formato deve ser exatamente:
         const cleanJson = textoFinal.replace(/```json\n?|\n?```/g, "").trim();
         const parsed = JSON.parse(cleanJson);
         const list = parsed?.itens || parsed?.items || [];
-        if (Array.isArray(list) && list.length > 0) {
+
+        // Filtrar itens de ausência ou placeholders
+        const realFoods = list.filter((item: any) => {
+          if (!item || !item.nome) return false;
+          const name = String(item.nome).toLowerCase();
+          return !(
+            name.includes("nenhum") ||
+            name.includes("não detectado") ||
+            name.includes("nao detectado") ||
+            name.includes("no food") ||
+            name.includes("not detected") ||
+            name.includes("sem alimento") ||
+            name.includes("invisível") ||
+            name.includes("invisivel") ||
+            name.includes("ausência") ||
+            name.includes("ausencia")
+          );
+        });
+
+        if (Array.isArray(realFoods) && realFoods.length > 0) {
           hasFoods = true;
         }
       } catch (err) {

@@ -393,8 +393,26 @@ export function ScannerPage() {
         );
       }
 
-      const itens = parsedResult.itens || parsedResult.items || [];
+      const rawItens = parsedResult.itens || parsedResult.items || [];
       const metaFeedback = parsedResult.feedback_meta || null;
+
+      // Filtrar itens de ausência ou placeholders para garantir consistência total na detecção
+      const itens = rawItens.filter((item: any) => {
+        if (!item || !item.nome) return false;
+        const name = String(item.nome).toLowerCase();
+        return !(
+          name.includes("nenhum") ||
+          name.includes("não detectado") ||
+          name.includes("nao detectado") ||
+          name.includes("no food") ||
+          name.includes("not detected") ||
+          name.includes("sem alimento") ||
+          name.includes("invisível") ||
+          name.includes("invisivel") ||
+          name.includes("ausência") ||
+          name.includes("ausencia")
+        );
+      });
 
       if (itens.length === 0) {
         const newFailedCount = failedCount + 1;
