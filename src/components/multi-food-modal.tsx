@@ -14,7 +14,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { useState, useEffect } from "react";
-import { FoodImage } from "@/components/food-image";
+import { speakText, stopSpeech } from "@/lib/tts";
 
 export type ScannedFood = {
   nome: string;
@@ -52,35 +52,21 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
 
   useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopSpeech();
     };
   }, []);
 
-  const speakFeedback = () => {
+  const speakFeedback = async () => {
     if (!feedbackMeta) return;
-    if (!("speechSynthesis" in window)) {
-      return;
-    }
 
     if (isPlayingAudio) {
-      window.speechSynthesis.cancel();
+      await stopSpeech();
       setIsPlayingAudio(false);
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(feedbackMeta);
-    utterance.lang = "pt-PT";
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    utterance.onend = () => setIsPlayingAudio(false);
-    utterance.onerror = () => setIsPlayingAudio(false);
-
     setIsPlayingAudio(true);
-    window.speechSynthesis.speak(utterance);
+    await speakText(feedbackMeta, () => setIsPlayingAudio(false));
   };
 
   const setPorc = (idx: number, v: number) => {
@@ -101,9 +87,7 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
   const handle = async () => {
     setBusy(true);
     try {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      await stopSpeech();
       await onConfirm(list);
     } finally {
       setBusy(false);

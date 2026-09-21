@@ -18,6 +18,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { FoodImage } from "@/components/food-image";
+import { speakText, stopSpeech } from "@/lib/tts";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
@@ -51,9 +52,7 @@ export function DiarioPage() {
 
   useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && "speechSynthesis" in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopSpeech();
     };
   }, []);
 
@@ -66,27 +65,17 @@ export function DiarioPage() {
     }
   };
 
-  const speakFeedback = (text: string) => {
+  const speakFeedback = async (text: string) => {
     if (!text) return;
-    if (!("speechSynthesis" in window)) return;
 
     if (isPlayingAudio) {
-      window.speechSynthesis.cancel();
+      await stopSpeech();
       setIsPlayingAudio(false);
       return;
     }
 
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "pt-PT";
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-
-    utterance.onend = () => setIsPlayingAudio(false);
-    utterance.onerror = () => setIsPlayingAudio(false);
-
     setIsPlayingAudio(true);
-    window.speechSynthesis.speak(utterance);
+    await speakText(text, () => setIsPlayingAudio(false));
   };
 
   const { data: entries } = useQuery({

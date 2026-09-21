@@ -174,12 +174,8 @@ async function geminiCall(opts: {
   });
 
   const modelsToTry = [
-    "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-3.1-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-3.1-pro-preview",
+    "gemini-3.6-flash",
   ];
   let response: any = null;
   let lastErr: any = null;
@@ -190,7 +186,7 @@ async function geminiCall(opts: {
         model: m,
         contents: opts.contents,
         config: {
-          maxOutputTokens: opts.maxTokens ?? 2048,
+          maxOutputTokens: opts.maxTokens ?? 1024,
           ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
           ...(opts.responseSchema
             ? { responseMimeType: "application/json", responseSchema: opts.responseSchema as any }
