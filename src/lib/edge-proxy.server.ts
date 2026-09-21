@@ -173,10 +173,7 @@ async function geminiCall(opts: {
     },
   });
 
-  const modelsToTry = [
-    "gemini-3.5-flash-lite",
-    "gemini-3.6-flash",
-  ];
+  const modelsToTry = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
   let response: any = null;
   let lastErr: any = null;
 

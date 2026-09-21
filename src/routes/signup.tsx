@@ -6,6 +6,7 @@ import { Loader2, Mail, Lock, User, Eye, EyeOff, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { SarLogo } from "@/components/sar-logo";
 import { motion } from "motion/react";
+import { handleGoogleSignIn } from "@/lib/google-signin";
 
 export const Route = createFileRoute("/signup")({ component: SignupPage });
 
@@ -221,20 +222,8 @@ function SignupPage() {
             type="button"
             onClick={async () => {
               try {
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                  provider: "google",
-                  options: {
-                    redirectTo: window.location.origin,
-                  },
-                });
+                const { error } = await handleGoogleSignIn();
                 if (error) throw error;
-                if (data?.url) {
-                  const { isInstalledApp } = await import("@/lib/utils");
-                  if (isInstalledApp()) {
-                    const { Browser } = await import("@capacitor/browser");
-                    await Browser.open({ url: data.url });
-                  }
-                }
               } catch (err: any) {
                 toast.error(err.message || "Erro ao entrar com Google");
               }

@@ -454,7 +454,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 2. Clear Supabase auth keys from localStorage synchronously
+    // 2. Trigger Supabase server signout asynchronously (do not await to prevent blocking/hanging if offline or in-flight)
+    try {
+      supabase.auth.signOut().catch((e) => {
+        console.warn("[Auth] Background SignOut call error:", e);
+      });
+    } catch (e) {
+      console.warn("[Auth] SignOut trigger error:", e);
+    }
+
+    // 3. Clear Supabase auth keys from localStorage synchronously
     try {
       if (typeof window !== "undefined" && window.localStorage) {
         for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -468,14 +477,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("[Auth] Error clearing storage on signOut:", storageErr);
     }
 
-    // 3. Trigger Supabase server signout
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn("[Auth] SignOut call error:", e);
-    }
-
-    // 4. Clean redirect to /login via full page navigation to reset state
+    // 4. Clean redirect to /login via full page navigation to reset state instantly
     if (typeof window !== "undefined") {
       window.location.href = "/login";
     }
