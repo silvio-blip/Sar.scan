@@ -636,10 +636,26 @@ export async function checkEligibility(userId: string) {
   const status = await getUserStatus(userId);
   if (status?.isAdmin) return { type: "admin" as const, val: -1 };
 
-  // Unificação: a elegibilidade e quantidade de fotos do usuário livre ou pago é medida direto pelo campo scans_credits
-  const credits = status?.scans_credits ?? 0;
-  if (credits > 0) {
-    return { type: "paid" as const, val: credits };
+  // Buscar bônus creditado pelo administrador para hoje
+  const today = new Date().toISOString().split("T")[0];
+  const { data: usage } = await (admin as any)
+    .from("scan_usage")
+    .select("bonus")
+    .eq("user_id", userId)
+    .eq("data", today)
+    .maybeSingle();
+
+  const scans_credits = status?.scans_credits ?? 0;
+  const bonus = usage?.bonus ?? 0;
+  const total_credits = scans_credits + bonus;
+
+  if (total_credits > 0) {
+    return {
+      type: "paid" as const,
+      val: total_credits,
+      scans_credits,
+      bonus,
+    };
   }
 
   throw new Error(
@@ -649,33 +665,52 @@ export async function checkEligibility(userId: string) {
 
 export async function deductScan(
   userId: string,
-  eligibility: { type: "free" | "paid" | "admin"; val: number },
+  eligibility: {
+    type: "free" | "paid" | "admin";
+    val: number;
+    scans_credits?: number;
+    bonus?: number;
+  },
 ) {
   if (eligibility.type === "admin" || eligibility.val < 0) return; // Admin não deduz nada
 
   const admin = getAdminSafe();
   const today = new Date().toISOString().split("T")[0];
 
-  // Deduzir 1 crédito de scans_credits do usuário
-  await (admin as any)
-    .from("subscriptions")
-    .update({ scans_credits: Math.max(0, eligibility.val - 1) })
-    .eq("user_id", userId);
+  const bonus = eligibility.bonus ?? 0;
+  const scans_credits = eligibility.scans_credits ?? eligibility.val;
 
-  // Também incrementar o scan_usage para auditoria/estatística
+  if (bonus > 0) {
+    // Se possuir créditos bônus enviados pelo admin hoje, deduzir primeiramente do bônus
+    await (admin as any)
+      .from("scan_usage")
+      .update({ bonus: bonus - 1 })
+      .eq("user_id", userId)
+      .eq("data", today);
+  } else {
+    // Se não, deduzir do saldo base de créditos de scans
+    await (admin as any)
+      .from("subscriptions")
+      .update({ scans_credits: Math.max(0, scans_credits - 1) })
+      .eq("user_id", userId);
+  }
+
+  // Também incrementar o scan_usage count para auditoria/estatística e garantir integridade do bônus
   try {
     const { data: usage } = await (admin as any)
       .from("scan_usage")
-      .select("count")
+      .select("count, bonus")
       .eq("user_id", userId)
       .eq("data", today)
       .maybeSingle();
 
     const currentCount = usage?.count ?? 0;
+    const currentBonus = usage?.bonus ?? (bonus > 0 ? bonus - 1 : 0);
+
     await (admin as any)
       .from("scan_usage")
       .upsert(
-        { user_id: userId, data: today, count: currentCount + 1 },
+        { user_id: userId, data: today, count: currentCount + 1, bonus: currentBonus },
         { onConflict: "user_id,data" },
       );
   } catch (err) {
