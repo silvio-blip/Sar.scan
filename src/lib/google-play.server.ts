@@ -334,6 +334,26 @@ export async function verifyGooglePlayPurchaseInternal(data: {
       );
     }
 
+    // Se o usuário possuir uma assinatura ativa do Stripe, cancela imediatamente no Stripe para evitar cobrança dupla
+    if (currentSub && (currentSub as any).stripe_subscription_id) {
+      const subIdToCancel = (currentSub as any).stripe_subscription_id;
+      console.log(
+        `[Play Billing Backend] User ${user.id} has an active Stripe subscription (${subIdToCancel}). Cancelling it immediately since they migrated to Google Play...`,
+      );
+      try {
+        const { stripe } = await getStripe(true);
+        await stripe.subscriptions.cancel(subIdToCancel);
+        console.log(
+          `[Play Billing Backend] Stripe subscription ${subIdToCancel} cancelled successfully.`,
+        );
+      } catch (stripeErr: any) {
+        console.warn(
+          `[Play Billing Backend] Non-fatal notice: Failed to cancel Stripe subscription ${subIdToCancel}:`,
+          stripeErr?.message,
+        );
+      }
+    }
+
     const currentCredits = (currentSub as any)?.scans_credits ?? 0;
     const addedCredits = planInfo.credits;
     const newTotal = currentCredits + addedCredits;
@@ -348,6 +368,7 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         trial_end: (currentSub as any)?.trial_end ?? null,
         current_period_end: (currentSub as any)?.current_period_end ?? null,
         ai_agent_enabled: (currentSub as any)?.ai_agent_enabled ?? false,
+        stripe_subscription_id: null,
         updated_at: new Date().toISOString(),
       };
 
@@ -431,6 +452,7 @@ export async function verifyGooglePlayPurchaseInternal(data: {
         ai_agent_enabled: true,
         current_period_end: periodEnd,
         trial_end: trialEnd,
+        stripe_subscription_id: null,
         updated_at: new Date().toISOString(),
       };
 
@@ -674,11 +696,8 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
     "Sua assinatura foi cancelada com sucesso. Sua conta agora está no plano gratuito.";
 
   if (!data.immediate && (isStripe || (isGooglePlay && !isOneTimePlayPass)) && hasFutureEnd) {
-    const currentPlan = currentSub.plan || "";
-    const nextPlan = currentPlan.includes("_cancelled") ? currentPlan : `${currentPlan}_cancelled`;
-
     updatedFields = {
-      plan: nextPlan,
+      plan: currentSub.plan, // mantém o plano original válido para respeitar o check constraint "subscriptions_plan_check"
       status: currentSub.status, // mantém o status atual (active/trialing)
       ai_agent_enabled: true, // continua ativo até o final do período
       updated_at: new Date().toISOString(),

@@ -221,10 +221,7 @@ export async function handleStripeWebhook(payload: string | Buffer, signature: s
           ? new Date(sub.current_period_end * 1000).toISOString()
           : new Date(Date.now() + 32 * 86400000).toISOString();
 
-        let finalPlanId = isGoodStatus ? planId : currentSub?.plan || planId;
-        if (sub.cancel_at_period_end && finalPlanId && !finalPlanId.includes("_cancelled")) {
-          finalPlanId = `${finalPlanId}_cancelled`;
-        }
+        const finalPlanId = isGoodStatus ? planId : currentSub?.plan || planId;
 
         await (supabaseAdmin as any).from("subscriptions").upsert(
           {
