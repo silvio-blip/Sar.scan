@@ -16,7 +16,7 @@ export async function handleGoogleSignIn() {
       console.log("[GoogleAuth] Native environment detected. Initializing native Google Auth...");
       const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
-      const clientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID;
+      const clientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || "181086329740-sv5g9veth6qsitqistm84ltuve9a5d5m.apps.googleusercontent.com";
 
       if (!clientId) {
         console.warn(
@@ -30,7 +30,7 @@ export async function handleGoogleSignIn() {
         scopes: ["profile", "email"],
       });
 
-      console.log("[GoogleAuth] Triggering native Google Accounts sheet...");
+      console.log("[GoogleAuth] Triggering native Google Accounts sheet with Client ID:", clientId);
       const googleUser = await GoogleAuth.signIn();
       const idToken = googleUser.authentication.idToken;
 
@@ -72,14 +72,24 @@ export async function handleGoogleSignIn() {
         };
       }
 
+      // Format a detailed error string with JSON.stringify(err) if possible to show exact error fields
+      let detailedError = errMsg;
+      try {
+        if (err && typeof err === "object") {
+          detailedError = `${errMsg} | Detalhes: ${JSON.stringify(err)}`;
+        }
+      } catch (e) {
+        detailedError = `${errMsg} | Erro não-serializável: ${String(err)}`;
+      }
+
       // If it's a real configuration error (e.g., audience mismatch on Supabase),
       // we should STOP and return the error so it can be toasted, instead of doing a silent fallback
       // which confuses the user by opening the browser.
-      console.error("[GoogleAuth] Real configuration or server error:", errMsg);
+      console.error("[GoogleAuth] Real configuration or server error:", err);
       return {
         data: null,
         error: new Error(
-          `Erro no login nativo: ${errMsg}. Verifique se o SHA-1 e os Client IDs estão registrados no painel da Supabase.`,
+          `Erro no login nativo: ${detailedError}. Verifique o SHA-1, Client IDs e console do Google/Supabase.`,
         ),
       };
     }
