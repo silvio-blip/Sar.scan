@@ -9,6 +9,11 @@
   "plugins": {
     "CapacitorHttp": {
       "enabled": true
+    },
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "181086329740-sv5g9veth6qsitqistm84ltuve9a5d5m.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
     }
   }
 }
