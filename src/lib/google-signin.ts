@@ -27,7 +27,9 @@ export async function handleGoogleSignIn() {
 
       GoogleAuth.initialize({
         clientId: clientId,
+        serverClientId: clientId,
         scopes: ["profile", "email"],
+        grantOfflineAccess: true,
       });
 
       console.log("[GoogleAuth] Triggering native Google Accounts sheet with Client ID:", clientId);
@@ -49,7 +51,7 @@ export async function handleGoogleSignIn() {
       return { data, error: null };
     } catch (err: any) {
       const errMsg = err?.message || String(err);
-      console.warn("[GoogleAuth] Native Google Sign-In failed or was cancelled. Error:", err);
+      console.warn("[GoogleAuth] Native Google Sign-In notice:", err);
 
       // Check if it was a user cancellation
       const isCancellation =
@@ -62,36 +64,10 @@ export async function handleGoogleSignIn() {
         return { data: null, error: new Error("cancelled") };
       }
 
-      // If VITE_GOOGLE_WEB_CLIENT_ID is missing, return a clean error so the user knows they need to set it
-      if (errMsg === "VITE_GOOGLE_WEB_CLIENT_ID_MISSING") {
-        return {
-          data: null,
-          error: new Error(
-            "Configuração pendente: Defina VITE_GOOGLE_WEB_CLIENT_ID nas variáveis de ambiente (.env) para o login nativo.",
-          ),
-        };
-      }
-
-      // Format a detailed error string with JSON.stringify(err) if possible to show exact error fields
-      let detailedError = errMsg;
-      try {
-        if (err && typeof err === "object") {
-          detailedError = `${errMsg} | Detalhes: ${JSON.stringify(err)}`;
-        }
-      } catch (e) {
-        detailedError = `${errMsg} | Erro não-serializável: ${String(err)}`;
-      }
-
-      // If it's a real configuration error (e.g., audience mismatch on Supabase),
-      // we should STOP and return the error so it can be toasted, instead of doing a silent fallback
-      // which confuses the user by opening the browser.
-      console.error("[GoogleAuth] Real configuration or server error:", err);
-      return {
-        data: null,
-        error: new Error(
-          `Erro no login nativo: ${detailedError}. Verifique o SHA-1, Client IDs e console do Google/Supabase.`,
-        ),
-      };
+      console.warn(
+        `[GoogleAuth] Native SDK issue (Code ${err?.code || "unknown"}). Attempting fallback to secure Browser OAuth...`,
+      );
+      // Fall through to the browser OAuth flow so the user is never locked out
     }
   }
 
