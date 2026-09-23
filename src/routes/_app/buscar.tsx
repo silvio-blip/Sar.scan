@@ -11,6 +11,7 @@ import { getApiUrl } from "@/lib/utils";
 import { FoodIcon } from "@/components/food-icon";
 import { WORLD_FOOD_DATABASE } from "@/data/foodDatabase";
 import { FOOD_CATEGORIES, matchesCategory, type FoodCategory } from "@/lib/food-categories";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 
@@ -82,6 +83,7 @@ const FoodListItem = memo(function FoodListItem({ food, onSelect }: FoodListItem
 
 export function BuscarPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<FoodCategory>("all");
@@ -248,10 +250,10 @@ export function BuscarPage() {
       <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 pb-4 space-y-4 border-b border-border/40">
         <div className="flex flex-col gap-1.5 px-4 sm:px-6">
           <h1 className="text-3xl font-display font-black tracking-tight text-foreground">
-            Buscar Alimento
+            {t("search.title")}
           </h1>
           <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
-            {popular?.length ?? allFoods.length} alimentos cadastrados • {filtered.length} exibidos
+            {popular?.length ?? allFoods.length} alimentos • {filtered.length}
           </p>
         </div>
 
@@ -267,7 +269,7 @@ export function BuscarPage() {
               setQ(e.target.value);
               setVariants(null);
             }}
-            placeholder="O que você comeu?"
+            placeholder={t("search.placeholder")}
             className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-foreground placeholder:text-muted-foreground/60"
           />
           {q.trim() && (

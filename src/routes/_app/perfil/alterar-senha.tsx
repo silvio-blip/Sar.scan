@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Lock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/alterar-senha")({ component: AlterarSenha });
 
 function AlterarSenha() {
   const { profile } = useAuth();
+  const { t } = useTranslation();
   const nav = useNavigate();
   const [atual, setAtual] = useState("");
   const [nova, setNova] = useState("");
@@ -24,7 +26,6 @@ function AlterarSenha() {
     if (nova !== conf) return toast.error("As senhas não coincidem");
     if (!profile?.email) return toast.error("Sessão inválida");
     setSaving(true);
-    // Re-autentica para validar a senha atual
     const { error: signErr } = await supabase.auth.signInWithPassword({
       email: profile.email,
       password: atual,
@@ -50,7 +51,7 @@ function AlterarSenha() {
           <ArrowLeft className="size-5" />
         </Link>
         <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-          Alterar Senha
+          {t("subpages.changePassword.title")}
         </h1>
       </div>
       <Card className="bg-card rounded-[24px] p-5 flex items-center gap-4 border border-border shadow-sm text-foreground">
@@ -58,14 +59,18 @@ function AlterarSenha() {
           <Lock className="size-5 text-primary" strokeWidth={2.5} />
         </div>
         <div>
-          <div className="font-bold text-base text-foreground">Segurança da conta</div>
-          <div className="text-xs text-muted-foreground/80">Use ao menos 6 caracteres</div>
+          <div className="font-bold text-base text-foreground">
+            {t("subpages.changePassword.cardTitle")}
+          </div>
+          <div className="text-xs text-muted-foreground/80">
+            {t("subpages.changePassword.cardSub")}
+          </div>
         </div>
       </Card>
       <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-            Senha atual
+            {t("subpages.changePassword.current")}
           </Label>
           <Input
             type="password"
@@ -76,7 +81,7 @@ function AlterarSenha() {
         </div>
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-            Nova senha
+            {t("subpages.changePassword.new")}
           </Label>
           <Input
             type="password"
@@ -87,7 +92,7 @@ function AlterarSenha() {
         </div>
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-            Confirmar nova senha
+            {t("subpages.changePassword.confirm")}
           </Label>
           <Input
             type="password"
@@ -102,7 +107,8 @@ function AlterarSenha() {
         onClick={submit}
         disabled={saving}
       >
-        {saving && <Loader2 className="size-4 animate-spin mr-2" />}Atualizar Senha
+        {saving && <Loader2 className="size-4 animate-spin mr-2" />}
+        {t("subpages.changePassword.button")}
       </Button>
     </div>
   );

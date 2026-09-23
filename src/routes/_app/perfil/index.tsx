@@ -34,11 +34,13 @@ import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { Switch } from "@/components/ui/switch";
 import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 import { getSavedHandCalibration } from "@/lib/hand-calibration";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
 export function PerfilPage() {
   const { user, profile, subscription, isAdmin, isPremium, signOut } = useAuth();
+  const { t, lang, setLanguage } = useTranslation();
   useRewardsRealtime(user?.id);
 
   const [pushActive, setPushActive] = useState(
@@ -85,7 +87,7 @@ export function PerfilPage() {
   return (
     <div className="space-y-6 select-none transform-gpu pb-10">
       <h1 className="text-3xl font-display font-black tracking-tight text-foreground px-1">
-        Perfil
+        {t("profile.title")}
       </h1>
 
       {/* User Header Profile Card */}
@@ -134,7 +136,7 @@ export function PerfilPage() {
           asChild
         >
           <Link to="/perfil/editar">
-            <Pencil className="size-3.5 mr-2 text-primary" /> Editar Perfil
+            <Pencil className="size-3.5 mr-2 text-primary" /> {t("profile.editProfile")}
           </Link>
         </Button>
       </Card>
@@ -143,7 +145,7 @@ export function PerfilPage() {
         <Link to="/admin" className="block transform transition hover:scale-[1.02] active:scale-95">
           <Card className="p-4 bg-primary text-primary-foreground border-0 shadow-md rounded-[24px]">
             <div className="flex items-center justify-center gap-2 font-black uppercase tracking-widest text-[10px]">
-              <Shield className="size-4" /> Painel de Administração
+              <Shield className="size-4" /> {t("profile.adminPanel")}
             </div>
           </Card>
         </Link>
@@ -152,13 +154,13 @@ export function PerfilPage() {
       {/* SEÇÃO 1: ASSINATURA & ATIVIDADE */}
       <div className="space-y-2">
         <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
-          Assinatura & Histórico
+          {t("profile.sectionSubscription")}
         </h2>
         <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50">
           <Row
             to="/perfil/assinatura"
             Icon={Crown}
-            label="Assinaturas"
+            label={t("profile.subscriptions")}
             sub={
               subscription?.plan && subscription.status === "active"
                 ? `Plano ${subscription.plan === "weekly" ? "Semanal" : subscription.plan === "yearly" ? "Anual" : "Mensal"} · Ativo`
@@ -173,7 +175,7 @@ export function PerfilPage() {
           <Row
             to="/perfil/recompensas"
             Icon={Gift}
-            label="Recompensas"
+            label={t("profile.rewards")}
             sub="Reivindique scans bônus enviados pelo admin"
             badge={novas > 0 ? `${novas} nova(s)` : undefined}
             badgeColor="bg-accent text-white"
@@ -181,7 +183,7 @@ export function PerfilPage() {
           <Row
             to="/diario"
             Icon={History}
-            label="Histórico de Leitura"
+            label={t("profile.history")}
             sub="Veja seu histórico de leituras e registros salvos"
           />
         </Card>
@@ -190,20 +192,20 @@ export function PerfilPage() {
       {/* SEÇÃO 2: METAS & SAÚDE */}
       <div className="space-y-2">
         <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
-          Metas & Dados Físicos
+          {t("profile.sectionGoals")}
         </h2>
         <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50">
           <Row
             to="/perfil/metas"
             Icon={Crown}
-            label="Metas Diárias"
+            label={t("profile.goals")}
             sub={goals ? `${goals.calorias} cal · ${goals.proteina_g}g prot` : "Definir metas"}
             premium
           />
           <Row
             to="/perfil/objetivo"
             Icon={Target}
-            label="Objetivo"
+            label={t("profile.objective")}
             sub={
               profile?.objetivo === "perder"
                 ? "Perder peso"
@@ -215,13 +217,13 @@ export function PerfilPage() {
           <Row
             to="/perfil/dados-fisicos"
             Icon={Activity}
-            label="Dados Físicos"
+            label={t("profile.physicalData")}
             sub={`${profile?.peso ?? "?"}kg · ${profile?.altura ?? "?"}cm · ${profile?.idade ?? "?"} anos`}
           />
           <Row
             to="/perfil/calibracao-mao"
             Icon={Ruler}
-            label="Calibração da Mão (Alta Precisão)"
+            label={t("profile.handCalibration")}
             sub={
               handCalibration
                 ? `Calibrada: ${handCalibration.comprimento_cm} cm · Ativa`
@@ -234,7 +236,7 @@ export function PerfilPage() {
       {/* SEÇÃO 3: PREFERÊNCIAS & NOTIFICAÇÕES */}
       <div className="space-y-2">
         <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
-          Preferências & Lembretes
+          {t("profile.sectionPreferences")}
         </h2>
         <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50 p-5 space-y-4">
           <div className="flex items-center gap-4">
@@ -242,9 +244,9 @@ export function PerfilPage() {
               <Bell className="size-5 text-primary" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-bold text-sm text-foreground">Notificações Push</div>
+              <div className="font-bold text-sm text-foreground">{t("profile.notifications")}</div>
               <p className="text-[11px] text-muted-foreground font-medium">
-                Ativar alertas e lembretes diários
+                {t("profile.notificationsSub")}
               </p>
             </div>
             <Switch
@@ -256,7 +258,34 @@ export function PerfilPage() {
             />
           </div>
 
-          <div className="pt-3">
+          <div className="flex items-center gap-4 pt-3 border-t border-border/60">
+            <div className="size-11 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-lg">🌐</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm text-foreground">{t("profile.language")}</div>
+              <p className="text-[11px] text-muted-foreground font-medium">
+                {lang === "pt" ? "Português (Brasil)" : lang === "en" ? "English" : "Español"}
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {(["pt", "en", "es"] as const).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setLanguage(l)}
+                  className={`size-8 rounded-xl text-[10px] font-black uppercase transition-all ${
+                    lang === l
+                      ? "bg-primary text-primary-foreground shadow-sm scale-105"
+                      : "bg-secondary text-foreground hover:bg-secondary/80"
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-border/60">
             <WaterReminderScheduler userId={user?.id} />
           </div>
         </Card>
@@ -265,25 +294,25 @@ export function PerfilPage() {
       {/* SEÇÃO 4: SEGURANÇA & CONTA */}
       <div className="space-y-2">
         <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
-          Segurança & Conta
+          {t("profile.sectionSecurity")}
         </h2>
         <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50">
           <Row
             to="/perfil/alterar-senha"
             Icon={Lock}
-            label="Alterar Senha"
+            label={t("profile.changePassword")}
             sub="Atualize sua senha de acesso"
           />
           <Row
             to="/direitos-privacidade"
             Icon={Shield}
-            label="Direitos e Privacidade"
+            label={t("profile.privacy")}
             sub="Termos de uso, limites de créditos e privacidade"
           />
           <Row
             to="/perfil/excluir-conta"
             Icon={Trash2}
-            label="Excluir Conta"
+            label={t("profile.deleteAccount")}
             sub="Remover todos os dados permanentemente"
             danger
           />
@@ -297,7 +326,7 @@ export function PerfilPage() {
           className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
           onClick={() => setShowSignOutDialog(true)}
         >
-          <LogOut className="size-4 mr-2" /> Sair da Conta
+          <LogOut className="size-4 mr-2" /> {t("profile.signOut")}
         </Button>
       </div>
 
@@ -309,7 +338,7 @@ export function PerfilPage() {
               <LogOut className="size-6" />
             </div>
             <DialogTitle className="text-center text-xl font-bold text-foreground">
-              Sair da Conta
+              {t("profile.signOut")}
             </DialogTitle>
             <DialogDescription className="text-center text-xs text-muted-foreground">
               Tem certeza de que deseja sair? Você precisará entrar novamente na próxima vez.

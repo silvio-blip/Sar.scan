@@ -10,11 +10,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Camera, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { isInstalledApp, dataURLtoFile } from "@/lib/utils";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/editar")({ component: EditarPerfil });
 
 function EditarPerfil() {
   const { user, profile, refresh } = useAuth();
+  const { t } = useTranslation();
   const nav = useNavigate();
   const [nome, setNome] = useState(profile?.nome ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url ?? "");
@@ -44,9 +46,7 @@ function EditarPerfil() {
         !mimeType.includes("xml"));
 
     if (!hasValidExtension || !hasValidMime) {
-      toast.error(
-        "Por favor, envie um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
-      );
+      toast.error("Por favor, envie um arquivo de imagem válido (PNG, JPEG, WEBP).");
       return;
     }
 
@@ -135,7 +135,7 @@ function EditarPerfil() {
       return;
     }
     await refresh();
-    toast.success("Perfil atualizado");
+    toast.success(t("editProfile.success"));
     nav({ to: "/perfil" });
   };
 
@@ -149,7 +149,7 @@ function EditarPerfil() {
           <ArrowLeft className="size-5" />
         </Link>
         <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-          Editar Perfil
+          {t("editProfile.title")}
         </h1>
       </div>
 
@@ -191,7 +191,7 @@ function EditarPerfil() {
             htmlFor="nome"
             className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80"
           >
-            Nome de Exibição
+            {t("editProfile.name")}
           </Label>
           <Input
             id="nome"
@@ -202,7 +202,7 @@ function EditarPerfil() {
         </div>
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-            Email (não editável)
+            {t("editProfile.email")}
           </Label>
           <Input
             value={profile?.email ?? ""}
@@ -217,7 +217,8 @@ function EditarPerfil() {
         onClick={save}
         disabled={saving}
       >
-        {saving && <Loader2 className="size-4 animate-spin mr-2" />}Salvar Alterações
+        {saving && <Loader2 className="size-4 animate-spin mr-2" />}
+        {t("editProfile.save")}
       </Button>
     </div>
   );

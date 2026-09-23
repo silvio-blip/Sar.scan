@@ -8,11 +8,13 @@ import { ArrowLeft, Gift, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useState } from "react";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/recompensas")({ component: RecompensasPage });
 
 function RecompensasPage() {
   const { user } = useAuth();
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   useRewardsRealtime(user?.id);
@@ -38,7 +40,7 @@ function RecompensasPage() {
       const added = Array.isArray(data)
         ? ((data[0] as { scans_added?: number })?.scans_added ?? bonus)
         : bonus;
-      toast.success(added > 0 ? `🎉 +${added} scans creditados` : "Recompensa reivindicada!");
+      toast.success(added > 0 ? `🎉 +${added} scans` : "Recompensa reivindicada!");
       qc.invalidateQueries({ queryKey: ["rewards", user?.id] });
       qc.invalidateQueries({ queryKey: ["scan_usage"] });
     } catch (e: unknown) {
@@ -59,14 +61,14 @@ function RecompensasPage() {
           <ArrowLeft className="size-5" />
         </Link>
         <h1 className="text-2xl font-display font-black tracking-tight text-foreground flex items-center gap-2">
-          <Gift className="size-6 text-primary" /> Recompensas
+          <Gift className="size-6 text-primary" /> {t("subpages.rewards.title")}
         </h1>
       </div>
 
       {isLoading && <Loader2 className="size-6 animate-spin mx-auto text-primary" />}
       {!isLoading && (!rewards || rewards.length === 0) && (
         <Card className="p-8 text-center text-sm text-muted-foreground bg-card border border-border rounded-2xl shadow-sm">
-          Nenhuma recompensa por enquanto. Continue ativo para ganhar bônus!
+          {t("subpages.rewards.empty")}
         </Card>
       )}
       {rewards?.map((r) => {
@@ -93,22 +95,23 @@ function RecompensasPage() {
                 )}
                 {r.bonus_scans > 0 && (
                   <div className="text-xs text-primary font-bold mt-1">
-                    🎁 +{r.bonus_scans} scans bônus
+                    🎁 +{r.bonus_scans} scans
                   </div>
                 )}
               </div>
               {claimed ? (
-                <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-semibold whitespace-nowrap shrink-0 mt-1">
-                  <Check className="size-3" /> Reivindicada
-                </span>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground bg-secondary px-3 py-2 rounded-xl">
+                  <Check className="size-4 text-emerald-500" /> {t("subpages.rewards.claimed")}
+                </div>
               ) : (
                 <Button
                   size="sm"
                   disabled={busyId === r.id}
-                  onClick={() => claim(r.id, r.bonus_scans ?? 0)}
-                  className="bg-primary text-primary-foreground hover:bg-primary/95 text-[10px] uppercase font-bold tracking-wider rounded-xl h-9 px-4 shrink-0 transition-transform active:scale-95 mt-1"
+                  onClick={() => claim(r.id, r.bonus_scans)}
+                  className="rounded-xl font-bold px-4 h-10 bg-primary text-primary-foreground"
                 >
-                  {busyId === r.id ? <Loader2 className="size-3 animate-spin" /> : "Reivindicar"}
+                  {busyId === r.id && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+                  {t("subpages.rewards.claim")}
                 </Button>
               )}
             </div>

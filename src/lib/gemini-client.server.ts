@@ -6,9 +6,12 @@ loadEnv();
 
 // Prioridade de modelos ordenada por eficiência máxima de cota (Free Tier) e robustez
 export const FREE_TIER_OPTIMAL_MODELS = [
-  "gemini-3.1-flash-lite", // Menor consumo de cota, mais rápido e mais econômico no free tier
-  "gemini-3.8-flash", // Modelo Flash moderno de altíssima precisão e excelente eficiência
-  "gemini-flash-latest", // Alias oficial do Google para o modelo Flash estável mais recente
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3.8-flash",
+  "gemini-flash-latest",
 ] as const;
 
 // Registro em memória de modelos descontinuados ou temporariamente em cooldown

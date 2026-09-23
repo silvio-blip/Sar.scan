@@ -16,6 +16,7 @@ import { Camera, Search, User, Sparkles, ShoppingBag, Loader2 } from "lucide-rea
 import { motion, AnimatePresence } from "motion/react";
 import GlassSurface from "@/components/GlassSurface";
 import { App } from "@capacitor/app";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app")({ component: AppLayout });
 
@@ -45,14 +46,6 @@ function usePrefetchPopularFoods(enabled: boolean) {
   }, [enabled, qc]);
 }
 
-const tabs = [
-  { to: "/scanner", label: "Scanner", Icon: Camera },
-  { to: "/buscar", label: "Buscar", Icon: Search },
-  { to: "/premium", label: "Loja", Icon: ShoppingBag },
-  { to: "/perfil", label: "Perfil", Icon: User },
-  { to: "/chat", label: "Nutricionista", Icon: Sparkles },
-] as const;
-
 const ROOT_ALLOWED_PATHS = new Set([
   "/scanner",
   "/scanner/",
@@ -70,9 +63,18 @@ const ROOT_ALLOWED_PATHS = new Set([
 
 function AppLayout() {
   const { user, profile, loading } = useAuth();
+  const { t } = useTranslation();
   const loc = useLocation();
   const router = useRouter();
   const navigate = useNavigate();
+
+  const tabs = [
+    { to: "/scanner", label: t("nav.scanner"), Icon: Camera },
+    { to: "/buscar", label: t("nav.search"), Icon: Search },
+    { to: "/premium", label: t("nav.shop"), Icon: ShoppingBag },
+    { to: "/perfil", label: t("nav.profile"), Icon: User },
+    { to: "/chat", label: t("nav.chat"), Icon: Sparkles },
+  ] as const;
 
   const mainRef = useRef<HTMLElement>(null);
   const currentTabIdx = tabs.findIndex((t) => {
