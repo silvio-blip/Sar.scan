@@ -1,6 +1,41 @@
 import { supabase } from "@/integrations/supabase/client";
 import { Capacitor } from "@capacitor/core";
 
+let appUrlListenerAttached = false;
+async function ensureAppUrlListener() {
+  if (appUrlListenerAttached || !Capacitor.isNativePlatform()) return;
+  appUrlListenerAttached = true;
+  try {
+    const { App } = await import("@capacitor/app");
+    const { Browser } = await import("@capacitor/browser");
+    App.addListener("appUrlOpen", async (event) => {
+      console.log("[GoogleAuth] appUrlOpen triggered with URL:", event.url);
+      try {
+        await Browser.close();
+      } catch (e) {
+        // Browser might already be closed
+      }
+      if (
+        event.url.includes("access_token") ||
+        event.url.includes("refresh_token") ||
+        event.url.includes("code=")
+      ) {
+        try {
+          const urlObj = new URL(event.url);
+          const code = urlObj.searchParams.get("code");
+          if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
+          }
+        } catch (parseErr) {
+          console.warn("[GoogleAuth] Erro ao processar retorno de URL OAuth:", parseErr);
+        }
+      }
+    });
+  } catch (e) {
+    console.warn("[GoogleAuth] Failed to attach appUrlOpen listener:", e);
+  }
+}
+
 /**
  * Initiates Google Sign-In.
  * On native mobile devices (Android/iOS), it attempts to use the native Google Sign-In SDK
@@ -12,11 +47,14 @@ export async function handleGoogleSignIn() {
   const isNative = Capacitor.isNativePlatform();
 
   if (isNative) {
+    await ensureAppUrlListener();
     try {
       console.log("[GoogleAuth] Native environment detected. Initializing native Google Auth...");
       const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
 
-      const clientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || "181086329740-sv5g9veth6qsitqistm84ltuve9a5d5m.apps.googleusercontent.com";
+      const clientId =
+        import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID ||
+        "181086329740-sv5g9veth6qsitqistm84ltuve9a5d5m.apps.googleusercontent.com";
 
       if (!clientId) {
         console.warn(
@@ -29,12 +67,12 @@ export async function handleGoogleSignIn() {
         clientId: clientId,
         serverClientId: clientId,
         scopes: ["profile", "email"],
-        grantOfflineAccess: true,
+        grantOfflineAccess: false,
       });
 
       console.log("[GoogleAuth] Triggering native Google Accounts sheet with Client ID:", clientId);
       const googleUser = await GoogleAuth.signIn();
-      const idToken = googleUser.authentication.idToken;
+      const idToken = googleUser?.authentication?.idToken;
 
       if (!idToken) {
         throw new Error("No idToken returned from native Google Auth.");
