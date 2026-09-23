@@ -160,9 +160,26 @@
     transform: translateZ(0);
     will-change: transform, opacity;
   }
+  .gpu-accelerated {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
   .content-auto {
     content-visibility: auto;
     contain-intrinsic-size: 0 400px;
+  }
+  .content-auto-item {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 76px;
+  }
+  .content-auto-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 140px;
+  }
+  .content-auto-msg {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 90px;
   }
 }
 

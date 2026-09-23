@@ -222,12 +222,12 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
 
   return (
     <Dialog open={!!food} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-sm rounded-[32px] border border-border bg-card p-0 overflow-hidden shadow-xl text-foreground">
+      <DialogContent className="max-w-sm w-[92vw] max-h-[88vh] overflow-y-auto rounded-[32px] border border-border bg-card p-0 shadow-xl text-foreground">
         <DialogTitle className="sr-only">Adicionar alimento</DialogTitle>
         <DialogDescription className="sr-only">Ajuste a porção e adicione</DialogDescription>
         {food && (
           <div className="space-y-0 relative">
-            <div className="relative h-60 w-full overflow-hidden bg-secondary/25 border-b border-border/40 flex items-center justify-center">
+            <div className="relative h-48 sm:h-60 w-full overflow-hidden bg-secondary/25 border-b border-border/40 flex items-center justify-center">
               <FoodImage
                 src={photoUrl ?? food.foto_url}
                 alt={food.nome}
@@ -317,9 +317,9 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
                   Resumo Nutricional
                 </p>
-                <h3 className="text-2xl font-display font-black tracking-tight text-foreground flex items-center gap-2.5">
-                  <span className="text-2xl shrink-0 leading-none">{foodEmoji}</span>
-                  <span className="truncate">{food.nome}</span>
+                <h3 className="text-xl sm:text-2xl font-display font-black tracking-tight text-foreground flex items-start gap-2.5">
+                  <span className="text-2xl shrink-0 leading-none pt-0.5">{foodEmoji}</span>
+                  <span className="break-words leading-tight">{food.nome}</span>
                 </h3>
               </div>
 

@@ -1,6 +1,7 @@
 import { getApiUrl } from "./utils";
 import type { QueueState } from "@/components/queue-status-card";
 import { sendNativePushNotification } from "./notifications";
+import { safeFetchJson } from "./safe-fetch";
 
 export interface EnqueueOptions {
   type: "food_scan" | "calibrate_hand";
@@ -17,24 +18,23 @@ export interface EnqueueOptions {
 export async function submitToScanQueue<T = any>(options: EnqueueOptions): Promise<T> {
   const { type, payload, userId, onQueueUpdate, pollIntervalMs = 900 } = options;
 
-  // 1. Enfileirar requisição
-  const enqueueRes = await fetch(getApiUrl("/api/queue/enqueue"), {
+  // 1. Enfileirar requisição com safeFetchJson
+  const enqueueResult = await safeFetchJson<{
+    jobId: string;
+    position: number;
+    totalInQueue: number;
+  }>(getApiUrl("/api/queue/enqueue"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ type, payload, user_id: userId }),
   });
 
-  if (!enqueueRes.ok) {
-    const errText = await enqueueRes.text();
-    throw new Error(`Falha ao entrar na fila (${enqueueRes.status}): ${errText}`);
+  if (!enqueueResult.ok || !enqueueResult.data?.jobId) {
+    throw new Error(enqueueResult.error || "Falha ao entrar na fila de processamento.");
   }
 
-  const enqueueData = await enqueueRes.json();
+  const enqueueData = enqueueResult.data;
   const jobId = enqueueData.jobId;
-
-  if (!jobId) {
-    throw new Error("Identificador de fila não retornado pelo servidor.");
-  }
 
   // Notifica estado inicial
   onQueueUpdate?.({
@@ -59,17 +59,19 @@ export async function submitToScanQueue<T = any>(options: EnqueueOptions): Promi
       }
 
       try {
-        const statusRes = await fetch(getApiUrl(`/api/queue/status/${jobId}`));
-        if (!statusRes.ok) {
-          if (statusRes.status === 404) {
+        const statusResult = await safeFetchJson<any>(getApiUrl(`/api/queue/status/${jobId}`));
+
+        if (!statusResult.ok) {
+          if (statusResult.status === 404) {
             clearInterval(intervalId);
             reject(new Error("Requisição na fila não encontrada."));
             return;
           }
-          return; // ignora erros de rede momentâneos
+          return; // ignora erros momentâneos de rede
         }
 
-        const statusData = await statusRes.json();
+        const statusData = statusResult.data;
+        if (!statusData) return;
 
         onQueueUpdate?.({
           jobId,

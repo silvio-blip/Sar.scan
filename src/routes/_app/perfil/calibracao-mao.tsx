@@ -36,6 +36,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { QueueStatusCard, type QueueState } from "@/components/queue-status-card";
 import { submitToScanQueue } from "@/lib/scan-queue-client";
 import { getApiUrl } from "@/lib/utils";
+import { optimizeImageForUpload } from "@/lib/image-optimizer";
+import { safeFetchJson } from "@/lib/safe-fetch";
 
 export interface CalibrationErrorInfo {
   titulo: string;
@@ -90,6 +92,14 @@ export function CalibracaoMaoPage() {
     };
   }, [cameraStream]);
 
+  // Garantir que o elemento de vídeo recebe o stream assim que renderiza
+  useEffect(() => {
+    if (step === "camera" && videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [step, cameraStream]);
+
   // Iniciar câmera quando entrar no passo de câmera
   const startCamera = async () => {
     try {
@@ -100,17 +110,14 @@ export function CalibracaoMaoPage() {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 30 },
         },
         audio: false,
       });
 
       setCameraStream(stream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-      }
       setStep("camera");
     } catch (err: any) {
       console.warn("Erro ao acessar câmera frontal/traseira:", err);
@@ -139,26 +146,28 @@ export function CalibracaoMaoPage() {
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
     setCapturedImage(dataUrl);
     stopCamera();
     processCalibrationImage(dataUrl);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setCapturedImage(dataUrl);
-        stopCamera();
-        processCalibrationImage(dataUrl);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const optimized = await optimizeImageForUpload(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+      });
+      setCapturedImage(optimized);
+      stopCamera();
+      processCalibrationImage(optimized);
+    } catch {
+      toast.error("Erro ao carregar a imagem da galeria.");
+    }
   };
 
   const processCalibrationImage = async (base64Image: string) => {
@@ -166,29 +175,41 @@ export function CalibracaoMaoPage() {
     setAnalyzing(true);
 
     try {
+      // Otimização de imagem ultra-leve (elimina 413 Entity Too Large e previne crash de memória)
+      const optimizedImage = await optimizeImageForUpload(base64Image, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+      });
+
       let data: any = null;
       try {
         data = await submitToScanQueue({
           type: "calibrate_hand",
           payload: {
-            base64Data: base64Image,
+            base64Data: optimizedImage,
             reference_type: selectedReference,
           },
           userId: user?.id,
           onQueueUpdate: (qs) => setQueueState(qs),
         });
-      } catch (queueErr) {
-        console.warn("[Calibracao] Erro na fila, tentando requisição direta:", queueErr);
-        const response = await fetch(getApiUrl("/api/calibrate-hand"), {
+      } catch (queueErr: any) {
+        console.warn("[Calibracao] Erro na fila, tentando requisição direta segura:", queueErr);
+        const fallbackRes = await safeFetchJson<any>(getApiUrl("/api/calibrate-hand"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            base64Data: base64Image,
+            base64Data: optimizedImage,
             reference_type: selectedReference,
             user_id: user?.id,
           }),
         });
-        data = await response.json();
+
+        if (fallbackRes.ok && fallbackRes.data) {
+          data = fallbackRes.data;
+        } else {
+          throw new Error(fallbackRes.error || queueErr?.message || "Falha na análise da imagem.");
+        }
       }
 
       if (!data || !data.sucesso) {
@@ -202,7 +223,7 @@ export function CalibracaoMaoPage() {
           dica:
             data?.dica_correcao ||
             "Certifique-se de apoiar a mão aberta ao lado do objeto numa superfície plana com boa iluminação.",
-          imagemUrl: base64Image,
+          imagemUrl: optimizedImage || base64Image,
         });
         setStep("error");
         return;

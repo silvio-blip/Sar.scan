@@ -6,7 +6,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
-import { toast } from "sonner";
 import {
   Pencil,
   Shield,
@@ -18,16 +17,10 @@ import {
   LogOut,
   Trash2,
   ChevronRight,
-  Search,
   History,
-  Copy,
-  Check,
   Bell,
-  AlertTriangle,
-  RefreshCw,
-  Loader2,
   Ruler,
-  Sparkles,
+  Loader2,
 } from "lucide-react";
 import {
   Dialog,
@@ -38,8 +31,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
-import { isInstalledApp } from "@/lib/utils";
-import { isCapacitor } from "@/lib/google-play.functions";
 import { Switch } from "@/components/ui/switch";
 import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 import { getSavedHandCalibration } from "@/lib/hand-calibration";
@@ -47,47 +38,20 @@ import { getSavedHandCalibration } from "@/lib/hand-calibration";
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
 export function PerfilPage() {
-  const { user, session, profile, subscription, isAdmin, isPremium, refresh, signOut } = useAuth();
+  const { user, profile, subscription, isAdmin, isPremium, signOut } = useAuth();
   useRewardsRealtime(user?.id);
 
   const [pushActive, setPushActive] = useState(
     () => localStorage.getItem("push_notifications_active") !== "false",
   );
 
-  const [showToken, setShowToken] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [cameraGranted, setCameraGranted] = useState<boolean | null>(null);
-  const [micGranted, setMicGranted] = useState<boolean | null>(null);
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [handCalibration, setHandCalibration] = useState(() => getSavedHandCalibration());
 
   useEffect(() => {
-    if (typeof navigator !== "undefined" && navigator.permissions) {
-      navigator.permissions
-        .query({ name: "camera" as any })
-        .then((result) => {
-          setCameraGranted(result.state === "granted");
-          result.onchange = () => {
-            setCameraGranted(result.state === "granted");
-          };
-        })
-        .catch(() => {});
-
-      navigator.permissions
-
-        .query({ name: "microphone" as any })
-        .then((result) => {
-          setMicGranted(result.state === "granted");
-          result.onchange = () => {
-            setMicGranted(result.state === "granted");
-          };
-        })
-        .catch(() => {});
-    }
+    setHandCalibration(getSavedHandCalibration());
   }, []);
-  const [hasSchemaError, setHasSchemaError] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
 
   const { data: rewards } = useQuery({
     queryKey: ["rewards", user?.id],
@@ -119,11 +83,16 @@ export function PerfilPage() {
   const initials = (profile?.nome ?? profile?.email ?? "U").slice(0, 2).toUpperCase();
 
   return (
-    <div className="space-y-8 select-none transform-gpu">
-      <h1 className="text-3xl font-display font-black tracking-tight text-foreground">Perfil</h1>
+    <div className="space-y-6 select-none transform-gpu pb-10">
+      <h1 className="text-3xl font-display font-black tracking-tight text-foreground px-1">
+        Perfil
+      </h1>
 
-      <div className="flex flex-col items-center text-center gap-4">
-        <Avatar className="size-24 ring-4 ring-primary/15 overflow-hidden shadow-md">
+      {/* User Header Profile Card */}
+      <Card className="bg-card rounded-[32px] p-6 border border-border shadow-sm flex flex-col items-center text-center gap-4 relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent pointer-events-none" />
+
+        <Avatar className="size-24 ring-4 ring-primary/15 overflow-hidden shadow-md relative z-10">
           {profile?.avatar_url && (
             <AvatarImage
               src={profile.avatar_url}
@@ -135,7 +104,8 @@ export function PerfilPage() {
             {initials}
           </AvatarFallback>
         </Avatar>
-        <div className="space-y-1">
+
+        <div className="space-y-1 relative z-10">
           <div className="font-extrabold text-xl tracking-tight text-foreground">
             {profile?.nome ?? "—"}
           </div>
@@ -144,7 +114,7 @@ export function PerfilPage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2 flex-wrap pb-2 mt-1">
+        <div className="flex items-center justify-center gap-2 flex-wrap relative z-10">
           {isPremium && (
             <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 font-black uppercase tracking-widest rounded-full px-3 py-1.5 flex items-center gap-1.5 shadow-sm">
               <Crown className="size-3" /> Premium
@@ -156,17 +126,18 @@ export function PerfilPage() {
             </span>
           )}
         </div>
+
         <Button
           variant="outline"
           size="sm"
-          className="rounded-full border border-border bg-secondary hover:bg-muted font-bold px-6 h-9 transition-all text-foreground"
+          className="rounded-full border border-border bg-secondary hover:bg-muted font-bold px-6 h-9 transition-all text-foreground relative z-10"
           asChild
         >
           <Link to="/perfil/editar">
             <Pencil className="size-3.5 mr-2 text-primary" /> Editar Perfil
           </Link>
         </Button>
-      </div>
+      </Card>
 
       {isAdmin && (
         <Link to="/admin" className="block transform transition hover:scale-[1.02] active:scale-95">
@@ -178,216 +149,159 @@ export function PerfilPage() {
         </Link>
       )}
 
-      {/* Aba / Gerenciamento de Assinaturas */}
-      <Link
-        to="/perfil/assinatura"
-        className="block transform transition hover:scale-[1.02] active:scale-95"
-      >
-        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
-          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-            <Crown className="size-5 text-primary" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-foreground flex items-center gap-2">
-              Assinaturas
-              {isPremium && (
-                <span className="text-[9px] bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-full px-2 py-0.5 shadow-sm">
-                  {subscription?.plan ? `${subscription.plan.toUpperCase()}` : "PRO"}
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-muted-foreground font-semibold">
-              {subscription?.plan && subscription.status === "active"
+      {/* SEÇÃO 1: ASSINATURA & ATIVIDADE */}
+      <div className="space-y-2">
+        <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
+          Assinatura & Histórico
+        </h2>
+        <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50">
+          <Row
+            to="/perfil/assinatura"
+            Icon={Crown}
+            label="Assinaturas"
+            sub={
+              subscription?.plan && subscription.status === "active"
                 ? `Plano ${subscription.plan === "weekly" ? "Semanal" : subscription.plan === "yearly" ? "Anual" : "Mensal"} · Ativo`
                 : subscription?.status === "trialing"
                   ? "Teste Grátis (7 Dias) · Ativo"
-                  : "Plano Gratuito · Ver Planos Premium"}
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground" />
+                  : "Plano Gratuito · Ver Planos Premium"
+            }
+            badge={
+              isPremium ? (subscription?.plan ? subscription.plan.toUpperCase() : "PRO") : undefined
+            }
+          />
+          <Row
+            to="/perfil/recompensas"
+            Icon={Gift}
+            label="Recompensas"
+            sub="Reivindique scans bônus enviados pelo admin"
+            badge={novas > 0 ? `${novas} nova(s)` : undefined}
+            badgeColor="bg-accent text-white"
+          />
+          <Row
+            to="/diario"
+            Icon={History}
+            label="Histórico de Leitura"
+            sub="Veja seu histórico de leituras e registros salvos"
+          />
         </Card>
-      </Link>
-
-      <Link
-        to="/perfil/recompensas"
-        className="block transform transition hover:scale-[1.02] active:scale-95"
-      >
-        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
-          <div className="size-12 rounded-2xl bg-accent/15 flex items-center justify-center">
-            <Gift className="size-5 text-accent" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-foreground flex items-center gap-2">
-              Recompensas{" "}
-              {novas > 0 && (
-                <span className="text-[9px] bg-accent text-white font-black uppercase tracking-widest rounded-full px-2 py-1 shadow-sm font-sans">
-                  {novas} nova(s)
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-muted-foreground font-semibold">
-              Reivindique scans bônus enviados pelo admin
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </Card>
-      </Link>
-
-      <Link to="/diario" className="block transform transition hover:scale-[1.02] active:scale-95">
-        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
-          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <History className="size-5 text-primary" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-foreground">Histórico de Leitura</div>
-            <div className="text-[11px] text-muted-foreground font-semibold">
-              Veja seu histórico de leituras e registros salvos
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </Card>
-      </Link>
-
-      <div className="border-t border-border" />
-
-      <div className="space-y-3">
-        <Row
-          to="/perfil/metas"
-          Icon={Crown}
-          label="Metas Diárias"
-          sub={goals ? `${goals.calorias} cal · ${goals.proteina_g}g prot` : "—"}
-          premium
-        />
-        <Row
-          to="/perfil/objetivo"
-          Icon={Target}
-          label="Objetivo"
-          sub={
-            profile?.objetivo === "perder"
-              ? "Perder peso"
-              : profile?.objetivo === "ganhar"
-                ? "Ganhar massa"
-                : "Manter peso"
-          }
-        />
-        <Row
-          to="/perfil/dados-fisicos"
-          Icon={Activity}
-          label="Dados Físicos"
-          sub={`${profile?.peso ?? "?"}kg · ${profile?.altura ?? "?"}cm · ${profile?.idade ?? "?"} anos`}
-        />
-        <Row
-          to="/perfil/calibracao-mao"
-          Icon={Ruler}
-          label="Calibração da Mão (Alta Precisão)"
-          sub={
-            handCalibration
-              ? `Calibrada: ${handCalibration.comprimento_cm} cm · Alta precisão ativa`
-              : "Calibre sua mão para estimar gramas exatas"
-          }
-        />
       </div>
 
-      <div className="border-t border-border" />
-
-      <Link
-        to="/perfil/alterar-senha"
-        className="block transform transition hover:scale-[1.02] active:scale-95"
-      >
-        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
-          <div className="size-12 rounded-2xl bg-secondary flex items-center justify-center">
-            <Lock className="size-5 text-foreground" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-foreground">Alterar Senha</div>
-            <div className="text-[11px] text-muted-foreground font-semibold">
-              Mudar sua senha de acesso
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground" />
-        </Card>
-      </Link>
-
-      <div className="border-t border-border" />
-
-      {/* Configurações de Notificação Component */}
-      <Card className="bg-card rounded-[32px] p-5 border border-border shadow-sm space-y-4">
-        <div className="flex items-center gap-4">
-          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Bell className="size-5 text-primary" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-foreground">Configurações de Notificação</div>
-            <p className="text-[11px] text-muted-foreground font-medium leading-normal">
-              Ativar ou desativar o recebimento de notificações.
-            </p>
-          </div>
-          <Switch
-            checked={pushActive}
-            onCheckedChange={async (checked) => {
-              setPushActive(checked);
-              localStorage.setItem("push_notifications_active", checked ? "true" : "false");
-              // A lógica de notificação simplificada ou removida conforme necessário
-            }}
+      {/* SEÇÃO 2: METAS & SAÚDE */}
+      <div className="space-y-2">
+        <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
+          Metas & Dados Físicos
+        </h2>
+        <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50">
+          <Row
+            to="/perfil/metas"
+            Icon={Crown}
+            label="Metas Diárias"
+            sub={goals ? `${goals.calorias} cal · ${goals.proteina_g}g prot` : "Definir metas"}
+            premium
           />
-        </div>
-      </Card>
-
-      <div className="border-t border-border" />
-
-      {/* Agendador de Lembrete de Água */}
-      <WaterReminderScheduler userId={user?.id} />
-
-      <div className="border-t border-border" />
-
-      {/* Direitos e Privacidade link */}
-      <Link
-        to="/direitos-privacidade"
-        className="block transform transition hover:scale-[1.02] active:scale-95"
-      >
-        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
-          <div className="size-12 rounded-2xl bg-primary/10 flex items-center justify-center">
-            <Shield className="size-5 text-primary" />
-          </div>
-          <div className="flex-1">
-            <div className="font-bold text-sm text-foreground">Direitos e Privacidade</div>
-            <div className="text-[11px] text-muted-foreground font-semibold">
-              Termos de uso, limites de créditos e privacidade de dados
-            </div>
-          </div>
-          <ChevronRight className="size-4 text-muted-foreground" />
+          <Row
+            to="/perfil/objetivo"
+            Icon={Target}
+            label="Objetivo"
+            sub={
+              profile?.objetivo === "perder"
+                ? "Perder peso"
+                : profile?.objetivo === "ganhar"
+                  ? "Ganhar massa"
+                  : "Manter peso"
+            }
+          />
+          <Row
+            to="/perfil/dados-fisicos"
+            Icon={Activity}
+            label="Dados Físicos"
+            sub={`${profile?.peso ?? "?"}kg · ${profile?.altura ?? "?"}cm · ${profile?.idade ?? "?"} anos`}
+          />
+          <Row
+            to="/perfil/calibracao-mao"
+            Icon={Ruler}
+            label="Calibração da Mão (Alta Precisão)"
+            sub={
+              handCalibration
+                ? `Calibrada: ${handCalibration.comprimento_cm} cm · Ativa`
+                : "Calibre sua mão para dados mais precisos"
+            }
+          />
         </Card>
-      </Link>
+      </div>
 
-      <div className="border-t border-border" />
-
-      <Link
-        to="/perfil/excluir-conta"
-        className="block transform transition hover:scale-[1.02] active:scale-95 mb-4"
-      >
-        <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-red-200/20 shadow-sm">
-          <div className="size-12 rounded-2xl bg-red-500/10 flex items-center justify-center">
-            <Trash2 className="size-5 text-red-500" />
-          </div>
-
-          <div className="flex-1">
-            <div className="font-bold text-sm text-red-500">Excluir Conta</div>
-            <div className="text-[11px] text-red-500/70 font-semibold">
-              Remover todos os dados permanentemente
+      {/* SEÇÃO 3: PREFERÊNCIAS & NOTIFICAÇÕES */}
+      <div className="space-y-2">
+        <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
+          Preferências & Lembretes
+        </h2>
+        <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50 p-5 space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="size-11 rounded-2xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Bell className="size-5 text-primary" />
             </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-sm text-foreground">Notificações Push</div>
+              <p className="text-[11px] text-muted-foreground font-medium">
+                Ativar alertas e lembretes diários
+              </p>
+            </div>
+            <Switch
+              checked={pushActive}
+              onCheckedChange={(checked) => {
+                setPushActive(checked);
+                localStorage.setItem("push_notifications_active", checked ? "true" : "false");
+              }}
+            />
           </div>
-          <ChevronRight className="size-4 text-red-500/50" />
+
+          <div className="pt-3">
+            <WaterReminderScheduler userId={user?.id} />
+          </div>
         </Card>
-      </Link>
+      </div>
 
-      <Button
-        variant="outline"
-        className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
-        onClick={() => setShowSignOutDialog(true)}
-      >
-        <LogOut className="size-4 mr-2" /> Sair da Conta
-      </Button>
+      {/* SEÇÃO 4: SEGURANÇA & CONTA */}
+      <div className="space-y-2">
+        <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground px-3">
+          Segurança & Conta
+        </h2>
+        <Card className="bg-card rounded-[32px] border border-border shadow-sm overflow-hidden divide-y divide-border/50">
+          <Row
+            to="/perfil/alterar-senha"
+            Icon={Lock}
+            label="Alterar Senha"
+            sub="Atualize sua senha de acesso"
+          />
+          <Row
+            to="/direitos-privacidade"
+            Icon={Shield}
+            label="Direitos e Privacidade"
+            sub="Termos de uso, limites de créditos e privacidade"
+          />
+          <Row
+            to="/perfil/excluir-conta"
+            Icon={Trash2}
+            label="Excluir Conta"
+            sub="Remover todos os dados permanentemente"
+            danger
+          />
+        </Card>
+      </div>
 
+      {/* Botão Sair */}
+      <div className="pt-2">
+        <Button
+          variant="outline"
+          className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/5 text-red-500 hover:text-red-600 font-bold uppercase tracking-widest text-[10px] transition-all"
+          onClick={() => setShowSignOutDialog(true)}
+        >
+          <LogOut className="size-4 mr-2" /> Sair da Conta
+        </Button>
+      </div>
+
+      {/* Dialog Sair */}
       <Dialog open={showSignOutDialog} onOpenChange={setShowSignOutDialog}>
         <DialogContent className="bg-card border border-border rounded-[32px] p-6 max-w-sm">
           <DialogHeader className="space-y-3">
@@ -429,49 +343,62 @@ export function PerfilPage() {
   );
 }
 
-function ShortcutCard({ to, Icon, label }: { to: string; Icon: typeof Crown; label: string }) {
-  return (
-    <Link to={to} className="transform transition hover:scale-105 active:scale-95">
-      <Card className="bg-card rounded-[28px] p-4 flex flex-col items-center gap-2 text-center hover:bg-secondary/40 transition-all border border-border shadow-sm">
-        <div className="size-11 rounded-2xl bg-secondary flex items-center justify-center">
-          <Icon className="size-5 text-foreground" />
-        </div>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {label}
-        </div>
-      </Card>
-    </Link>
-  );
-}
-
 function Row({
   to,
   Icon,
   label,
   sub,
   premium,
+  badge,
+  badgeColor = "bg-primary text-primary-foreground",
+  danger,
 }: {
   to: string;
   Icon: typeof Crown;
   label: string;
   sub: string;
   premium?: boolean;
+  badge?: string;
+  badgeColor?: string;
+  danger?: boolean;
 }) {
   return (
-    <Link to={to} className="block transform transition hover:scale-[1.01] active:scale-[0.99]">
-      <Card className="bg-card rounded-[32px] p-5 flex items-center gap-4 border border-border shadow-sm">
-        <div className="size-12 rounded-2xl bg-secondary flex items-center justify-center">
-          <Icon className="size-5 text-foreground" />
+    <Link
+      to={to}
+      className="block group transition-colors hover:bg-secondary/40 active:bg-secondary/60"
+    >
+      <div className="p-4 flex items-center gap-3.5">
+        <div
+          className={`size-11 rounded-2xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 ${
+            danger
+              ? "bg-red-500/10 text-red-500"
+              : "bg-secondary text-foreground group-hover:bg-primary/10 group-hover:text-primary"
+          }`}
+        >
+          <Icon className="size-5" />
         </div>
-        <div className="flex-1">
-          <div className="font-bold text-sm flex items-center gap-2 text-foreground">
-            {label}
-            {premium && <Crown className="size-4 text-accent animate-pulse" />}
+        <div className="flex-1 min-w-0 pr-2">
+          <div
+            className={`font-bold text-sm flex items-center gap-2 truncate ${
+              danger ? "text-red-500" : "text-foreground"
+            }`}
+          >
+            <span className="truncate">{label}</span>
+            {premium && <Crown className="size-3.5 text-accent animate-pulse shrink-0" />}
+            {badge && (
+              <span
+                className={`text-[9px] font-black uppercase tracking-widest rounded-full px-2 py-0.5 shadow-sm shrink-0 ${badgeColor}`}
+              >
+                {badge}
+              </span>
+            )}
           </div>
-          <div className="text-[11px] font-semibold text-muted-foreground line-clamp-1">{sub}</div>
+          <div className="text-[11px] font-semibold text-muted-foreground truncate mt-0.5">
+            {sub}
+          </div>
         </div>
-        <ChevronRight className="size-4 text-muted-foreground/50" />
-      </Card>
+        <ChevronRight className="size-4 text-muted-foreground/40 group-hover:translate-x-0.5 transition-transform shrink-0" />
+      </div>
     </Link>
   );
 }

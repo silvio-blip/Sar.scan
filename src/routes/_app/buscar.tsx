@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, memo, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -17,6 +17,68 @@ export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 const today = () => new Date().toISOString().slice(0, 10);
 
 type Food = NutritionFood & { porcao?: string };
+
+interface FoodListItemProps {
+  food: Food;
+  onSelect: (food: Food) => void;
+}
+
+const FoodListItem = memo(function FoodListItem({ food, onSelect }: FoodListItemProps) {
+  const handleClick = useCallback(() => {
+    onSelect(food);
+  }, [food, onSelect]);
+
+  return (
+    <button
+      onClick={handleClick}
+      className="content-auto-item will-change-transform gpu-fast w-full bg-card rounded-[22px] p-3 hover:bg-secondary/20 active:scale-[0.99] border border-border/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05),0_1px_3px_-1px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 flex items-center gap-3.5 group relative overflow-hidden text-left"
+    >
+      {/* Left Side: Soft circle with centered large Emoji */}
+      <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">
+        <FoodIcon name={food.nome} sizeClassName="text-2xl" />
+      </div>
+
+      {/* Center Side: Food Name & Highlighted Calories */}
+      <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center">
+        <span className="font-bold text-sm tracking-tight text-foreground truncate block leading-tight">
+          {food.nome}
+        </span>
+        <span className="text-xs font-black text-rose-500/90 mt-1 flex items-center gap-1">
+          <span className="size-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />
+          {Math.round(food.cal)} kcal
+        </span>
+      </div>
+
+      {/* Right Side: Cleanly mapped macronutrient values */}
+      <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+        <div className="bg-emerald-500/5 px-2 py-1.5 rounded-xl border border-emerald-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+          <span className="block text-[8px] font-black uppercase text-emerald-600/80 tracking-wide">
+            P
+          </span>
+          <span className="block text-[11px] font-black leading-none text-emerald-700 mt-0.5">
+            {Math.round(food.prot)}g
+          </span>
+        </div>
+        <div className="bg-amber-500/5 px-2 py-1.5 rounded-xl border border-amber-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+          <span className="block text-[8px] font-black uppercase text-amber-600/80 tracking-wide">
+            C
+          </span>
+          <span className="block text-[11px] font-black leading-none text-amber-700 mt-0.5">
+            {Math.round(food.carb)}g
+          </span>
+        </div>
+        <div className="bg-indigo-500/5 px-2 py-1.5 rounded-xl border border-indigo-500/10 text-center min-w-[34px] sm:min-w-[40px]">
+          <span className="block text-[8px] font-black uppercase text-indigo-600/80 tracking-wide">
+            G
+          </span>
+          <span className="block text-[11px] font-black leading-none text-indigo-700 mt-0.5">
+            {Math.round(food.gord)}g
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+});
 
 export function BuscarPage() {
   const { user } = useAuth();
@@ -79,6 +141,16 @@ export function BuscarPage() {
   }, [allFoods, selectedCategory, q]);
 
   const showList = useMemo(() => variants ?? filtered, [variants, filtered]);
+
+  const [displayLimit, setDisplayLimit] = useState(50);
+
+  useEffect(() => {
+    setDisplayLimit(50);
+  }, [q, selectedCategory, variants]);
+
+  const visibleList = useMemo(() => {
+    return showList.slice(0, displayLimit);
+  }, [showList, displayLimit]);
 
   const adicionar = async (food: NutritionFood, p: number, fotoUrl?: string | null) => {
     if (!user) return;
@@ -285,60 +357,22 @@ export function BuscarPage() {
       )}
 
       <div className="flex flex-col gap-3">
-        {showList.map((f, i) => {
-          return (
-            <button
-              key={`${f.nome}-${i}`}
-              onClick={() => setSelected(f)}
-              className="w-full bg-card rounded-[22px] p-3 hover:bg-secondary/20 active:scale-[0.99] border border-border/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05),0_1px_3px_-1px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 flex items-center gap-3.5 group relative overflow-hidden text-left"
-            >
-              {/* Left Side: Soft circle with centered large Emoji */}
-              <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">
-                <FoodIcon name={f.nome} sizeClassName="text-2xl" />
-              </div>
-
-              {/* Center Side: Food Name & Highlighted Calories */}
-              <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center">
-                <span className="font-bold text-sm tracking-tight text-foreground truncate block leading-tight">
-                  {f.nome}
-                </span>
-                <span className="text-xs font-black text-rose-500/90 mt-1 flex items-center gap-1">
-                  <span className="size-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />
-                  {Math.round(f.cal)} kcal
-                </span>
-              </div>
-
-              {/* Right Side: Cleanly mapped macronutrient values */}
-              <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
-                <div className="bg-emerald-500/5 px-2 py-1.5 rounded-xl border border-emerald-500/10 text-center min-w-[34px] sm:min-w-[40px]">
-                  <span className="block text-[8px] font-black uppercase text-emerald-600/80 tracking-wide">
-                    P
-                  </span>
-                  <span className="block text-[11px] font-black leading-none text-emerald-700 mt-0.5">
-                    {Math.round(f.prot)}g
-                  </span>
-                </div>
-                <div className="bg-amber-500/5 px-2 py-1.5 rounded-xl border border-amber-500/10 text-center min-w-[34px] sm:min-w-[40px]">
-                  <span className="block text-[8px] font-black uppercase text-amber-600/80 tracking-wide">
-                    C
-                  </span>
-                  <span className="block text-[11px] font-black leading-none text-amber-700 mt-0.5">
-                    {Math.round(f.carb)}g
-                  </span>
-                </div>
-                <div className="bg-indigo-500/5 px-2 py-1.5 rounded-xl border border-indigo-500/10 text-center min-w-[34px] sm:min-w-[40px]">
-                  <span className="block text-[8px] font-black uppercase text-indigo-600/80 tracking-wide">
-                    G
-                  </span>
-                  <span className="block text-[11px] font-black leading-none text-indigo-700 mt-0.5">
-                    {Math.round(f.gord)}g
-                  </span>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        {visibleList.map((f, i) => (
+          <FoodListItem key={`${f.nome}-${i}`} food={f} onSelect={setSelected} />
+        ))}
       </div>
+
+      {displayLimit < showList.length && (
+        <div className="pt-4 pb-2 text-center">
+          <Button
+            variant="outline"
+            className="rounded-full px-6 font-bold text-xs h-11 border-border bg-secondary hover:bg-muted text-foreground shadow-sm"
+            onClick={() => setDisplayLimit((prev) => prev + 50)}
+          >
+            Carregar mais ({showList.length - displayLimit} restantes)
+          </Button>
+        </div>
+      )}
 
       {!isLoading && showList.length === 0 && q.trim() && !variants && (
         <p className="text-center text-sm text-muted-foreground py-4">

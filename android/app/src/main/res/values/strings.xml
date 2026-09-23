@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">NutriScan AI</string>
+    <string name="title_activity_main">NutriScan AI</string>
+    <string name="profile_title">Perfil</string>
+    <string name="edit_profile">Editar Perfil</string>
+    <string name="admin_panel">Painel de Administração</string>
+    <string name="subscriptions">Assinaturas</string>
+    <string name="rewards">Recompensas</string>
+    <string name="reading_history">Histórico de Leitura</string>
+    <string name="daily_goals">Metas Diárias</string>
+    <string name="objective">Objetivo</string>
+    <string name="physical_data">Dados Físicos</string>
+    <string name="hand_calibration">Calibração da Mão (Alta Precisão)</string>
+    <string name="change_password">Alterar Senha</string>
+    <string name="notifications">Configurações de Notificação</string>
+    <string name="privacy">Direitos e Privacidade</string>
+    <string name="delete_account">Excluir Conta</string>
+    <string name="sign_out">Sair da Conta</string>
+    <string name="search_food">Buscar Alimento</string>
+    <string name="scanner_title">Scanner Nutricional</string>
+    <string name="ai_nutritionist">Nutricionista IA</string>
+</resources>

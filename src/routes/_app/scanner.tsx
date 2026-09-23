@@ -11,6 +11,8 @@ import { useCamera } from "@/lib/CameraContext";
 import { detectFoodStatus, type FoodDetectionStatus } from "@/lib/local-food-detector";
 import { FoodDetectionStatusBadge } from "@/components/food-status-badge";
 import { getSavedHandCalibration, type HandCalibrationData } from "@/lib/hand-calibration";
+import { optimizeImageForUpload } from "@/lib/image-optimizer";
+import { safeFetchJson } from "@/lib/safe-fetch";
 import { Button } from "@/components/ui/button";
 import {
   Camera,
@@ -108,24 +110,24 @@ export function ScannerPage() {
     const loop = async (timestamp: number) => {
       if (!active) return;
 
-      // Executa checagem periódica a cada 400ms para economia total de bateria e fluidez máxima
-      if (timestamp - lastScanTime >= 400) {
+      // Executa checagem periódica a cada 650ms para economia total de bateria e fluidez máxima de 60fps
+      if (timestamp - lastScanTime >= 650) {
         lastScanTime = timestamp;
         if (videoRef.current && streamOn && !scanning && !detected && !picked) {
           try {
             const status = await detectFoodStatus(videoRef.current);
             if (active) {
-              setFoodStatus(status);
+              setFoodStatus((prev) => (prev?.hasFood === status.hasFood ? prev : status));
             }
           } catch {
             // Silencioso em caso de frame transitório
           }
-        } else if (foodStatus?.hasFood) {
-          setFoodStatus(null);
         }
       }
 
-      frameId = requestAnimationFrame(loop);
+      if (active) {
+        frameId = requestAnimationFrame(loop);
+      }
     };
 
     frameId = requestAnimationFrame(loop);
@@ -134,7 +136,7 @@ export function ScannerPage() {
       active = false;
       cancelAnimationFrame(frameId);
     };
-  }, [streamOn, scanning, detected, picked, foodStatus?.hasFood]);
+  }, [streamOn, scanning, detected, picked]);
 
   useEffect(() => {
     startCamera("environment");
@@ -378,7 +380,11 @@ export function ScannerPage() {
     }
     setScanning(true);
     try {
-      const dataUrl = await resizeAndCompressImage(rawUrl);
+      const dataUrl = await optimizeImageForUpload(rawUrl, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+      });
       setScanPhoto(dataUrl);
 
       // --- DIAGNÓSTICO / HEALTH CHECK COORDENADO ---
@@ -398,12 +404,6 @@ export function ScannerPage() {
         );
       }
 
-      if (supabaseUrl.includes("localhost") || supabaseUrl.includes("127.0.0.1")) {
-        console.warn(
-          "⚠️ ATENÇÃO: A URL aponta para localhost! Em emuladores Android, use 'http://10.0.2.2:54321' em vez de localhost/127.0.0.1 para acessar as funções locais.",
-        );
-      }
-
       let textoFinal = "";
 
       const failedCount = Number(localStorage.getItem("failed_scans_count") || "0");
@@ -414,7 +414,7 @@ export function ScannerPage() {
 
       const callServerProxy = async (imageStr: string) => {
         console.log("🔌 Escaneando alimento diretamente...");
-        const response = await fetch(getApiUrl("/api/gemini-scan"), {
+        const result = await safeFetchJson<{ result: string }>(getApiUrl("/api/gemini-scan"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -425,13 +425,11 @@ export function ScannerPage() {
           }),
         });
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Erro HTTP ${response.status}`);
+        if (!result.ok || !result.data?.result) {
+          throw new Error(result.error || `Erro HTTP ${result.status}`);
         }
 
-        const responseData = await response.json();
-        return responseData.result;
+        return result.data.result;
       };
 
       textoFinal = await callServerProxy(dataUrl);
@@ -759,7 +757,7 @@ export function ScannerPage() {
                     Escala Biométrica Ativa ({handCalibration.comprimento_cm} cm)
                   </span>
                   <span className="text-[11px] text-muted-foreground block truncate">
-                    Coloque sua mão ao lado do prato para medir gramas exatas.
+                    Coloque sua mão ao lado do prato para obter dados mais precisos.
                   </span>
                 </div>
               </div>
@@ -859,11 +857,11 @@ export function ScannerPage() {
               <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-primary rounded-bl-2xl opacity-60" />
               <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-primary rounded-br-2xl opacity-60" />
 
-              {/* Scanning Green Line */}
+              {/* Scanning Green Line (GPU accelerated transform) */}
               <motion.div
-                animate={{ top: scanning ? ["10%", "90%", "10%"] : ["35%", "65%", "35%"] }}
+                animate={{ y: scanning ? [10, 260, 10] : [70, 180, 70] }}
                 transition={{ duration: scanning ? 1.5 : 4, repeat: Infinity, ease: "easeInOut" }}
-                className={`absolute left-4 right-4 h-[2px] transition-all duration-500 ${scanning ? "bg-primary shadow-[0_0_15px_var(--color-primary)] opacity-100" : "bg-primary opacity-20"} blur-[0.5px]`}
+                className={`absolute top-0 left-4 right-4 h-[2px] will-change-transform gpu-fast transition-all duration-500 ${scanning ? "bg-primary shadow-[0_0_15px_var(--color-primary)] opacity-100" : "bg-primary opacity-20"} blur-[0.5px]`}
               />
             </div>
 
@@ -998,7 +996,7 @@ export function ScannerPage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.12 + i * 0.04 }}
                 onClick={() => setPicked(f)}
-                className="w-full bg-card rounded-[22px] p-3 hover:bg-secondary/20 active:scale-[0.99] border border-border/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05),0_1px_3px_-1px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 flex items-center gap-3.5 group relative overflow-hidden text-left"
+                className="content-auto-item will-change-transform gpu-fast w-full bg-card rounded-[22px] p-3 hover:bg-secondary/20 active:scale-[0.99] border border-border/80 shadow-[0_2px_8px_-3px_rgba(0,0,0,0.05),0_1px_3px_-1px_rgba(0,0,0,0.04)] hover:shadow-md transition-all duration-300 flex items-center gap-3.5 group relative overflow-hidden text-left"
               >
                 {/* Left Side: Soft circle with centered large Emoji */}
                 <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">

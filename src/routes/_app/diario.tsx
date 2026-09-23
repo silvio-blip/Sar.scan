@@ -41,6 +41,49 @@ type Entry = {
   foto_url: string | null;
 };
 
+interface DiarioEntryCardProps {
+  entry: Entry;
+  onOpen: (entry: Entry) => void;
+}
+
+const DiarioEntryCard = React.memo(function DiarioEntryCard({
+  entry,
+  onOpen,
+}: DiarioEntryCardProps) {
+  const handleClick = React.useCallback(() => {
+    onOpen(entry);
+  }, [entry, onOpen]);
+
+  return (
+    <button
+      onClick={handleClick}
+      className="content-auto-card will-change-transform gpu-fast w-full text-left flex items-center gap-4 rounded-[28px] p-4 bg-card border border-border/50 hover:bg-secondary/20 hover:border-border transition-all group relative overflow-hidden shadow-sm active:scale-[0.99]"
+    >
+      <div className="size-16 rounded-2xl overflow-hidden shadow-sm border border-border shrink-0 group-hover:scale-105 transition-transform duration-500">
+        <FoodImage
+          src={entry.foto_url}
+          alt={entry.nome}
+          className="w-full h-full object-cover group-hover:brightness-105 transition-all"
+        />
+      </div>
+      <div className="flex-1 min-w-0 relative z-10">
+        <div className="font-bold text-base text-foreground truncate mb-1 tracking-tight">
+          {entry.nome}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black text-primary uppercase tracking-widest">
+            {Math.round(Number(entry.calorias))} KCAL
+          </span>
+          <div className="size-1 rounded-full bg-border" />
+          <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
+            P{Math.round(Number(entry.prot))} · C{Math.round(Number(entry.carbs))}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+});
+
 export function DiarioPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -441,38 +484,7 @@ export function DiarioPage() {
 
         <div className="grid gap-3">
           {entries && entries.length > 0 ? (
-            entries.map((e, idx) => (
-              <motion.button
-                key={e.id}
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.05 * idx }}
-                onClick={() => setOpen(e)}
-                className="w-full text-left flex items-center gap-4 rounded-[28px] p-4 bg-card border border-border/50 hover:bg-secondary/20 hover:border-border transition-all group relative overflow-hidden shadow-sm"
-              >
-                <div className="size-16 rounded-2xl overflow-hidden shadow-sm border border-border shrink-0 group-hover:scale-105 transition-transform duration-500">
-                  <FoodImage
-                    src={e.foto_url}
-                    alt={e.nome}
-                    className="w-full h-full object-cover group-hover:brightness-105 transition-all"
-                  />
-                </div>
-                <div className="flex-1 min-w-0 relative z-10">
-                  <div className="font-bold text-base text-foreground truncate mb-1 tracking-tight">
-                    {e.nome}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black text-primary uppercase tracking-widest">
-                      {Math.round(Number(e.calorias))} KCAL
-                    </span>
-                    <div className="size-1 rounded-full bg-border" />
-                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">
-                      P{Math.round(Number(e.prot))} · C{Math.round(Number(e.carbs))}
-                    </span>
-                  </div>
-                </div>
-              </motion.button>
-            ))
+            entries.map((e) => <DiarioEntryCard key={e.id} entry={e} onOpen={setOpen} />)
           ) : (
             <div className="py-16 text-center bg-secondary/15 rounded-[36px] border border-border/40 flex flex-col items-center gap-3">
               <div className="size-10 rounded-full bg-primary-soft flex items-center justify-center">

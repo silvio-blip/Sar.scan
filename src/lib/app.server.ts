@@ -44,6 +44,43 @@ function cleanApiKey(val: string | undefined | null): string | null {
   return cleaned;
 }
 
+function formatAiError(err: any): string {
+  const raw = (err?.message || String(err || "")).toLowerCase();
+  if (
+    raw.includes("quota") ||
+    raw.includes("resource_exhausted") ||
+    raw.includes("429") ||
+    raw.includes("rate_limit") ||
+    raw.includes("ratelimit") ||
+    raw.includes("limit") ||
+    raw.includes("exceeded") ||
+    raw.includes("cota") ||
+    raw.includes("custo")
+  ) {
+    return "O limite de uso ou de custos da Inteligência Artificial foi atingido temporariamente. Por favor, tente novamente mais tarde ou atualize seu plano.";
+  }
+  if (
+    raw.includes("overloaded") ||
+    raw.includes("unavailable") ||
+    raw.includes("503") ||
+    raw.includes("timed out") ||
+    raw.includes("timeout")
+  ) {
+    return "A Inteligência Artificial está temporariamente sobrecarregada no momento. Por favor, tente novamente em alguns instantes.";
+  }
+  if (
+    raw.includes("api_key") ||
+    raw.includes("api key") ||
+    raw.includes("unauthenticated") ||
+    raw.includes("invalid argument")
+  ) {
+    return "Erro de configuração da chave de API da Inteligência Artificial. Verifique as configurações de sistema.";
+  }
+  return (
+    err?.message || "Ocorreu um erro ao processar a solicitação com a Inteligência Artificial."
+  );
+}
+
 export function createApiApp() {
   const app = express();
 
@@ -298,7 +335,7 @@ O formato deve ser exatamente:
       res.json({ result: textoFinal });
     } catch (error: any) {
       console.error("[Server] /api/gemini-scan error:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: formatAiError(error) });
     }
   });
 
@@ -411,7 +448,7 @@ Se a mão ou o objeto não puderem ser identificados com segurança, faltar algu
       console.error("[Server] /api/calibrate-hand error:", err);
       res.status(500).json({
         sucesso: false,
-        erro: err.message || "Erro ao processar calibração biométrica da mão.",
+        erro: formatAiError(err),
       });
     }
   });
@@ -424,7 +461,7 @@ Se a mão ou o objeto não puderem ser identificados com segurança, faltar algu
       res.json(result);
     } catch (error: unknown) {
       console.error("[Server] /api/edge error:", error);
-      const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      const msg = formatAiError(error);
       res.status(500).json({ error: msg });
     }
   });

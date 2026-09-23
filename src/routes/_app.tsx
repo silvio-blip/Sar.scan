@@ -7,7 +7,7 @@ import {
   Navigate,
   useRouter,
 } from "@tanstack/react-router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,21 +23,25 @@ function usePrefetchPopularFoods(enabled: boolean) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
-    qc.prefetchQuery({
-      queryKey: ["foods_popular"],
-      staleTime: 1000 * 60 * 60 * 24,
-      queryFn: async () => {
-        const { data: cached } = await supabase
-          .from("foods_basic")
-          .select("nome, cal, carb, prot, gord, foto_url")
-          .limit(100);
-        if (cached && cached.length >= 50) return cached.map((c) => ({ ...c, porcao: "1 porção" }));
-        const { data } = await supabase.functions.invoke("search-food-ai", {
-          body: { mode: "popular" },
-        });
-        return data?.alimentos ?? [];
-      },
-    });
+    const timer = setTimeout(() => {
+      qc.prefetchQuery({
+        queryKey: ["foods_popular"],
+        staleTime: 1000 * 60 * 60 * 24,
+        queryFn: async () => {
+          const { data: cached } = await supabase
+            .from("foods_basic")
+            .select("nome, cal, carb, prot, gord, foto_url")
+            .limit(100);
+          if (cached && cached.length >= 50)
+            return cached.map((c) => ({ ...c, porcao: "1 porção" }));
+          const { data } = await supabase.functions.invoke("search-food-ai", {
+            body: { mode: "popular" },
+          });
+          return data?.alimentos ?? [];
+        },
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [enabled, qc]);
 }
 
@@ -88,6 +92,10 @@ function AppLayout() {
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length !== 1 || isChatRoute) return;
+    if (document.querySelector("[role='dialog'], [data-state='open'], .fixed.inset-0")) {
+      touchStartRef.current = null;
+      return;
+    }
     const target = e.target as HTMLElement | null;
     if (
       target?.closest(
@@ -271,6 +279,13 @@ function AppLayout() {
 
   usePrefetchPopularFoods(!!user && !!profile?.onboarding_done);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      router.preloadRoute({ to: "/buscar" }).catch(() => {});
+    }, 200);
+    return () => clearTimeout(t);
+  }, [router]);
+
   if (loading)
     return (
       <div className="min-h-screen bg-background grid place-items-center">
@@ -301,7 +316,15 @@ function AppLayout() {
         <div
           className={`w-full flex-1 flex flex-col min-h-0 ${isChatRoute ? "px-0" : "px-4 sm:px-6"}`}
         >
-          <Outlet />
+          <Suspense
+            fallback={
+              <div className="flex-1 grid place-items-center py-24">
+                <Loader2 className="size-8 animate-spin text-primary" />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
         </div>
       </main>
 
@@ -344,6 +367,12 @@ function AppLayout() {
                   key={to}
                   to={to}
                   preload="intent"
+                  onMouseEnter={() => {
+                    if (to === "/buscar") router.preloadRoute({ to: "/buscar" });
+                  }}
+                  onTouchStart={() => {
+                    if (to === "/buscar") router.preloadRoute({ to: "/buscar" });
+                  }}
                   aria-label={label}
                   className={`relative flex items-center justify-center h-12 rounded-[20px] transition-all duration-150 transform-gpu active:scale-95 ${
                     active

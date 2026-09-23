@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useRouter, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { getApiUrl } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,6 +49,163 @@ type Message = {
   created_at: string;
   is_sending?: boolean;
 };
+
+interface ChatMessageItemProps {
+  msg: Message;
+  planStatus?: "accepted" | "rejected";
+  onAcceptPlan: (
+    msgId: string,
+    msgContent: string,
+    plan: { meta?: string; dieta?: string },
+  ) => void;
+  onRejectPlan: (msgId: string, msgContent: string) => void;
+}
+
+const ChatMessageItem = memo(function ChatMessageItem({
+  msg,
+  planStatus,
+  onAcceptPlan,
+  onRejectPlan,
+}: ChatMessageItemProps) {
+  const isUser = msg.role === "user";
+
+  const { cleanContent, plan, status } = useMemo(() => {
+    if (isUser) return { cleanContent: msg.content, plan: null, status: null };
+
+    const statusMatch = msg.content.match(/\[PLAN_STATUS:(accepted|rejected)\]/);
+    const parsedStatus = statusMatch ? (statusMatch[1] as "accepted" | "rejected") : null;
+    const finalStatus = planStatus || parsedStatus;
+
+    const match = msg.content.match(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s);
+    if (!match) {
+      const clean = msg.content.replace(/\[PLAN_STATUS:[^\]]+\]/g, "").trim();
+      return { cleanContent: clean, plan: null, status: finalStatus };
+    }
+    const clean = msg.content
+      .replace(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s, "")
+      .replace(/\[PLAN_STATUS:[^\]]+\]/g, "")
+      .trim();
+    try {
+      const p = JSON.parse(match[1]);
+      return { cleanContent: clean, plan: p, status: finalStatus };
+    } catch {
+      return { cleanContent: clean, plan: null, status: finalStatus };
+    }
+  }, [msg.content, isUser, planStatus]);
+
+  return (
+    <div
+      className={`content-auto-msg flex items-start gap-2.5 gpu-fast ${
+        isUser ? "justify-end" : "justify-start"
+      }`}
+    >
+      {!isUser && (
+        <div className="size-8 rounded-xl bg-gradient-to-tr from-primary to-emerald-400 flex items-center justify-center text-white shrink-0 shadow-sm mt-0.5">
+          <Sparkles className="size-4" />
+        </div>
+      )}
+
+      <div
+        className={`max-w-[85%] sm:max-w-[78%] px-4 py-3 rounded-[22px] text-xs sm:text-sm leading-relaxed shadow-sm ${
+          isUser
+            ? "bg-primary text-primary-foreground rounded-tr-sm font-medium"
+            : "bg-card border border-border/80 text-foreground rounded-tl-sm"
+        }`}
+      >
+        {isUser ? (
+          <div className="space-y-2">
+            {(() => {
+              const imgMatch = msg.content.match(/\[IMAGE:(data:image\/[^\]]+)\]/);
+              const cleanText = msg.content
+                .replace(/\[IMAGE:data:image\/[^\]]+\]/g, "")
+                .replace("📷 [Imagem enviada]", "")
+                .trim();
+              return (
+                <>
+                  {imgMatch && (
+                    <img
+                      src={imgMatch[1]}
+                      alt="Prato enviado"
+                      className="rounded-xl max-h-52 w-full object-cover shadow-sm border border-white/20 mb-1"
+                      loading="lazy"
+                    />
+                  )}
+                  {cleanText && <p className="whitespace-pre-wrap">{cleanText}</p>}
+                </>
+              );
+            })()}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="prose prose-xs sm:prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-foreground">
+              <Markdown remarkPlugins={[remarkGfm]}>{cleanContent}</Markdown>
+            </div>
+
+            {plan && (
+              <div className="mt-3 p-3 rounded-xl bg-secondary/80 border border-primary/30 space-y-2">
+                <p className="text-xs font-bold text-primary flex items-center gap-1.5">
+                  <Sparkles className="size-3.5" /> Plano Nutricional Proposto
+                </p>
+                {plan.meta && (
+                  <p className="text-[11px] text-foreground">
+                    <span className="font-bold">Meta:</span> {plan.meta}
+                  </p>
+                )}
+                {plan.dieta && (
+                  <p className="text-[11px] text-foreground">
+                    <span className="font-bold">Dieta/Estratégia:</span> {plan.dieta}
+                  </p>
+                )}
+
+                {status === "accepted" ? (
+                  <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-lg">
+                    <span>✅ Plano Aceito e Aplicado ao Perfil</span>
+                  </div>
+                ) : status === "rejected" ? (
+                  <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-rose-500 bg-rose-500/10 px-3 py-2 rounded-lg">
+                    <span>❌ Plano Recusado</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => onAcceptPlan(msg.id, msg.content, plan)}
+                      className="h-8 rounded-lg bg-primary text-primary-foreground font-bold text-xs shadow-sm hover:bg-primary/95"
+                    >
+                      Aceitar Plano
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRejectPlan(msg.id, msg.content)}
+                      className="h-8 rounded-lg border-border text-xs font-bold hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
+                    >
+                      Recusar
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div
+          className={`flex items-center gap-1 mt-1 text-[9px] ${
+            isUser ? "text-primary-foreground/70 justify-end" : "text-muted-foreground"
+          }`}
+        >
+          <span>
+            {new Date(msg.created_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+          {isUser && <CheckCheck className="size-3" />}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const QUICK_PROMPTS = [
   {
@@ -142,103 +299,83 @@ export function ChatPage() {
   });
   const [planStatuses, setPlanStatuses] = useState<Record<string, "accepted" | "rejected">>({});
 
-  const parsePlanFromContent = (content: string, msgId: string) => {
-    const statusMatch = content.match(/\[PLAN_STATUS:(accepted|rejected)\]/);
-    const parsedStatus = statusMatch ? (statusMatch[1] as "accepted" | "rejected") : null;
-    const status = planStatuses[msgId] || parsedStatus;
+  const handleAcceptPlan = useCallback(
+    async (msgId: string, msgContent: string, plan: { meta?: string; dieta?: string }) => {
+      if (!user) return;
+      try {
+        setPlanStatuses((prev) => ({ ...prev, [msgId]: "accepted" }));
 
-    const match = content.match(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s);
-    if (!match) {
-      const cleanContent = content.replace(/\[PLAN_STATUS:[^\]]+\]/g, "").trim();
-      return { cleanContent, plan: null, status };
-    }
-    const cleanContent = content
-      .replace(/\[APLICAR_MELHORIAS:\s*(\{.*?\})\]/s, "")
-      .replace(/\[PLAN_STATUS:[^\]]+\]/g, "")
-      .trim();
-    try {
-      const plan = JSON.parse(match[1]);
-      return { cleanContent, plan, status };
-    } catch {
-      return { cleanContent, plan: null, status };
-    }
-  };
+        let objetivoValue: "perder" | "manter" | "ganhar" | undefined;
+        const metaLower = (plan.meta || "").toLowerCase();
+        if (
+          metaLower.includes("perder") ||
+          metaLower.includes("emagrecer") ||
+          metaLower.includes("secar") ||
+          metaLower.includes("gordura")
+        ) {
+          objetivoValue = "perder";
+        } else if (
+          metaLower.includes("ganhar") ||
+          metaLower.includes("massa") ||
+          metaLower.includes("hipertrofia") ||
+          metaLower.includes("superávit") ||
+          metaLower.includes("superavit")
+        ) {
+          objetivoValue = "ganhar";
+        } else if (metaLower.includes("manter") || metaLower.includes("manutenção")) {
+          objetivoValue = "manter";
+        }
 
-  const handleAcceptPlan = async (
-    msgId: string,
-    msgContent: string,
-    plan: { meta?: string; dieta?: string },
-  ) => {
-    if (!user) return;
-    try {
-      setPlanStatuses((prev) => ({ ...prev, [msgId]: "accepted" }));
+        if (objetivoValue) {
+          await supabase.from("profiles").update({ objetivo: objetivoValue }).eq("id", user.id);
+        }
 
-      let objetivoValue: "perder" | "manter" | "ganhar" | undefined;
-      const metaLower = (plan.meta || "").toLowerCase();
-      if (
-        metaLower.includes("perder") ||
-        metaLower.includes("emagrecer") ||
-        metaLower.includes("secar") ||
-        metaLower.includes("gordura")
-      ) {
-        objetivoValue = "perder";
-      } else if (
-        metaLower.includes("ganhar") ||
-        metaLower.includes("massa") ||
-        metaLower.includes("hipertrofia") ||
-        metaLower.includes("superávit") ||
-        metaLower.includes("superavit")
-      ) {
-        objetivoValue = "ganhar";
-      } else if (metaLower.includes("manter") || metaLower.includes("manutenção")) {
-        objetivoValue = "manter";
+        const res = await fetch(getApiUrl("/api/edge"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "update-plan-status",
+            body: { msg_id: msgId, status: "accepted", user_id: user.id },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
+
+        toast.success("Plano nutricional aplicado com sucesso ao seu perfil!");
+        await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
+        await qc.invalidateQueries({ queryKey: ["user_profile", user.id] });
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao aplicar plano.");
       }
+    },
+    [user, qc],
+  );
 
-      if (objetivoValue) {
-        await supabase.from("profiles").update({ objetivo: objetivoValue }).eq("id", user.id);
+  const handleRejectPlan = useCallback(
+    async (msgId: string, msgContent: string) => {
+      if (!user) return;
+      try {
+        setPlanStatuses((prev) => ({ ...prev, [msgId]: "rejected" }));
+
+        const res = await fetch(getApiUrl("/api/edge"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: "update-plan-status",
+            body: { msg_id: msgId, status: "rejected", user_id: user.id },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
+
+        toast.info("Plano nutricional recusado.");
+        await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
+      } catch (e: any) {
+        toast.error(e?.message || "Erro ao recusar plano.");
       }
-
-      const res = await fetch(getApiUrl("/api/edge"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "update-plan-status",
-          body: { msg_id: msgId, status: "accepted", user_id: user.id },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
-
-      toast.success("Plano nutricional aplicado com sucesso ao seu perfil!");
-      await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
-      await qc.invalidateQueries({ queryKey: ["user_profile", user.id] });
-    } catch (e: any) {
-      toast.error(e?.message || "Erro ao aplicar plano.");
-    }
-  };
-
-  const handleRejectPlan = async (msgId: string, msgContent: string) => {
-    if (!user) return;
-    try {
-      setPlanStatuses((prev) => ({ ...prev, [msgId]: "rejected" }));
-
-      const res = await fetch(getApiUrl("/api/edge"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "update-plan-status",
-          body: { msg_id: msgId, status: "rejected", user_id: user.id },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
-
-      toast.info("Plano nutricional recusado.");
-      await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
-    } catch (e: any) {
-      toast.error(e?.message || "Erro ao recusar plano.");
-    }
-  };
+    },
+    [user, qc],
+  );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -626,135 +763,15 @@ export function ChatPage() {
                 </div>
               </div>
             ) : (
-              allMessages.map((msg) => {
-                const isUser = msg.role === "user";
-                return (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className={`flex items-start gap-2.5 ${
-                      isUser ? "justify-end" : "justify-start"
-                    }`}
-                  >
-                    {!isUser && (
-                      <div className="size-8 rounded-xl bg-gradient-to-tr from-primary to-emerald-400 flex items-center justify-center text-white shrink-0 shadow-sm mt-0.5">
-                        <Sparkles className="size-4" />
-                      </div>
-                    )}
-
-                    <div
-                      className={`max-w-[85%] sm:max-w-[78%] px-4 py-3 rounded-[22px] text-xs sm:text-sm leading-relaxed shadow-sm ${
-                        isUser
-                          ? "bg-primary text-primary-foreground rounded-tr-sm font-medium"
-                          : "bg-card border border-border/80 text-foreground rounded-tl-sm"
-                      }`}
-                    >
-                      {isUser ? (
-                        <div className="space-y-2">
-                          {(() => {
-                            const imgMatch = msg.content.match(/\[IMAGE:(data:image\/[^\]]+)\]/);
-                            const cleanText = msg.content
-                              .replace(/\[IMAGE:data:image\/[^\]]+\]/g, "")
-                              .replace("📷 [Imagem enviada]", "")
-                              .trim();
-                            return (
-                              <>
-                                {imgMatch && (
-                                  <img
-                                    src={imgMatch[1]}
-                                    alt="Prato enviado"
-                                    className="rounded-xl max-h-52 w-full object-cover shadow-sm border border-white/20 mb-1"
-                                  />
-                                )}
-                                {cleanText && <p className="whitespace-pre-wrap">{cleanText}</p>}
-                              </>
-                            );
-                          })()}
-                        </div>
-                      ) : (
-                        (() => {
-                          const { cleanContent, plan, status } = parsePlanFromContent(
-                            msg.content,
-                            msg.id,
-                          );
-                          return (
-                            <div className="space-y-3">
-                              <div className="prose prose-xs sm:prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-ul:my-1 prose-li:my-0.5 prose-strong:text-foreground">
-                                <Markdown remarkPlugins={[remarkGfm]}>{cleanContent}</Markdown>
-                              </div>
-
-                              {plan && (
-                                <div className="mt-3 p-3 rounded-xl bg-secondary/80 border border-primary/30 space-y-2">
-                                  <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-                                    <Sparkles className="size-3.5" /> Plano Nutricional Proposto
-                                  </p>
-                                  {plan.meta && (
-                                    <p className="text-[11px] text-foreground">
-                                      <span className="font-bold">Meta:</span> {plan.meta}
-                                    </p>
-                                  )}
-                                  {plan.dieta && (
-                                    <p className="text-[11px] text-foreground">
-                                      <span className="font-bold">Dieta/Estratégia:</span>{" "}
-                                      {plan.dieta}
-                                    </p>
-                                  )}
-
-                                  {status === "accepted" ? (
-                                    <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-lg">
-                                      <span>✅ Plano Aceito e Aplicado ao Perfil</span>
-                                    </div>
-                                  ) : status === "rejected" ? (
-                                    <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-rose-500 bg-rose-500/10 px-3 py-2 rounded-lg">
-                                      <span>❌ Plano Recusado</span>
-                                    </div>
-                                  ) : (
-                                    <div className="grid grid-cols-2 gap-2 pt-1">
-                                      <Button
-                                        size="sm"
-                                        onClick={() => handleAcceptPlan(msg.id, msg.content, plan)}
-                                        className="h-8 rounded-lg bg-primary text-primary-foreground font-bold text-xs shadow-sm hover:bg-primary/95"
-                                      >
-                                        Aceitar Plano
-                                      </Button>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => handleRejectPlan(msg.id, msg.content)}
-                                        className="h-8 rounded-lg border-border text-xs font-bold hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
-                                      >
-                                        Recusar
-                                      </Button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()
-                      )}
-
-                      <div
-                        className={`flex items-center gap-1 mt-1 text-[9px] ${
-                          isUser
-                            ? "text-primary-foreground/70 justify-end"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        <span>
-                          {new Date(msg.created_at).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </span>
-                        {isUser && <CheckCheck className="size-3" />}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })
+              allMessages.map((msg) => (
+                <ChatMessageItem
+                  key={msg.id}
+                  msg={msg}
+                  planStatus={planStatuses[msg.id]}
+                  onAcceptPlan={handleAcceptPlan}
+                  onRejectPlan={handleRejectPlan}
+                />
+              ))
             )}
 
             {sending && (
