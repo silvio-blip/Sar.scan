@@ -21,10 +21,16 @@ function initVoices() {
 
       // Prioriza vozes em Português (pt-PT ou pt-BR) de alta qualidade nativas do sistema
       const ptPtVoice = voices.find(
-        (v) => v.lang === "pt-PT" || v.lang.startsWith("pt-PT") || v.lang.toLowerCase().includes("portugal"),
+        (v) =>
+          v.lang === "pt-PT" ||
+          v.lang.startsWith("pt-PT") ||
+          v.lang.toLowerCase().includes("portugal"),
       );
       const ptBrVoice = voices.find(
-        (v) => v.lang === "pt-BR" || v.lang.startsWith("pt-BR") || v.lang.toLowerCase().includes("brazil"),
+        (v) =>
+          v.lang === "pt-BR" ||
+          v.lang.startsWith("pt-BR") ||
+          v.lang.toLowerCase().includes("brazil"),
       );
       const anyPtVoice = voices.find((v) => v.lang.toLowerCase().startsWith("pt"));
 

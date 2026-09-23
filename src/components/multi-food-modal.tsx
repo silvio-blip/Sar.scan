@@ -31,6 +31,7 @@ type Props = {
   items: ScannedFood[] | null;
   photo?: string | null;
   feedbackMeta?: string | null;
+  calibratedByHand?: boolean;
   onClose: () => void;
   onConfirm: (items: (ScannedFood & { porcoes: number })[]) => Promise<void> | void;
 };
@@ -42,7 +43,14 @@ const NUTRIENT_BLOCKS = [
   { key: "gord", label: "Gordura", unit: "g", Icon: Droplet, color: "text-sky-300" },
 ] as const;
 
-export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm }: Props) {
+export function MultiFoodModal({
+  items,
+  photo,
+  feedbackMeta,
+  calibratedByHand,
+  onClose,
+  onConfirm,
+}: Props) {
   const [list, setList] = useState<(ScannedFood & { porcoes: number })[]>([]);
   const [busy, setBusy] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -109,9 +117,16 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
     <Dialog open={!!items} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto rounded-[28px] border border-border bg-background/96 p-0 shadow-2xl">
         <div className="p-5 pb-4 space-y-4">
-          <DialogTitle className="font-display text-xl flex items-center gap-2">
-            <span className="size-2 rounded-full bg-sage" /> Itens detectados
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="font-display text-xl flex items-center gap-2">
+              <span className="size-2 rounded-full bg-sage" /> Itens detectados
+            </DialogTitle>
+            {calibratedByHand && (
+              <span className="text-[10px] font-bold tracking-wider uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                🖐️ Escala Biométrica
+              </span>
+            )}
+          </div>
           <DialogDescription className="sr-only">
             Confirme as porções e adicione ao diário
           </DialogDescription>

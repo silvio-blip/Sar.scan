@@ -26,6 +26,8 @@ import {
   AlertTriangle,
   RefreshCw,
   Loader2,
+  Ruler,
+  Sparkles,
 } from "lucide-react";
 import {
   Dialog,
@@ -40,6 +42,7 @@ import { isInstalledApp } from "@/lib/utils";
 import { isCapacitor } from "@/lib/google-play.functions";
 import { Switch } from "@/components/ui/switch";
 import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
+import { getSavedHandCalibration } from "@/lib/hand-calibration";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
@@ -57,6 +60,7 @@ export function PerfilPage() {
   const [micGranted, setMicGranted] = useState<boolean | null>(null);
   const [showSignOutDialog, setShowSignOutDialog] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [handCalibration, setHandCalibration] = useState(() => getSavedHandCalibration());
 
   useEffect(() => {
     if (typeof navigator !== "undefined" && navigator.permissions) {
@@ -271,6 +275,16 @@ export function PerfilPage() {
           Icon={Activity}
           label="Dados Físicos"
           sub={`${profile?.peso ?? "?"}kg · ${profile?.altura ?? "?"}cm · ${profile?.idade ?? "?"} anos`}
+        />
+        <Row
+          to="/perfil/calibracao-mao"
+          Icon={Ruler}
+          label="Calibração da Mão (Alta Precisão)"
+          sub={
+            handCalibration
+              ? `Calibrada: ${handCalibration.comprimento_cm} cm · Alta precisão ativa`
+              : "Calibre sua mão para estimar gramas exatas"
+          }
         />
       </div>
 

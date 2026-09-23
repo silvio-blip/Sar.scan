@@ -46,3 +46,35 @@ export async function initAppNotifications() {
     console.warn("Error initializing notifications:", e);
   }
 }
+
+/**
+ * Envia notificação push nativa se o usuário estiver usando o APK nativo instalado (Android / Capacitor).
+ * No navegador, não faz nada silenciosamente.
+ */
+export async function sendNativePushNotification(title: string, body: string) {
+  try {
+    if (!isInstalledApp()) return;
+
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== "granted") {
+      const reqPerm = await LocalNotifications.requestPermissions();
+      if (reqPerm.display !== "granted") return;
+    }
+
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: Math.floor(Math.random() * 900000) + 100000,
+          title,
+          body,
+          schedule: { at: new Date(Date.now() + 200) },
+          sound: "default",
+          smallIcon: "ic_stat_icon_config_sample",
+        },
+      ],
+    });
+    console.log(`[Native Push] Notificação disparada com sucesso: ${title}`);
+  } catch (err) {
+    console.warn("[Native Push] Erro ao disparar notificação nativa:", err);
+  }
+}

@@ -9,7 +9,7 @@ type Props = {
 
 /**
  * Micro Indicador de Detecção de Alimentos
- * 
+ *
  * Bolinha ultra-compacta no canto superior esquerdo da área da câmera:
  * - Verde Ativado (Micro LED Verde com pulso sutil): Alimento detectado.
  * - Cinza Desativado (Micro LED Cinza neutro): Nenhum alimento detectado.

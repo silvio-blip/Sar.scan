@@ -1,6 +1,6 @@
 /**
  * Detector de Alimentos Universal em Tempo Real (On-Device Vision)
- * 
+ *
  * - 100% Gratuito (Zero chamadas de API, zero consumo de servidor).
  * - Reconhece qualquer alimento real (cebolas, tomates, legumes, frutas, carnes, pães, pratos, etc.).
  * - Combina IA leve MobileNet com análise óptica de textura, saliência e saturação orgânica de alimentos.
@@ -141,9 +141,7 @@ function analyzeVisualFoodSaliency(video: HTMLVideoElement): boolean {
 /**
  * Analisa o frame da câmera e retorna se há alimento presente
  */
-export async function detectFoodStatus(
-  video: HTMLVideoElement,
-): Promise<FoodDetectionStatus> {
+export async function detectFoodStatus(video: HTMLVideoElement): Promise<FoodDetectionStatus> {
   if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
     return { hasFood: false };
   }
@@ -158,7 +156,11 @@ export async function detectFoodStatus(
     // 1. Checagem por IA Neural COCO-SSD (se o modelo estiver carregado)
     const model = await loadCocoModel();
     if (model) {
-      const predictions: Array<{ class: string; score: number }> = await model.detect(video, 4, 0.45);
+      const predictions: Array<{ class: string; score: number }> = await model.detect(
+        video,
+        4,
+        0.45,
+      );
       for (const pred of predictions) {
         const cls = pred.class.toLowerCase().trim();
         if (FOOD_CLASSES.has(cls) || cls.includes("food") || cls.includes("fruit")) {

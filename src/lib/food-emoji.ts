@@ -258,7 +258,15 @@ const KEYWORD_GROUPS: Array<{ keywords: string[]; emoji: string }> = [
   { keywords: ["maca", "macas", "apple", "fuji", "gala", "red delicious"], emoji: "🍎" },
   { keywords: ["maca verde", "green apple", "granny smith"], emoji: "🍏" },
   {
-    keywords: ["banana", "bananas", "banana prata", "nanica", "banana da terra", "caturra", "platano"],
+    keywords: [
+      "banana",
+      "bananas",
+      "banana prata",
+      "nanica",
+      "banana da terra",
+      "caturra",
+      "platano",
+    ],
     emoji: "🍌",
   },
   {
@@ -634,16 +642,7 @@ const KEYWORD_GROUPS: Array<{ keywords: string[]; emoji: string }> = [
 
   // --- SOPAS & PRATOS DE PANELA ---
   {
-    keywords: [
-      "sopa",
-      "sopas",
-      "soup",
-      "caldo",
-      "canja",
-      "ensopado",
-      "guisado",
-      "veloute",
-    ],
+    keywords: ["sopa", "sopas", "soup", "caldo", "canja", "ensopado", "guisado", "veloute"],
     emoji: "🍲",
   },
   {
@@ -791,13 +790,20 @@ export function getFoodEmoji(name: string): string {
   for (const token of tokens) {
     if (token.length < 4) continue;
     // Ignora palavras genéricas
-    if (["alimento", "gramas", "porcao", "fatia", "unidade", "copo", "prato", "colher"].includes(token)) {
+    if (
+      ["alimento", "gramas", "porcao", "fatia", "unidade", "copo", "prato", "colher"].includes(
+        token,
+      )
+    ) {
       continue;
     }
     for (const group of KEYWORD_GROUPS) {
       for (const keyword of group.keywords) {
         const cleanKeyword = normalizeFoodText(keyword);
-        if (cleanKeyword.length >= 5 && (token.startsWith(cleanKeyword) || cleanKeyword.startsWith(token))) {
+        if (
+          cleanKeyword.length >= 5 &&
+          (token.startsWith(cleanKeyword) || cleanKeyword.startsWith(token))
+        ) {
           return group.emoji;
         }
       }

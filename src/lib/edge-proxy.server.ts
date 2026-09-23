@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 
 import { getAppSettings } from "./settings.server.js";
 import { loadEnv } from "./env-loader.server.js";
+import { generateContentWithOptimalModel } from "./gemini-client.server.js";
 
 // Garantir que as variáveis do .env estão carregadas
 loadEnv();
@@ -217,57 +218,15 @@ async function geminiCall(opts: {
   responseSchema?: unknown;
   maxTokens?: number;
 }) {
-  const key = await getGeminiKey();
-  const ai = new GoogleGenAI({
-    apiKey: key,
-    httpOptions: {
-      headers: {
-        "User-Agent": "aistudio-build",
-      },
-    },
+  const { response, modelUsed } = await generateContentWithOptimalModel({
+    contents: opts.contents as any,
+    systemInstruction: opts.systemInstruction,
+    responseSchema: opts.responseSchema,
+    responseMimeType: opts.responseSchema ? "application/json" : undefined,
+    maxOutputTokens: opts.maxTokens ?? 1024,
   });
 
-  const modelsToTry = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
-  let response: any = null;
-  let lastErr: any = null;
-
-  for (const m of modelsToTry) {
-    try {
-      response = await ai.models.generateContent({
-        model: m,
-        contents: opts.contents,
-        config: {
-          maxOutputTokens: opts.maxTokens ?? 1024,
-          ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
-          ...(opts.responseSchema
-            ? { responseMimeType: "application/json", responseSchema: opts.responseSchema as any }
-            : {}),
-        },
-      });
-      break;
-    } catch (err: any) {
-      lastErr = err;
-      console.warn(`[Gemini SDK] Model ${m} failed:`, err?.message || err);
-    }
-  }
-
-  if (!response) {
-    const msg = lastErr?.message || String(lastErr);
-    console.error("[Gemini SDK Error All Models Failed]", lastErr);
-    if (
-      msg.includes("429") ||
-      msg.includes("503") ||
-      msg.includes("resource_exhausted") ||
-      msg.includes("quota") ||
-      msg.includes("UNAVAILABLE")
-    ) {
-      throw new Error(
-        "Serviço da Gemini temporariamente sobrecarregado (503/429). Tente novamente em alguns segundos.",
-      );
-    }
-    throw new Error(`Erro na API do Gemini: ${msg}`);
-  }
-
+  console.log(`[geminiCall] Sucesso utilizando modelo otimizado: ${modelUsed}`);
   const text = response.text ?? "";
   return { text, raw: response };
 }

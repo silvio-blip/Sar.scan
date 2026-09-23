@@ -9,7 +9,7 @@ type Props = {
 
 /**
  * Overlay de Delineamento Físico de Alimentos em Tempo Real
- * 
+ *
  * Traça o contorno exato da estrutura física/silhueta do alimento (recorte orgânico),
  * sem retângulos e sem nomes, proporcionando feedback visual imediato de que a câmera
  * reconheceu e fixou naquele alimento específico.
@@ -49,7 +49,11 @@ export function FoodDetectionOverlay({ targets, onTargetClick }: Props) {
             if (!target.svgPath) return null;
 
             return (
-              <g key={target.id} className="pointer-events-auto cursor-pointer" onClick={() => onTargetClick?.(target)}>
+              <g
+                key={target.id}
+                className="pointer-events-auto cursor-pointer"
+                onClick={() => onTargetClick?.(target)}
+              >
                 {/* 1. Preenchimento de realce sutil na silhueta interna do alimento */}
                 <motion.path
                   d={target.svgPath}

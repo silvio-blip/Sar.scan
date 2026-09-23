@@ -17,6 +17,8 @@ import {
 import { applyCampaignBonusInternal } from "./campaign.server.js";
 import { supabaseAdmin } from "../integrations/supabase/client.server.js";
 import { getAppSettings } from "./settings.server.js";
+import { generateContentWithOptimalModel } from "./gemini-client.server.js";
+import { scanQueue } from "./scan-queue.server.js";
 
 loadEnv();
 
@@ -81,6 +83,43 @@ export function createApiApp() {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  // Endpoints da Fila Inteligente de Processamento (Queue)
+  app.post("/api/queue/enqueue", (req, res) => {
+    try {
+      const { type = "food_scan", payload, user_id: userId } = req.body || {};
+      if (!payload) {
+        return res.status(400).json({ error: "Payload da requisição não fornecido." });
+      }
+
+      const queueInfo = scanQueue.enqueue(type, payload, userId);
+      res.json({
+        success: true,
+        ...queueInfo,
+      });
+    } catch (err: any) {
+      console.error("[Queue API] Erro ao enfileirar:", err);
+      res.status(500).json({ error: err.message || "Erro ao adicionar à fila." });
+    }
+  });
+
+  app.get("/api/queue/status/:jobId", (req, res) => {
+    try {
+      const { jobId } = req.params;
+      const statusInfo = scanQueue.getJobStatus(jobId);
+      if (!statusInfo) {
+        return res.status(404).json({ error: "Job não encontrado ou expirado." });
+      }
+      res.json(statusInfo);
+    } catch (err: any) {
+      console.error("[Queue API] Erro ao consultar status:", err);
+      res.status(500).json({ error: err.message || "Erro ao consultar status da fila." });
+    }
+  });
+
+  app.get("/api/queue/overview", (_req, res) => {
+    res.json(scanQueue.getOverview());
+  });
+
   // Proxy for invokeEdge / gemini-scan
   app.post("/api/gemini-scan", async (req, res) => {
     try {
@@ -88,6 +127,7 @@ export function createApiApp() {
         base64Data: rawBase64Data,
         user_id: userId,
         deduct_on_fail: deductOnFail,
+        hand_calibration: handCalibration,
       } = req.body || {};
 
       let eligibility: any = null;
@@ -149,8 +189,25 @@ Dados e Perfil do Utilizador:
         }
       }
 
+      let handCalibrationInstruction = "";
+      if (handCalibration && handCalibration.comprimento_cm) {
+        handCalibrationInstruction = `
+INSTRUÇÃO ESPECIAL DE ALTA PRECISÃO MÉTRICA COM MÃO BIOMÉTRICA:
+O utilizador possui uma calibração biométrica da sua mão registrada no sistema:
+- Comprimento da mão do utilizador (do pulso até a ponta do dedo médio): ${handCalibration.comprimento_cm} cm
+- Largura da palma do utilizador (transversal): ${handCalibration.largura_palma_cm || 8.0} cm
+- Objeto de referência utilizado: ${handCalibration.objeto_referencia || "cartão"}
+
+DIRETRIZ DE VISÃO ESPACIAL 3D:
+Verifique atentamente se a mão humana do utilizador está visível na imagem (ao lado do prato, segurando o prato/recipiente ou próxima aos alimentos).
+- Se a mão ESTIVER VISÍVEL: Use as medidas anatômicas calibradas acima como régua métrica biométrica de escala real no espaço 3D para calcular o diâmetro, altura, volume em cm³ e o peso exato em gramas dos alimentos com máxima precisão. No campo "calibrado_por_mao", retorne true.
+- Se a mão NÃO estiver visível: Estime as porções visualmente pelo tamanho do prato ou recipientes convencionais e defina "calibrado_por_mao": false.
+`;
+      }
+
       const promptText = `Analisa esta imagem de comida no contexto do perfil e objetivos do utilizador.
 ${userProfileContext}
+${handCalibrationInstruction}
 
 IMPORTANTE: Se a imagem NÃO contiver alimentos ou refeições visíveis (por exemplo, se for apenas uma pessoa, vestuário/calças, o chão, teto, objetos aleatórios, paisagens, ou uma imagem preta/ilegível), você DEVE obrigatoriamente retornar a lista de "itens" totalmente vazia: "itens": []. Nunca crie itens fictícios para indicar a ausência de comida (como "Nenhum alimento visível", "Sem alimentos" ou similares). No "feedback_meta", explique de forma amigável em português (PT) que nenhum alimento foi detectado na imagem e peça para enviar uma foto clara da refeição.
 
@@ -167,51 +224,29 @@ O formato deve ser exatamente:
       "gord": number 
     }
   ],
+  "calibrado_por_mao": boolean,
   "feedback_meta": "string breve, direta e encorajadora em português (PT) explicando ao utilizador como este alimento impacta a sua meta específica (seja perder gordura, manter ou ganhar massa), indicando se o aproxima ou afasta da meta, balanço calórico/nutricional e uma recomendação prática."
 }`;
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            "User-Agent": "aistudio-build",
-          },
-        },
-      });
-
-      let aiResponse;
-      const modelsToTry = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
-      let lastError: any = null;
-
-      for (const m of modelsToTry) {
-        try {
-          aiResponse = await ai.models.generateContent({
-            model: m,
-            contents: [
+      const { response: aiResponse, modelUsed } = await generateContentWithOptimalModel({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: promptText },
               {
-                role: "user",
-                parts: [
-                  { text: promptText },
-                  {
-                    inlineData: {
-                      mimeType,
-                      data: base64Data,
-                    },
-                  },
-                ],
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
               },
             ],
-          });
-          break;
-        } catch (e: any) {
-          lastError = e;
-          console.warn(`[Server] Model ${m} failed, trying next...`, e?.message || e);
-        }
-      }
+          },
+        ],
+        maxOutputTokens: 2048,
+      });
 
-      if (!aiResponse) {
-        throw lastError || new Error("Falha ao gerar resposta com os modelos Gemini.");
-      }
+      console.log(`[gemini-scan] Sucesso utilizando modelo: ${modelUsed}`);
 
       const textoFinal = aiResponse.text || "";
       let hasFoods = false;
@@ -258,6 +293,120 @@ O formato deve ser exatamente:
     } catch (error: any) {
       console.error("[Server] /api/gemini-scan error:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Endpoint de Calibração Biométrica da Mão
+  app.post("/api/calibrate-hand", async (req, res) => {
+    try {
+      const {
+        base64Data: rawBase64Data,
+        reference_type: referenceType = "card",
+        user_id: userId,
+      } = req.body || {};
+
+      if (!rawBase64Data) {
+        return res.status(400).json({ sucesso: false, erro: "Imagem não fornecida." });
+      }
+
+      const settings = await getAppSettings().catch(() => ({}) as any);
+      const candidateKeys = [
+        settings?.gemini_api_key,
+        settings?.GEMINI_API_KEY,
+        settings?.gemini_key,
+        settings?.GEMINI_KEY,
+        settings?.GoogleGeminiApiKey,
+        process.env.GEMINI_API_KEY,
+        process.env.VITE_GEMINI_API_KEY,
+      ];
+      const rawApiKey = candidateKeys.find((k) => k && k !== "undefined" && k !== "null");
+      const apiKey = cleanApiKey(rawApiKey);
+
+      if (!apiKey) {
+        throw new Error("Chave GEMINI_API_KEY não configurada.");
+      }
+
+      const parts = (rawBase64Data || "").split(",");
+      const base64Data = parts.length > 1 ? parts[1] : parts[0];
+      const mimeTypeMatch = parts.length > 1 ? parts[0].match(/:(.*?);/) : null;
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : "image/jpeg";
+
+      const promptCalib = `Você é um sistema especialista em visão computacional biométrica, medição óptica e calibração espacial de alta precisão.
+O utilizador capturou uma foto de sua mão aberta/espalmada sobre uma superfície plana ao lado de um objeto de referência do tipo: "${referenceType}".
+
+Dimensões físicas padronizadas dos objetos de referência:
+- "card": Cartão Plástico Padrão ISO (Crédito, Débito, ID, Cidadão) -> Largura exata = 85.60 mm (8.56 cm), Altura = 53.98 mm (5.40 cm).
+- "coin_2eur": Moeda de 2 Euros -> Diâmetro exato = 25.75 mm (2.575 cm).
+- "coin_1real": Moeda de 1 Real Brasileiro -> Diâmetro exato = 27.00 mm (2.70 cm).
+- "coin_1eur": Moeda de 1 Euro -> Diâmetro exato = 23.25 mm (2.325 cm).
+- "bottle_cap": Tampa de garrafa PET padrão -> Diâmetro = 28.00 mm (2.80 cm).
+- "ruler": Régua ou fita métrica com graduação em centímetros/milímetros.
+
+INSTRUÇÕES DE ANÁLISE:
+1. Detecte o objeto de referência na imagem e meça seus pixels de largura/diâmetro para definir a relação Pixels por Milímetro (PPM).
+2. Detecte a mão humana aberta do usuário posicionada no mesmo plano focal.
+3. Meça com precisão biométrica em centímetros (com uma casa decimal):
+   - "comprimento_cm": Distância linear do início do pulso (vinco da base da mão) até o ápice da ponta do dedo médio (geralmente entre 15.5 cm e 22.0 cm para adultos).
+   - "largura_palma_cm": Largura transversal da palma medida na base dos nós dos dedos (geralmente entre 6.8 cm e 9.8 cm).
+   - "largura_indicador_cm": Largura média do dedo indicador (geralmente entre 1.6 cm e 2.3 cm).
+4. Verifique a coerência anatômica da mão humana.
+5. Calcule um índice de confiança da detecção (0 a 100%).
+
+Retorne ESTRITAMENTE um objeto JSON no seguinte formato (sem blocos de código markdown desnecessários):
+{
+  "sucesso": true,
+  "comprimento_cm": 18.5,
+  "largura_palma_cm": 8.2,
+  "largura_indicador_cm": 1.9,
+  "objeto_detectado": "Cartão Bancário",
+  "confianca_percentual": 96,
+  "mensagem": "Calibração concluída com altíssima precisão! A sua mão mede 18.5 cm de comprimento e 8.2 cm de largura.",
+  "dicas": [
+    "Ao escanear um prato de comida, posicione sua mão aberta ao lado do prato para que a IA use a sua escala real.",
+    "Mantenha a câmera paralela ao prato (ângulo superior) para garantir máxima precisão das gramas."
+  ]
+}
+
+Se a mão ou o objeto não puderem ser identificados com segurança, faltar algum elemento ou a imagem estiver inadequada, retorne ESTRITAMENTE:
+{
+  "sucesso": false,
+  "motivo_falha": "objeto_ausente" | "mao_ausente" | "imagem_escura" | "mao_fechada" | "objeto_errado" | "distancia_incorreta" | "outro",
+  "titulo_erro": "Título curto e claro em português (ex: 'Cartão não encontrado na imagem', 'Mão fora do enquadramento', 'Imagem muito escura ou borrada')",
+  "erro": "Explicação detalhada e amigável em português (PT) sobre exatamente o que impediu a verificação da mão (ex: 'Não encontramos o cartão de referência ao lado da sua mão', 'A mão precisa estar aberta sobre a mesa para calcularmos os dedos', etc.)",
+  "dica_correcao": "Orientação prática e direta de como posicionar a mão e o objeto na próxima foto para dar certo."
+}`;
+
+      const { response: aiResponse, modelUsed } = await generateContentWithOptimalModel({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: promptCalib },
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
+              },
+            ],
+          },
+        ],
+        maxOutputTokens: 1024,
+      });
+
+      console.log(`[calibrate-hand] Sucesso utilizando modelo: ${modelUsed}`);
+
+      const responseText = aiResponse.text || "";
+      const cleanJson = responseText.replace(/```json\n?|\n?```/g, "").trim();
+      const parsedResult = JSON.parse(cleanJson);
+
+      res.json(parsedResult);
+    } catch (err: any) {
+      console.error("[Server] /api/calibrate-hand error:", err);
+      res.status(500).json({
+        sucesso: false,
+        erro: err.message || "Erro ao processar calibração biométrica da mão.",
+      });
     }
   });
 

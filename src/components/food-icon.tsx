@@ -28,7 +28,7 @@ function isValidEmoji(val?: string | null): boolean {
 
 /**
  * Componente `FoodIcon`
- * 
+ *
  * Encapsula a lógica completa de renderização de emojis de alimentos, bebidas e refeições.
  * Garante que:
  * 1. Se fornecido `emoji` e este for válido, ele é renderizado.

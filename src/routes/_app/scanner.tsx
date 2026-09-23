@@ -10,6 +10,7 @@ import { FoodIcon } from "@/components/food-icon";
 import { useCamera } from "@/lib/CameraContext";
 import { detectFoodStatus, type FoodDetectionStatus } from "@/lib/local-food-detector";
 import { FoodDetectionStatusBadge } from "@/components/food-status-badge";
+import { getSavedHandCalibration, type HandCalibrationData } from "@/lib/hand-calibration";
 import { Button } from "@/components/ui/button";
 import {
   Camera,
@@ -29,6 +30,8 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  Ruler,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ScannedFood } from "@/components/multi-food-modal";
@@ -86,6 +89,15 @@ export function ScannerPage() {
   const [feedbackMeta, setFeedbackMeta] = useState<string | null>(null);
   const [picked, setPicked] = useState<NutritionFood | null>(null);
   const [foodStatus, setFoodStatus] = useState<FoodDetectionStatus | null>(null);
+  const [calibratedByHand, setCalibratedByHand] = useState(false);
+  const [handCalibration, setHandCalibration] = useState<HandCalibrationData | null>(() =>
+    getSavedHandCalibration(),
+  );
+
+  // Recarrega calibração caso o usuário tenha acabado de calibrar
+  useEffect(() => {
+    setHandCalibration(getSavedHandCalibration());
+  }, []);
 
   // Detecção inteligente e leve de alimentos na câmera (100% no cliente sem sobrecarga)
   useEffect(() => {
@@ -398,7 +410,7 @@ export function ScannerPage() {
       const shouldDeductOnFail = failedCount >= 3;
 
       const callServerProxy = async (imageStr: string) => {
-        console.log("🔌 A usar proxy de servidor...");
+        console.log("🔌 Escaneando alimento diretamente...");
         const response = await fetch(getApiUrl("/api/gemini-scan"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -406,6 +418,7 @@ export function ScannerPage() {
             base64Data: imageStr,
             user_id: user?.id,
             deduct_on_fail: shouldDeductOnFail,
+            hand_calibration: handCalibration,
           }),
         });
 
@@ -437,6 +450,14 @@ export function ScannerPage() {
 
       const rawItens = parsedResult.itens || parsedResult.items || [];
       const metaFeedback = parsedResult.feedback_meta || null;
+      const isCalibratedByHand = !!parsedResult.calibrado_por_mao;
+      setCalibratedByHand(isCalibratedByHand);
+
+      if (isCalibratedByHand) {
+        toast.success("🖐️ Escala Biométrica Ativa!", {
+          description: "Mão detectada. Porções e gramas calculadas com base na sua escala real.",
+        });
+      }
 
       // Filtrar itens de ausência ou placeholders para garantir consistência total na detecção
       const itens = rawItens.filter((item: any) => {
@@ -722,6 +743,55 @@ export function ScannerPage() {
           <NutritionTip />
         </div>
 
+        {/* Banner de Calibração Biométrica da Mão */}
+        <div className="w-full relative z-10">
+          {handCalibration ? (
+            <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="size-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <Ruler className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="font-bold text-foreground block truncate">
+                    Escala Biométrica Ativa ({handCalibration.comprimento_cm} cm)
+                  </span>
+                  <span className="text-[11px] text-muted-foreground block truncate">
+                    Coloque sua mão ao lado do prato para medir gramas exatas.
+                  </span>
+                </div>
+              </div>
+              <Link
+                to="/perfil/calibracao-mao"
+                className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1.5 rounded-xl shrink-0 transition"
+              >
+                Ajustar
+              </Link>
+            </div>
+          ) : (
+            <Link
+              to="/perfil/calibracao-mao"
+              className="p-3 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-3 text-xs hover:bg-primary/15 transition active:scale-[0.99] block"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="size-8 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                  <Sparkles className="size-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-foreground block">
+                    Quer dados e porções mais precisos?
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Calibre sua mão uma vez no perfil para ter medições com maior precisão.
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold text-primary bg-primary/20 px-2.5 py-1.5 rounded-xl shrink-0">
+                Calibrar
+              </span>
+            </Link>
+          )}
+        </div>
+
         {/* Camera/Results View Area */}
         <div className="w-full relative min-h-[360px]">
           <motion.div
@@ -866,11 +936,13 @@ export function ScannerPage() {
         items={detected}
         photo={scanPhoto}
         feedbackMeta={feedbackMeta}
+        calibratedByHand={calibratedByHand}
         onClose={() => {
           stopSpeech();
           setDetected(null);
           setScanPhoto(null);
           setFeedbackMeta(null);
+          setCalibratedByHand(false);
         }}
         onConfirm={confirmar}
       />
