@@ -409,6 +409,9 @@ export function ScannerPage() {
       const failedCount = Number(localStorage.getItem("failed_scans_count") || "0");
       const shouldDeductOnFail = failedCount >= 3;
 
+      const hasValidCalibration =
+        !!handCalibration && Number(handCalibration.comprimento_cm || 0) > 0;
+
       const callServerProxy = async (imageStr: string) => {
         console.log("🔌 Escaneando alimento diretamente...");
         const response = await fetch(getApiUrl("/api/gemini-scan"), {
@@ -418,7 +421,7 @@ export function ScannerPage() {
             base64Data: imageStr,
             user_id: user?.id,
             deduct_on_fail: shouldDeductOnFail,
-            hand_calibration: handCalibration,
+            hand_calibration: hasValidCalibration ? handCalibration : null,
           }),
         });
 
@@ -450,7 +453,7 @@ export function ScannerPage() {
 
       const rawItens = parsedResult.itens || parsedResult.items || [];
       const metaFeedback = parsedResult.feedback_meta || null;
-      const isCalibratedByHand = !!parsedResult.calibrado_por_mao;
+      const isCalibratedByHand = hasValidCalibration && !!parsedResult.calibrado_por_mao;
       setCalibratedByHand(isCalibratedByHand);
 
       if (isCalibratedByHand) {

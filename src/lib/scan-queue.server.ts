@@ -185,18 +185,24 @@ Dados e Perfil do Utilizador:
     }
 
     let handCalibrationInstruction = "";
-    if (handCalibration && handCalibration.comprimento_cm) {
+    if (handCalibration && Number(handCalibration.comprimento_cm) > 0) {
       handCalibrationInstruction = `
 INSTRUÇÃO ESPECIAL DE ALTA PRECISÃO MÉTRICA COM MÃO BIOMÉTRICA:
-O utilizador possui uma calibração biométrica da sua mão registrada no sistema:
+O utilizador possui uma calibração biométrica da sua mão VALIDADA E REGISTRADA no sistema:
 - Comprimento da mão do utilizador (do pulso até a ponta do dedo médio): ${handCalibration.comprimento_cm} cm
 - Largura da palma do utilizador (transversal): ${handCalibration.largura_palma_cm || 8.0} cm
-- Objeto de referência utilizado: ${handCalibration.objeto_referencia || "cartão"}
+- Objeto de referência utilizado na calibração: ${handCalibration.objeto_referencia || "cartão"}
 
 DIRETRIZ DE VISÃO ESPACIAL 3D:
 Verifique atentamente se a mão humana do utilizador está visível na imagem (ao lado do prato, segurando o prato/recipiente ou próxima aos alimentos).
-- Se a mão ESTIVER VISÍVEL: Use as medidas anatômicas calibradas acima como régua métrica biométrica de escala real no espaço 3D para calcular o diâmetro, altura, volume em cm³ e o peso exato em gramas dos alimentos com máxima precisão. No campo "calibrado_por_mao", retorne true.
+- Se a mão ESTIVER VISÍVEL: Use as medidas anatômicas calibradas acima como régua biométrica de escala real no espaço 3D para calcular o diâmetro, altura, volume em cm³ e o peso exato em gramas dos alimentos com máxima precisão. No campo "calibrado_por_mao", retorne true.
 - Se a mão NÃO estiver visível: Estime as porções visualmente pelo tamanho do prato ou recipientes convencionais e defina "calibrado_por_mao": false.
+`;
+    } else {
+      handCalibrationInstruction = `
+INSTRUÇÃO IMPORTANTE DE ESCALA:
+O utilizador NÃO POSSUI calibração biométrica de mão registrada no sistema.
+REGRA ABSOLUTA: Caso qualquer mão humana apareça na foto (segurando o prato, talher ou descansando na mesa), IGNORE-A TOTALMENTE para fins de calibração métrica e NÃO tente deduzir medidas anatômicas da mão. Calcule as porções e gramas exclusivamente com base no tamanho convencional do prato, taça, talher ou embalagem. No campo "calibrado_por_mao", você DEVE OBRIGATORIAMENTE retornar false.
 `;
     }
 
