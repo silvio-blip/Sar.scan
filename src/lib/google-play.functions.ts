@@ -41,6 +41,12 @@ export const ALL_PLAY_SUBSCRIPTION_IDS = [
   "sar_scan_anual",
   "sar_scan_premium",
   "assinatura",
+  "semanal",
+  "mensal",
+  "anual",
+  "sar_scan_pass_semanal",
+  "sar_scan_pass_mensal",
+  "sar_scan_pass_anual",
 ];
 
 export const ALL_PLAY_INAPP_IDS = [
@@ -636,198 +642,206 @@ export async function requestGooglePlayPurchase(
 
   try {
     let targetPlan = (purchaseOpts.customPlanId || getBasePlanId(productId)).toLowerCase();
-    let finalProductId = productId;
+    const finalProductId = productId;
 
-    // Mapeia para os novos IDs de produtos únicos (Passe Semanal, Mensal, Anual e Créditos)
+    // Candidatos de identificadores para o plano desejado
+    let candidateIds: string[] = [];
     if (productId === "weekly" || productId.includes("semanal") || targetPlan === "semanal") {
-      finalProductId = PLAY_PRODUCT_IDS.weekly; // "sar_scan_pass_semanal"
+      candidateIds = [
+        "semanal",
+        "sar_scan_pass_semanal",
+        "sar_scan_semanal",
+        "sar_scan_assinatura_semanal",
+      ];
       targetPlan = "semanal";
     } else if (productId === "yearly" || productId.includes("anual") || targetPlan === "anual") {
-      finalProductId = PLAY_PRODUCT_IDS.yearly; // "sar_scan_pass_anual"
+      candidateIds = [
+        "anual",
+        "sar_scan_pass_anual",
+        "sar_scan_anual",
+        "sar_scan_assinatura_anual",
+      ];
       targetPlan = "anual";
     } else if (
       productId === "credits" ||
       productId.includes("credito") ||
       productId.includes("credit")
     ) {
-      finalProductId = PLAY_PRODUCT_IDS.credits; // "sar_scan_creditos"
+      candidateIds = [
+        "creditos",
+        "credito",
+        "sar_scan_creditos",
+        "sar_scan_credits",
+        "sar_scan_50_creditos",
+        "50_creditos",
+      ];
       targetPlan = "credits";
     } else if (productId === "monthly" || productId.includes("mensal") || targetPlan === "mensal") {
-      finalProductId = PLAY_PRODUCT_IDS.monthly; // "sar_scan_pass_mensal"
+      candidateIds = [
+        "mensal",
+        "sar_scan_pass_mensal",
+        "sar_scan_mensal",
+        "sar_scan_assinatura_mensal",
+        "sar_scan_assinatura",
+      ];
       targetPlan = "mensal";
+    } else {
+      candidateIds = [productId];
     }
 
-    // Identifica se é Produto Único (INAPP: Passes de Acesso ou Créditos) ou Subscrição Legada
-    const isOneTimeProduct =
-      finalProductId.startsWith("sar_scan_pass_") ||
-      finalProductId.includes("pass_") ||
-      finalProductId.includes("credito") ||
-      finalProductId.includes("credit") ||
-      finalProductId === "sar_scan_creditos" ||
-      !finalProductId.includes("assinatura");
+    // Se o cache já descobriu um produto válido da Google Play para esta chave, coloca-o no topo
+    const cachedMatch =
+      cachedPlayPrices[productId]?.productId || cachedPlayPrices[targetPlan]?.productId;
+    if (cachedMatch && !candidateIds.includes(cachedMatch)) {
+      candidateIds.unshift(cachedMatch);
+    } else if (cachedMatch) {
+      candidateIds = [cachedMatch, ...candidateIds.filter((id) => id !== cachedMatch)];
+    }
 
     let transaction: any = null;
-    const successfulProductId: string = finalProductId;
+    let successfulProductId = candidateIds[0];
+    let isOneTimeProduct = true;
+    let lastError: any = null;
 
-    if (isOneTimeProduct) {
-      // Modelo Free Fire: Produto único consumível com acesso temporal gerenciado pelo backend
-      console.log(
-        `[Play IAP - Free Fire Model] Iniciando compra de produto único: ${finalProductId}, accountId: ${obfuscatedAccountId || "NENHUM"}`,
-      );
+    // Tenta cada candidato com suporte a fallback entre INAPP e SUBS
+    for (const testId of candidateIds) {
+      const isCandidateOneTime =
+        testId.startsWith("sar_scan_pass_") ||
+        testId.includes("pass_") ||
+        testId.includes("credito") ||
+        testId.includes("credit") ||
+        testId === "sar_scan_creditos" ||
+        testId === "creditos" ||
+        testId === "semanal" ||
+        testId === "mensal" ||
+        testId === "anual";
 
-      // Limpeza preventiva de transações não consumidas no dispositivo para evitar 'ITEM_ALREADY_OWNED'
-      try {
-        const { purchases } = await NativePurchases.getPurchases({
-          productType: PURCHASE_TYPE.INAPP,
-        });
-        if (purchases && Array.isArray(purchases)) {
-          for (const p of purchases) {
-            if (
-              p.purchaseToken &&
-              (p.productIdentifier === finalProductId || !p.productIdentifier)
-            ) {
-              console.log(
-                "[Play IAP] Consumindo pendência prévia de produto único no aparelho:",
-                p.productIdentifier,
-              );
-              await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
-            }
-          }
-        }
-      } catch (cleanPendingErr) {
-        console.debug("[Play IAP] Nota na limpeza preventiva de produtos in-app:", cleanPendingErr);
-      }
+      // Tipos para tentar: se for compatível com produto único, tenta INAPP primeiro depois SUBS
+      const typesToTry = isCandidateOneTime
+        ? [PURCHASE_TYPE.INAPP, PURCHASE_TYPE.SUBS]
+        : [PURCHASE_TYPE.SUBS, PURCHASE_TYPE.INAPP];
 
-      // Monta os parâmetros de compra in-app com conta ofuscada
-      const purchaseOptions: any = {
-        productIdentifier: finalProductId,
-        productType: PURCHASE_TYPE.INAPP,
-        isConsumable: true,
-        autoAcknowledgePurchases: true,
-      };
+      for (const pType of typesToTry) {
+        try {
+          console.log(`[Play IAP] Tentando compra: id=${testId}, tipo=${pType}`);
 
-      if (obfuscatedAccountId) {
-        purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
-        purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
-        purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
-        purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
-        purchaseOptions.appAccountToken = obfuscatedAccountId;
-        purchaseOptions.accountId = obfuscatedAccountId;
-      }
-
-      console.log("[Play IAP] Chamando NativePurchases.purchaseProduct (INAPP):", purchaseOptions);
-
-      try {
-        transaction = await NativePurchases.purchaseProduct(purchaseOptions);
-      } catch (inAppErr: any) {
-        console.log("[Play IAP] Retorno/Erro da chamada de produto único:", inAppErr);
-        if (isUserCancellation(inAppErr)) {
-          return {
-            success: false,
-            error: "A compra não foi concluída.",
-            isCancelled: true,
-          };
-        }
-
-        // Se porventura a Google Play indicar que já foi adquirido no dispositivo, consome e tenta mais uma vez
-        if (isItemAlreadyOwnedError(inAppErr)) {
-          console.log("[Play IAP] Item já adquirido detectado. Forçando consumo de liberação...");
-          try {
-            const { purchases } = await NativePurchases.getPurchases({
-              productType: PURCHASE_TYPE.INAPP,
-            });
-            let consumedAny = false;
-            for (const p of purchases || []) {
-              if (p.purchaseToken) {
-                await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
-                consumedAny = true;
+          if (pType === PURCHASE_TYPE.INAPP) {
+            // Limpeza preventiva de transação prévia não consumida
+            try {
+              const { purchases } = await NativePurchases.getPurchases({
+                productType: PURCHASE_TYPE.INAPP,
+              });
+              if (purchases && Array.isArray(purchases)) {
+                for (const p of purchases) {
+                  if (p.purchaseToken && (p.productIdentifier === testId || !p.productIdentifier)) {
+                    await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
+                  }
+                }
               }
+            } catch (clearErr) {
+              console.debug("[Play IAP] Limpeza prévia não necessária:", clearErr);
             }
-            if (consumedAny) {
-              console.log("[Play IAP] Retentando compra após consumo de liberação...");
-              transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+
+            const purchaseOptions: any = {
+              productIdentifier: testId,
+              productType: PURCHASE_TYPE.INAPP,
+              isConsumable: true,
+              autoAcknowledgePurchases: true,
+            };
+            if (obfuscatedAccountId) {
+              purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
+              purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
+              purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
+              purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
+              purchaseOptions.appAccountToken = obfuscatedAccountId;
+              purchaseOptions.accountId = obfuscatedAccountId;
             }
-          } catch (retryErr: any) {
-            console.warn("[Play IAP] Falha na retentativa pós-consumo:", retryErr);
-            if (isUserCancellation(retryErr)) {
-              return { success: false, error: "A compra não foi concluída.", isCancelled: true };
+
+            transaction = await NativePurchases.purchaseProduct(purchaseOptions);
+          } else {
+            // SUBS
+            let selectedOfferToken = purchaseOpts.offerToken;
+            try {
+              const prodQuery = await NativePurchases.getProducts({
+                productIdentifiers: [testId],
+                productType: PURCHASE_TYPE.SUBS,
+              });
+              if (prodQuery?.products && prodQuery.products.length > 0) {
+                selectedOfferToken = prodQuery.products[0]?.offerToken || selectedOfferToken;
+              }
+            } catch (queryErr) {
+              console.debug("[Play IAP] Consulta de token de oferta não disponível:", queryErr);
             }
-            throw retryErr;
+
+            const purchaseOptions: any = {
+              productIdentifier: testId,
+              productType: PURCHASE_TYPE.SUBS,
+              planIdentifier: targetPlan,
+              autoAcknowledgePurchases: true,
+            };
+            if (selectedOfferToken) {
+              purchaseOptions.offerToken = selectedOfferToken;
+            }
+            if (obfuscatedAccountId) {
+              purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
+              purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
+              purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
+              purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
+              purchaseOptions.appAccountToken = obfuscatedAccountId;
+              purchaseOptions.accountId = obfuscatedAccountId;
+            }
+
+            transaction = await NativePurchases.purchaseProduct(purchaseOptions);
           }
-        } else {
-          throw inAppErr;
-        }
-      }
-    } else {
-      // Subscrições Legadas (SUBS)
-      let planIdentifier: string = targetPlan;
-      let selectedOfferToken: string | undefined = purchaseOpts.offerToken;
-      const eligibleForTrial = Boolean(purchaseOpts.isTrial);
 
-      try {
-        const prodQuery = await NativePurchases.getProducts({
-          productIdentifiers: [finalProductId],
-          productType: PURCHASE_TYPE.SUBS,
-        });
+          if (transaction && transaction.purchaseToken) {
+            successfulProductId = testId;
+            isOneTimeProduct = pType === PURCHASE_TYPE.INAPP;
+            break;
+          }
+        } catch (attemptErr: any) {
+          lastError = attemptErr;
+          console.warn(`[Play IAP] Falha ao tentar ${testId} como ${pType}:`, attemptErr);
 
-        if (
-          prodQuery?.products &&
-          Array.isArray(prodQuery.products) &&
-          prodQuery.products.length > 0
-        ) {
-          const candidates = prodQuery.products;
-          const baseOffer =
-            candidates.find((p) => !(p.offerId || "").toLowerCase()) || candidates[0];
-          if (baseOffer) {
-            selectedOfferToken = baseOffer.offerToken || selectedOfferToken;
-            planIdentifier = baseOffer.planIdentifier || planIdentifier;
+          if (isUserCancellation(attemptErr)) {
+            return {
+              success: false,
+              error: "A compra não foi concluída.",
+              isCancelled: true,
+            };
+          }
+
+          if (isItemAlreadyOwnedError(attemptErr) && pType === PURCHASE_TYPE.INAPP) {
+            // Tenta consumir e retentar imediatamente
+            try {
+              const { purchases } = await NativePurchases.getPurchases({
+                productType: PURCHASE_TYPE.INAPP,
+              });
+              for (const p of purchases || []) {
+                if (p.purchaseToken) {
+                  await NativePurchases.consumePurchase({ purchaseToken: p.purchaseToken });
+                }
+              }
+            } catch (retryClearErr) {
+              console.debug("[Play IAP] Erro na limpeza secundária:", retryClearErr);
+            }
           }
         }
-      } catch (queryErr) {
-        console.warn("[Play IAP] Aviso ao consultar ofertas de assinatura legada:", queryErr);
       }
 
-      const purchaseOptions: any = {
-        productIdentifier: finalProductId,
-        productType: PURCHASE_TYPE.SUBS,
-        planIdentifier: planIdentifier,
-        autoAcknowledgePurchases: true,
-      };
-      if (selectedOfferToken) {
-        purchaseOptions.offerToken = selectedOfferToken;
-      }
-      if (obfuscatedAccountId) {
-        purchaseOptions.setObfuscatedAccountId = obfuscatedAccountId;
-        purchaseOptions.obfuscatedAccountId = obfuscatedAccountId;
-        purchaseOptions.setObfuscatedProfileId = obfuscatedAccountId;
-        purchaseOptions.obfuscatedProfileId = obfuscatedAccountId;
-        purchaseOptions.appAccountToken = obfuscatedAccountId;
-        purchaseOptions.accountId = obfuscatedAccountId;
-      }
-
-      try {
-        transaction = await NativePurchases.purchaseProduct(purchaseOptions);
-      } catch (attemptErr: any) {
-        if (isUserCancellation(attemptErr)) {
-          return { success: false, error: "O plano não foi concluído.", isCancelled: true };
-        }
-        if (isItemAlreadyOwnedError(attemptErr)) {
-          return {
-            success: false,
-            error:
-              "Esta conta da Google Play no seu aparelho já possui uma assinatura ativa deste plano. Para assinar nesta conta, selecione outro plano ou adquira um passe de acesso.",
-          };
-        }
-        throw attemptErr;
+      if (transaction && transaction.purchaseToken) {
+        break;
       }
     }
 
-    if (!transaction) {
-      return {
-        success: false,
-        error: "O plano não foi concluído.",
-        isCancelled: true,
-      };
+    if (!transaction || !transaction.purchaseToken) {
+      if (lastError && isUserCancellation(lastError)) {
+        return { success: false, error: "A compra não foi concluída.", isCancelled: true };
+      }
+      if (lastError) {
+        throw lastError;
+      }
+      return { success: false, error: "A compra não foi concluída.", isCancelled: true };
     }
 
     console.log("[Play IAP] Transação oficial retornada pela Google Play:", transaction);
@@ -875,12 +889,15 @@ export async function requestGooglePlayPurchase(
     if (
       errorMessage.includes("Product not found") ||
       errorMessage.includes("ITEM_UNAVAILABLE") ||
-      errorMessage.includes("not found")
+      errorMessage.includes("not found") ||
+      errorMessage.toLowerCase().includes("disponível no seu país") ||
+      errorMessage.toLowerCase().includes("disponivel no seu pais") ||
+      errorMessage.toLowerCase().includes("not available in your country")
     ) {
       return {
         success: false,
         error:
-          "Produto não encontrado na Google Play Store. Verifique se o produto está ativo no Google Play Console e se a sua conta Google Play está cadastrada na faixa de testes do app.",
+          "Item indisponível no seu país na Google Play (Portugal). Para resolver: 1) No Google Play Console (Faixa de Teste Fechado), abra o link de adesão Web/Android no telemóvel e clique em 'Aceitar convite / Tornar-se testador'; 2) Em 'Configuração > Testes de licença', adicione seu e-mail; 3) Em 'Monetização > Produtos no app' (produtos únicos), certifique-se de que estão Ativos com preço em EUR para Portugal.",
       };
     }
 

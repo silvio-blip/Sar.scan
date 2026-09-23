@@ -195,7 +195,16 @@ export function DiarioPage() {
 
   const totalCal = (entries ?? []).reduce((s, e) => s + Number(e.calorias), 0);
 
+  React.useEffect(() => {
+    if (!open) {
+      stopSpeech();
+      setIsPlayingAudio(false);
+    }
+  }, [open]);
+
   const remover = async (id: string) => {
+    stopSpeech();
+    setIsPlayingAudio(false);
     await supabase.from("food_entries").delete().eq("id", id);
     qc.invalidateQueries();
     setOpen(null);
@@ -577,7 +586,16 @@ export function DiarioPage() {
         </div>
       </div>
 
-      <Dialog open={!!open} onOpenChange={(v) => !v && setOpen(null)}>
+      <Dialog
+        open={!!open}
+        onOpenChange={(v) => {
+          if (!v) {
+            stopSpeech();
+            setIsPlayingAudio(false);
+            setOpen(null);
+          }
+        }}
+      >
         <DialogContent className="max-w-sm bg-card border border-border rounded-[36px] p-6 shadow-xl text-foreground">
           <DialogTitle className="text-xl font-display font-bold tracking-tight text-foreground">
             {open?.nome}

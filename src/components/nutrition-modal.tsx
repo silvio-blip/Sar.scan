@@ -18,6 +18,8 @@ import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { isInstalledApp, dataURLtoFile } from "@/lib/utils";
+import { getFoodEmoji } from "@/lib/food-emoji";
+import { stopSpeech } from "@/lib/tts";
 
 export type NutritionFood = {
   nome: string;
@@ -211,22 +213,31 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     }
   };
 
+  const handleClose = () => {
+    stopSpeech();
+    onClose();
+  };
+
+  const foodEmoji = food ? getFoodEmoji(food.nome) : "🍽️";
+
   return (
-    <Dialog open={!!food} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={!!food} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-sm rounded-[32px] border border-border bg-card p-0 overflow-hidden shadow-xl text-foreground">
         <DialogTitle className="sr-only">Adicionar alimento</DialogTitle>
         <DialogDescription className="sr-only">Ajuste a porção e adicione</DialogDescription>
         {food && (
           <div className="space-y-0 relative">
-            <div className="relative h-64 w-full overflow-hidden bg-black/40">
+            <div className="relative h-60 w-full overflow-hidden bg-secondary/25 border-b border-border/40 flex items-center justify-center">
               <FoodImage
                 src={photoUrl ?? food.foto_url}
                 alt={food.nome}
+                foodName={food.nome}
+                emoji={foodEmoji}
+                textSizeClass="text-7xl sm:text-8xl drop-shadow-sm transition-transform duration-300 select-none"
                 eager
                 className="h-full w-full object-cover"
                 roundedPlaceholder={false}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
 
               {/* Status se foto foi personalizada */}
               {photoUrl && (
@@ -237,13 +248,13 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               )}
 
               {/* Action Buttons: Tirar Foto & Galeria */}
-              <div className="absolute bottom-4 right-3 left-3 z-20 flex items-center justify-end gap-2">
+              <div className="absolute bottom-3 right-3 left-3 z-20 flex items-center justify-end gap-2">
                 {photoUrl && (
                   <Button
                     type="button"
                     size="icon"
                     variant="secondary"
-                    className="size-9 rounded-full bg-zinc-900/80 text-white hover:bg-zinc-900 border border-white/20 shadow-md active:scale-95 transition-transform shrink-0"
+                    className="size-8 rounded-full bg-zinc-900/80 text-white hover:bg-zinc-900 border border-white/20 shadow-md active:scale-95 transition-transform shrink-0"
                     onClick={() => setPhotoUrl(null)}
                     disabled={uploading}
                     title="Remover foto personalizada"
@@ -256,13 +267,13 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  className="rounded-full h-9 bg-white/95 text-zinc-900 hover:bg-white border border-zinc-200 shadow-md gap-1.5 px-3.5 active:scale-95 transition-all text-xs font-bold"
+                  className="rounded-full h-8 bg-background/90 text-foreground hover:bg-background border border-border/80 shadow-sm gap-1.5 px-3 active:scale-95 transition-all text-xs font-semibold backdrop-blur-md"
                   onClick={handleTakeLivePhoto}
                   disabled={uploading}
                   title="Tirar foto em tempo real agora"
                 >
                   {uploading ? (
-                    <Loader2 className="size-3.5 animate-spin text-zinc-900" />
+                    <Loader2 className="size-3.5 animate-spin text-foreground" />
                   ) : (
                     <Camera className="size-3.5 text-emerald-600" />
                   )}
@@ -273,7 +284,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   type="button"
                   size="sm"
                   variant="secondary"
-                  className="rounded-full h-9 bg-white/95 text-zinc-900 hover:bg-white border border-zinc-200 shadow-md gap-1.5 px-3.5 active:scale-95 transition-all text-xs font-bold"
+                  className="rounded-full h-8 bg-background/90 text-foreground hover:bg-background border border-border/80 shadow-sm gap-1.5 px-3 active:scale-95 transition-all text-xs font-semibold backdrop-blur-md"
                   onClick={handleSelectGalleryPhoto}
                   disabled={uploading}
                   title="Escolher foto da galeria"
@@ -301,13 +312,14 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               />
             </div>
 
-            <div className="space-y-6 p-6 -mt-6 relative z-10">
+            <div className="space-y-6 p-6 relative z-10">
               <div className="space-y-1">
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
                   Resumo Nutricional
                 </p>
-                <h3 className="text-2xl font-display font-black tracking-tight text-foreground">
-                  {food.nome}
+                <h3 className="text-2xl font-display font-black tracking-tight text-foreground flex items-center gap-2.5">
+                  <span className="text-2xl shrink-0 leading-none">{foodEmoji}</span>
+                  <span className="truncate">{food.nome}</span>
                 </h3>
               </div>
 
@@ -369,7 +381,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                 <Button
                   variant="outline"
                   className="h-14 rounded-[24px] border border-border bg-secondary font-bold uppercase tracking-widest text-[10px] hover:bg-muted text-foreground"
-                  onClick={onClose}
+                  onClick={handleClose}
                   disabled={busy}
                 >
                   Cancelar

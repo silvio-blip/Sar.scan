@@ -13,16 +13,20 @@ function shouldIgnoreError(error: unknown): boolean {
     lower.includes("peerjs") ||
     lower.includes("lost connection to server") ||
     lower.includes("permission denied") ||
+    lower.includes("permission_denied") ||
     lower.includes("notallowederror") ||
+    lower.includes("permissiondeniederror") ||
     lower.includes("the request is not allowed by the user agent") ||
     lower.includes("the document is sandboxed") ||
-    lower.includes("allow-modals")
+    lower.includes("allow-modals") ||
+    lower.includes("notifications are not permitted") ||
+    lower.includes("user denied permission")
   );
 }
 
 function record(error: unknown) {
   if (shouldIgnoreError(error)) {
-    console.warn("[ErrorCapture] Ignored PeerJS error:", error);
+    console.warn("[ErrorCapture] Suppressed sandboxed/environment error:", error);
     return;
   }
   lastCapturedError = { error, at: Date.now() };

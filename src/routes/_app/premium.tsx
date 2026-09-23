@@ -36,6 +36,7 @@ import {
   ArrowRight,
   Zap,
   ShieldQuestion,
+  ShieldCheck,
   CreditCard,
   Globe,
 } from "lucide-react";

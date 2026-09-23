@@ -91,19 +91,18 @@ export function AssinaturaPage() {
     rawPlan?.includes("cancelled"),
   );
 
-  const isStripeSub = Boolean(
-    hasActiveSub && (subscription?.stripe_subscription_id || subscription?.stripe_customer_id),
+  // Uma assinatura ativa só é Stripe se tiver um ID recorrente real na Stripe (sub_...)
+  const hasActiveStripeSub = Boolean(
+    hasActiveSub &&
+    subscription?.stripe_subscription_id &&
+    typeof subscription.stripe_subscription_id === "string" &&
+    subscription.stripe_subscription_id.trim().startsWith("sub_"),
   );
 
-  const isGooglePlaySub = Boolean(
-    hasActiveSub &&
-    !subscription?.stripe_subscription_id &&
-    ((subscription as any)?.play_purchase_token ||
-      (subscription as any)?.play_product_id ||
-      (subscription as any)?.play_order_id ||
-      isCapacitor() ||
-      subscription?.status === "active"),
-  );
+  const isStripeSub = hasActiveStripeSub;
+
+  // Se tem plano ativo e NÃO é uma assinatura recorrente Stripe, trata-se de um Pacote Google Play (sem botão de cancelamento)
+  const isGooglePlaySub = Boolean(hasActiveSub && !hasActiveStripeSub);
 
   // Informações amigáveis do plano
   const planDetails = useMemo(() => {
@@ -447,18 +446,19 @@ export function AssinaturaPage() {
           </Link>
         </Button>
 
-        {/* Informação para usuários com compra da Google Play */}
+        {/* Informação para usuários com pacote da Google Play */}
         {isGooglePlaySub && hasActiveSub && (
-          <div className="rounded-[24px] bg-secondary/40 border border-border p-4 text-center space-y-1">
-            <div className="text-[10px] font-black text-foreground uppercase tracking-widest">
-              Plano de Acesso por Período
+          <div className="rounded-[24px] bg-secondary/40 border border-border p-4 text-center space-y-1.5">
+            <div className="text-[11px] font-black text-foreground uppercase tracking-widest flex items-center justify-center gap-1.5">
+              <ShieldCheck className="size-4 text-primary" /> Pacote Google Play Ativo
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Seu acesso e créditos permanecem garantidos até{" "}
-              <span className="text-foreground font-semibold">
+              Seus benefícios e créditos estão 100% ativos e garantidos até{" "}
+              <span className="text-foreground font-bold">
                 {periodEndFormatted || "o fim do período"}
               </span>
-              . Não há renovação automática e o acesso expirará de forma autônoma após esse prazo.
+              . Como este é um pacote por período fixo adquirido via Google Play Store, não há
+              renovação automática e nenhuma ação de cancelamento é necessária.
             </p>
           </div>
         )}

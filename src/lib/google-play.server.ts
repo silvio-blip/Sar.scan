@@ -335,23 +335,45 @@ export async function verifyGooglePlayPurchaseInternal(data: {
     }
 
     // Se o usuário possuir uma assinatura ativa do Stripe, cancela imediatamente no Stripe para evitar cobrança dupla
-    if (currentSub && (currentSub as any).stripe_subscription_id) {
-      const subIdToCancel = (currentSub as any).stripe_subscription_id;
-      console.log(
-        `[Play Billing Backend] User ${user.id} has an active Stripe subscription (${subIdToCancel}). Cancelling it immediately since they migrated to Google Play...`,
-      );
-      try {
-        const { stripe } = await getStripe(true);
-        await stripe.subscriptions.cancel(subIdToCancel);
+    try {
+      const { stripe } = await getStripe(true);
+      if (currentSub && (currentSub as any).stripe_subscription_id) {
+        const subIdToCancel = (currentSub as any).stripe_subscription_id;
         console.log(
-          `[Play Billing Backend] Stripe subscription ${subIdToCancel} cancelled successfully.`,
+          `[Play Billing Backend] User ${user.id} has active Stripe subscription (${subIdToCancel}). Cancelling it immediately since they purchased via Google Play...`,
         );
-      } catch (stripeErr: any) {
-        console.warn(
-          `[Play Billing Backend] Non-fatal notice: Failed to cancel Stripe subscription ${subIdToCancel}:`,
-          stripeErr?.message,
-        );
+        await stripe.subscriptions.cancel(subIdToCancel).catch((err) => {
+          console.warn("[Play Billing Backend] Aviso ao cancelar Stripe subId:", err?.message);
+        });
       }
+
+      if (currentSub && (currentSub as any).stripe_customer_id) {
+        const subs = await stripe.subscriptions.list({
+          customer: (currentSub as any).stripe_customer_id,
+          status: "active",
+        });
+        for (const s of subs.data) {
+          await stripe.subscriptions.cancel(s.id).catch(() => {});
+        }
+      }
+
+      if (user.email) {
+        const customers = await stripe.customers.list({ email: user.email, limit: 5 });
+        for (const cust of customers.data) {
+          const subs = await stripe.subscriptions.list({ customer: cust.id, status: "active" });
+          for (const s of subs.data) {
+            await stripe.subscriptions.cancel(s.id).catch(() => {});
+          }
+        }
+      }
+      console.log(
+        `[Play Billing Backend] Limpeza de assinaturas Stripe ativas concluída para o usuário ${user.id}.`,
+      );
+    } catch (stripeErr: any) {
+      console.warn(
+        "[Play Billing Backend] Aviso não fatal ao cancelar assinaturas Stripe:",
+        stripeErr?.message,
+      );
     }
 
     const currentCredits = (currentSub as any)?.scans_credits ?? 0;
@@ -695,17 +717,17 @@ export async function cancelSubscriptionInternal(data: { token: string; immediat
   let responseMessage =
     "Sua assinatura foi cancelada com sucesso. Sua conta agora está no plano gratuito.";
 
-  if (!data.immediate && (isStripe || (isGooglePlay && !isOneTimePlayPass)) && hasFutureEnd) {
+  if (!data.immediate && hasFutureEnd) {
     updatedFields = {
       plan: currentSub.plan, // mantém o plano original válido para respeitar o check constraint "subscriptions_plan_check"
-      status: currentSub.status, // mantém o status atual (active/trialing)
+      status: currentSub.status || "active", // mantém o status ativo até o final do período
       ai_agent_enabled: true, // continua ativo até o final do período
       updated_at: new Date().toISOString(),
     };
     isCanceledAtPeriodEnd = true;
 
     const formattedEnd = new Date(currentSub.current_period_end).toLocaleDateString("pt-BR");
-    responseMessage = `Sua assinatura foi cancelada com sucesso. Seus benefícios e créditos continuam totalmente ativos e disponíveis até ${formattedEnd}.`;
+    responseMessage = `Sua renovação foi cancelada com sucesso. Seus benefícios e créditos continuam totalmente ativos e disponíveis até ${formattedEnd}.`;
   } else {
     updatedFields = {
       status: "free",

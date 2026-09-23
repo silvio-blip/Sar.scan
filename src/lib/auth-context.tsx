@@ -526,20 +526,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("[Auth] Error clearing cookies on signOut:", cookieErr);
     }
 
-    // 5.5. On Native Platforms, force Google SDK logout so account selection appears next time
-    try {
-      const { Capacitor } = await import("@capacitor/core");
-      if (Capacitor.isNativePlatform()) {
-        const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth");
-        await GoogleAuth.signOut().catch((gErr) => {
-          console.warn("[Auth] Background native Google signOut error:", gErr);
-        });
-        console.log("[Auth] Native Google Auth session cleared successfully!");
-      }
-    } catch (nativeErr) {
-      console.warn("[Auth] Could not execute native Google signOut:", nativeErr);
-    }
-
     // 6. Force a full page reload to the /login page to clean memory and routing state
     if (typeof window !== "undefined") {
       window.location.href = "/login";
@@ -551,7 +537,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (subscription.status === "active" ||
       (subscription.status === "trialing" &&
         !!subscription.trial_end &&
-        new Date(subscription.trial_end) > new Date()));
+        new Date(subscription.trial_end) > new Date()) ||
+      (!!subscription.current_period_end &&
+        new Date(subscription.current_period_end) > new Date()));
 
   // Admin always premium and unlimited
   const isPremium = isAdmin || isPremiumBase;

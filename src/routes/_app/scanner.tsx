@@ -4,8 +4,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { isInstalledApp, getFoodEmoji, getApiUrl } from "@/lib/utils";
+import { isInstalledApp, getApiUrl } from "@/lib/utils";
+import { stopSpeech } from "@/lib/tts";
+import { FoodIcon } from "@/components/food-icon";
 import { useCamera } from "@/lib/CameraContext";
+import { detectFoodStatus, type FoodDetectionStatus } from "@/lib/local-food-detector";
+import { FoodDetectionStatusBadge } from "@/components/food-status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Camera,
@@ -81,6 +85,44 @@ export function ScannerPage() {
   const [scanPhoto, setScanPhoto] = useState<string | null>(null);
   const [feedbackMeta, setFeedbackMeta] = useState<string | null>(null);
   const [picked, setPicked] = useState<NutritionFood | null>(null);
+  const [foodStatus, setFoodStatus] = useState<FoodDetectionStatus | null>(null);
+
+  // Detecção inteligente e leve de alimentos na câmera (100% no cliente sem sobrecarga)
+  useEffect(() => {
+    let active = true;
+    let frameId: number;
+    let lastScanTime = 0;
+
+    const loop = async (timestamp: number) => {
+      if (!active) return;
+
+      // Executa checagem periódica a cada 400ms para economia total de bateria e fluidez máxima
+      if (timestamp - lastScanTime >= 400) {
+        lastScanTime = timestamp;
+        if (videoRef.current && streamOn && !scanning && !detected && !picked) {
+          try {
+            const status = await detectFoodStatus(videoRef.current);
+            if (active) {
+              setFoodStatus(status);
+            }
+          } catch {
+            // Silencioso em caso de frame transitório
+          }
+        } else if (foodStatus?.hasFood) {
+          setFoodStatus(null);
+        }
+      }
+
+      frameId = requestAnimationFrame(loop);
+    };
+
+    frameId = requestAnimationFrame(loop);
+
+    return () => {
+      active = false;
+      cancelAnimationFrame(frameId);
+    };
+  }, [streamOn, scanning, detected, picked, foodStatus?.hasFood]);
 
   useEffect(() => {
     startCamera("environment");
@@ -701,6 +743,11 @@ export function ScannerPage() {
               }`}
             />
 
+            {/* Status Informativo Superior de Detecção de Alimento */}
+            {streamOn && !detected && (
+              <FoodDetectionStatusBadge status={foodStatus} scanning={scanning} />
+            )}
+
             {/* Alternar Câmera Button Overlay */}
             {streamOn && !scanning && !detected && (
               <button
@@ -820,6 +867,7 @@ export function ScannerPage() {
         photo={scanPhoto}
         feedbackMeta={feedbackMeta}
         onClose={() => {
+          stopSpeech();
           setDetected(null);
           setScanPhoto(null);
           setFeedbackMeta(null);
@@ -827,7 +875,14 @@ export function ScannerPage() {
         onConfirm={confirmar}
       />
 
-      <NutritionModal food={picked} onClose={() => setPicked(null)} onAdd={adicionarSugestao} />
+      <NutritionModal
+        food={picked}
+        onClose={() => {
+          stopSpeech();
+          setPicked(null);
+        }}
+        onAdd={adicionarSugestao}
+      />
 
       <input
         ref={fileRef}
@@ -861,7 +916,6 @@ export function ScannerPage() {
         </div>
         <div className="flex flex-col gap-3">
           {sugestoes?.slice(0, 5).map((f, i) => {
-            const emoji = getFoodEmoji(f.nome);
             return (
               <motion.button
                 key={`${f.nome}-${i}`}
@@ -873,7 +927,7 @@ export function ScannerPage() {
               >
                 {/* Left Side: Soft circle with centered large Emoji */}
                 <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">
-                  {emoji}
+                  <FoodIcon name={f.nome} sizeClassName="text-2xl" />
                 </div>
 
                 {/* Center Side: Food Name & Highlighted Calories */}

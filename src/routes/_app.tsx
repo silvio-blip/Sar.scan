@@ -91,7 +91,7 @@ function AppLayout() {
     const target = e.target as HTMLElement | null;
     if (
       target?.closest(
-        "input, textarea, select, canvas, video, [role='slider'], [data-no-swipe], .no-swipe",
+        "input, textarea, select, canvas, video, [role='slider'], [data-no-swipe], .no-swipe, [data-category-bar], .overflow-x-auto, [class*='overflow-x']",
       )
     ) {
       touchStartRef.current = null;
@@ -106,6 +106,15 @@ function AppLayout() {
 
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (!touchStartRef.current || isChatRoute) return;
+    const target = e.target as HTMLElement | null;
+    if (
+      target?.closest(
+        "input, textarea, select, canvas, video, [role='slider'], [data-no-swipe], .no-swipe, [data-category-bar], .overflow-x-auto, [class*='overflow-x']",
+      )
+    ) {
+      touchStartRef.current = null;
+      return;
+    }
     const touch = e.changedTouches[0];
     const deltaX = touch.clientX - touchStartRef.current.x;
     const deltaY = touch.clientY - touchStartRef.current.y;

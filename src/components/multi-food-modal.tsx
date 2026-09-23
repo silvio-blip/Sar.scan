@@ -49,6 +49,10 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
 
   useEffect(() => {
     if (items) setList(items.map((i) => ({ ...i, porcoes: 1 })));
+    return () => {
+      stopSpeech();
+      setIsPlayingAudio(false);
+    };
   }, [items]);
 
   useEffect(() => {
@@ -56,6 +60,12 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
       stopSpeech();
     };
   }, []);
+
+  const handleClose = () => {
+    stopSpeech();
+    setIsPlayingAudio(false);
+    onClose();
+  };
 
   const speakFeedback = async () => {
     if (!feedbackMeta) return;
@@ -96,7 +106,7 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
   };
 
   return (
-    <Dialog open={!!items} onOpenChange={(v) => !v && onClose()}>
+    <Dialog open={!!items} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-md max-h-[92vh] overflow-y-auto rounded-[28px] border border-border bg-background/96 p-0 shadow-2xl">
         <div className="p-5 pb-4 space-y-4">
           <DialogTitle className="font-display text-xl flex items-center gap-2">
@@ -240,7 +250,7 @@ export function MultiFoodModal({ items, photo, feedbackMeta, onClose, onConfirm 
           <div className="grid grid-cols-2 gap-2 p-5 pt-4">
             <Button
               variant="outline"
-              onClick={onClose}
+              onClick={handleClose}
               disabled={busy}
               className="h-11 rounded-2xl border-border bg-transparent"
             >

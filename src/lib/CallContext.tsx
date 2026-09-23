@@ -74,21 +74,6 @@ export const CallProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const activeNotificationRef = useRef<Notification | null>(null);
 
   useEffect(() => {
-    try {
-      if (
-        typeof window !== "undefined" &&
-        "Notification" in window &&
-        typeof Notification.requestPermission === "function" &&
-        Notification.permission === "default"
-      ) {
-        Notification.requestPermission().catch(() => {});
-      }
-    } catch {
-      // Ignore errors when running in restricted environments
-    }
-  }, []);
-
-  useEffect(() => {
     statusRef.current = status;
   }, [status]);
   useEffect(() => {

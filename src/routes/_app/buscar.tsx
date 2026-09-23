@@ -1,15 +1,16 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Search, Crown, Sparkles, Loader2 } from "lucide-react";
+import { Search, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { NutritionModal, type NutritionFood } from "@/components/nutrition-modal";
-import { FoodImage } from "@/components/food-image";
-import { getFoodEmoji, getApiUrl } from "@/lib/utils";
+import { getApiUrl } from "@/lib/utils";
+import { FoodIcon } from "@/components/food-icon";
 import { WORLD_FOOD_DATABASE } from "@/data/foodDatabase";
+import { FOOD_CATEGORIES, matchesCategory, type FoodCategory } from "@/lib/food-categories";
 
 export const Route = createFileRoute("/_app/buscar")({ component: BuscarPage });
 
@@ -18,9 +19,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 type Food = NutritionFood & { porcao?: string };
 
 export function BuscarPage() {
-  const { user, isPremium, subscription } = useAuth();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<FoodCategory>("all");
   const [selected, setSelected] = useState<Food | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [variants, setVariants] = useState<Food[] | null>(null);
@@ -32,8 +34,9 @@ export function BuscarPage() {
       const { data: cached } = await supabase
         .from("foods_basic")
         .select("nome, cal, carb, prot, gord, foto_url")
-        .limit(100);
-      if (cached && cached.length >= 50)
+        .order("nome")
+        .limit(1000);
+      if (cached && cached.length > 0)
         return cached.map((c) => ({ ...c, porcao: "1 porção" })) as Food[];
 
       return WORLD_FOOD_DATABASE as Food[];
@@ -42,14 +45,14 @@ export function BuscarPage() {
 
   const allFoods = useMemo(() => {
     const map = new Map<string, Food>();
-    WORLD_FOOD_DATABASE.forEach((f) => map.set(f.nome.toLowerCase(), f as Food));
-    (popular ?? []).forEach((f) => map.set(f.nome.toLowerCase(), f));
+    WORLD_FOOD_DATABASE.forEach((f) => map.set(f.nome.toLowerCase().trim(), f as Food));
+    (popular ?? []).forEach((f) => map.set(f.nome.toLowerCase().trim(), f));
     try {
       const cachedAi = JSON.parse(localStorage.getItem("sar_ai_search_cache") || "{}");
       Object.values(cachedAi)
         .flat()
         .forEach((f: any) => {
-          if (f && f.nome) map.set(f.nome.toLowerCase(), f);
+          if (f && f.nome) map.set(f.nome.toLowerCase().trim(), f);
         });
     } catch {
       // ignore cache read failure
@@ -58,12 +61,22 @@ export function BuscarPage() {
   }, [popular]);
 
   const filtered = useMemo(() => {
-    if (!q.trim()) return allFoods;
-    const query = q.toLowerCase().trim();
-    return allFoods.filter(
-      (f) => f.nome.toLowerCase().includes(query) || f.porcao?.toLowerCase().includes(query),
-    );
-  }, [allFoods, q]);
+    let list = allFoods;
+
+    // Filtra pela categoria selecionada
+    if (selectedCategory !== "all") {
+      list = list.filter((f) => matchesCategory(f.nome, selectedCategory));
+    }
+
+    // Filtra pela busca textual
+    if (q.trim()) {
+      const query = q.toLowerCase().trim();
+      list = list.filter(
+        (f) => f.nome.toLowerCase().includes(query) || f.porcao?.toLowerCase().includes(query),
+      );
+    }
+    return list;
+  }, [allFoods, selectedCategory, q]);
 
   const showList = useMemo(() => variants ?? filtered, [variants, filtered]);
 
@@ -141,6 +154,8 @@ export function BuscarPage() {
         } catch {
           // ignore
         }
+        // Invalida a query do banco para refletir os novos itens inseridos pela IA
+        await qc.invalidateQueries({ queryKey: ["foods_popular"] });
       }
       setVariants(alimentos);
     } catch (e: any) {
@@ -164,7 +179,7 @@ export function BuscarPage() {
             Buscar Alimento
           </h1>
           <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
-            {popular?.length ?? 0} alimentos na base local
+            {popular?.length ?? allFoods.length} alimentos cadastrados • {filtered.length} exibidos
           </p>
         </div>
 
@@ -197,6 +212,38 @@ export function BuscarPage() {
           )}
         </div>
 
+        {/* Quick Category Chips with gesture stop propagation */}
+        <div
+          data-no-swipe="true"
+          data-category-bar="true"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          className="no-swipe flex items-center gap-2 overflow-x-auto no-scrollbar px-4 sm:px-6 pb-1 -mt-1 touch-pan-x"
+        >
+          {FOOD_CATEGORIES.map((cat) => {
+            const isSelected = selectedCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  setSelectedCategory(cat.id);
+                  setVariants(null);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all border ${
+                  isSelected
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm scale-[1.02]"
+                    : "bg-secondary/60 hover:bg-secondary text-foreground/80 border-border/60"
+                }`}
+              >
+                <span className="text-sm leading-none">{cat.emoji}</span>
+                <span>{cat.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         {q.trim() && (
           <Button
             onClick={buscarIA}
@@ -217,7 +264,7 @@ export function BuscarPage() {
             onClick={() => setVariants(null)}
             className="text-[10px] text-primary font-black uppercase tracking-widest hover:opacity-85 transition-opacity block"
           >
-            ← Voltar à lista popular
+            ← Voltar à lista por categorias
           </button>
         )}
       </div>
@@ -239,7 +286,6 @@ export function BuscarPage() {
 
       <div className="flex flex-col gap-3">
         {showList.map((f, i) => {
-          const emoji = getFoodEmoji(f.nome);
           return (
             <button
               key={`${f.nome}-${i}`}
@@ -248,7 +294,7 @@ export function BuscarPage() {
             >
               {/* Left Side: Soft circle with centered large Emoji */}
               <div className="size-12 shrink-0 rounded-2xl bg-primary/5 group-hover:bg-primary/10 flex items-center justify-center text-2xl shadow-inner border border-primary/5 transition-colors">
-                {emoji}
+                <FoodIcon name={f.nome} sizeClassName="text-2xl" />
               </div>
 
               {/* Center Side: Food Name & Highlighted Calories */}

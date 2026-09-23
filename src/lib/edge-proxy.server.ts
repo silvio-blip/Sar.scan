@@ -89,7 +89,62 @@ async function getGroqKey() {
   return cleanApiKey(rawKey);
 }
 
-async function groqCall(opts: { systemInstruction?: string; contents: GeminiContent[] }) {
+let cachedGroqModels: { models: string[]; fetchedAt: number } | null = null;
+
+async function getActiveGroqModels(apiKey: string): Promise<string[]> {
+  const now = Date.now();
+  if (cachedGroqModels && now - cachedGroqModels.fetchedAt < 60 * 60 * 1000) {
+    return cachedGroqModels.models;
+  }
+
+  const preferredModels = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+    "allam-2-7b",
+  ];
+
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as any;
+      const apiModels: string[] = (data.data || [])
+        .map((m: any) => m.id)
+        .filter((id: string) => {
+          const lower = id.toLowerCase();
+          return (
+            !lower.includes("whisper") &&
+            !lower.includes("guard") &&
+            !lower.includes("safeguard") &&
+            !lower.includes("orpheus")
+          );
+        });
+
+      // Ordenar priorizando modelos recomendados
+      const sorted = [
+        ...preferredModels.filter((m) => apiModels.includes(m)),
+        ...apiModels.filter((m) => !preferredModels.includes(m)),
+      ];
+
+      if (sorted.length > 0) {
+        cachedGroqModels = { models: sorted, fetchedAt: now };
+        return sorted;
+      }
+    }
+  } catch (fetchErr) {
+    console.debug("[Groq] Aviso ao buscar lista dinâmica de modelos:", fetchErr);
+  }
+
+  return preferredModels;
+}
+
+async function groqCall(opts: {
+  systemInstruction?: string;
+  contents: GeminiContent[];
+  maxTokens?: number;
+}) {
   const apiKey = await getGroqKey();
   if (!apiKey) throw new Error("Groq API key not configured");
 
@@ -111,18 +166,17 @@ async function groqCall(opts: { systemInstruction?: string; contents: GeminiCont
     }
   }
 
-  const groqModels = [
-    "llama-3.3-70b-versatile",
-    "llama-3.3-70b-specdec",
-    "llama-3.1-70b-versatile",
-    "llama3-70b-8192",
-    "llama-3.1-8b-instant",
-  ];
+  const groqModels = await getActiveGroqModels(apiKey);
 
   let lastError: any = null;
   for (const model of groqModels) {
     try {
-      console.log(`[Groq Call] Tentando modelo: ${model}`);
+      console.log(`[Groq Call] Utilizando modelo ativo: ${model}`);
+      // Modelos como qwen no tier gratuito possuem limite estrito de 1000 OTPM (output tokens/min)
+      const tokenLimit = model.toLowerCase().includes("qwen")
+        ? Math.min(opts.maxTokens || 650, 650)
+        : opts.maxTokens || 1200;
+
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -133,7 +187,7 @@ async function groqCall(opts: { systemInstruction?: string; contents: GeminiCont
           model,
           messages,
           temperature: 0.7,
-          max_tokens: 1500,
+          max_tokens: tokenLimit,
         }),
       });
 
@@ -147,7 +201,7 @@ async function groqCall(opts: { systemInstruction?: string; contents: GeminiCont
       return { text: replyText };
     } catch (err: any) {
       lastError = err;
-      console.warn(`[Groq Call] Modelo ${model} falhou ou inacessível:`, err?.message || err);
+      console.warn(`[Groq Call] Modelo ${model} indisponível:`, err?.message || err);
     }
   }
 
@@ -290,7 +344,8 @@ async function handleSearchFoodAi(body: Body) {
     const { data } = await (admin as any)
       .from("foods_basic")
       .select("nome, cal, carb, prot, gord, foto_url")
-      .limit(100);
+      .order("nome")
+      .limit(500);
     return { alimentos: (data ?? []).map((c: any) => ({ ...c, porcao: "1 porção" })) };
   }
 
@@ -312,15 +367,46 @@ async function handleSearchFoodAi(body: Body) {
     responseSchema: ALIMENTOS_SCHEMA,
   });
   const parsed = safeJson<{ alimentos?: Array<Record<string, unknown>> }>(text);
-  const alimentos = (parsed?.alimentos ?? []).map((a) => ({
-    nome: String(a.nome ?? ""),
-    porcao: String(a.porcao ?? "1 porção"),
-    cal: Number(a.cal ?? 0),
-    carb: Number(a.carb ?? 0),
-    prot: Number(a.prot ?? 0),
-    gord: Number(a.gord ?? 0),
-    foto_url: null,
-  }));
+  const alimentos = (parsed?.alimentos ?? [])
+    .filter((a) => a && typeof a.nome === "string" && a.nome.trim().length > 0)
+    .map((a) => ({
+      nome: String(a.nome ?? "").trim(),
+      porcao: String(a.porcao ?? "1 porção"),
+      cal: Math.round(Number(a.cal ?? 0)),
+      carb: Math.round(Number(a.carb ?? 0) * 10) / 10,
+      prot: Math.round(Number(a.prot ?? 0) * 10) / 10,
+      gord: Math.round(Number(a.gord ?? 0) * 10) / 10,
+      foto_url: null,
+    }));
+
+  // Salva no banco de dados para alimentar e enriquecer as categorias
+  const admin = getAdminSafe();
+  if (admin && alimentos.length > 0) {
+    try {
+      const names = alimentos.map((a) => a.nome.toLowerCase().trim());
+      const { data: existing } = await (admin as any)
+        .from("foods_basic")
+        .select("nome")
+        .in("nome", names);
+      const existingSet = new Set((existing ?? []).map((e: any) => e.nome.toLowerCase().trim()));
+      const toInsert = alimentos
+        .filter((a) => !existingSet.has(a.nome.toLowerCase().trim()))
+        .map((a) => ({
+          nome: a.nome,
+          cal: a.cal,
+          carb: a.carb,
+          prot: a.prot,
+          gord: a.gord,
+          foto_url: null,
+        }));
+      if (toInsert.length > 0) {
+        await (admin as any).from("foods_basic").insert(toInsert);
+      }
+    } catch (saveErr) {
+      console.warn("[EdgeProxy] Erro ao persistir alimentos da busca no banco:", saveErr);
+    }
+  }
+
   return { alimentos };
 }
 
