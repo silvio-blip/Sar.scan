@@ -18,6 +18,7 @@ import {
   Lock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/metas")({
   component: MetasPage,
@@ -35,6 +36,7 @@ function calcMeta(peso: number, altura: number, idade: number, objetivo: Objetiv
 
 function MetasPage() {
   const { user, profile, isPremium, refresh } = useAuth();
+  const { t } = useTranslation();
   const nav = useNavigate();
 
   const { data: goals } = useQuery({
@@ -77,7 +79,7 @@ function MetasPage() {
   const save = async () => {
     if (!user) return;
     if (!isPremium) {
-      toast.error("Assine o Premium para personalizar suas metas!");
+      toast.error(t("shop.subtitle"));
       nav({ to: "/premium" });
       return;
     }
@@ -109,10 +111,10 @@ function MetasPage() {
         { onConflict: "user_id" },
       );
       await refresh();
-      toast.success("Metas atualizadas");
+      toast.success(t("subpages.goals.success"));
       nav({ to: "/perfil" });
     } catch (e) {
-      toast.error("Erro ao salvar metas");
+      toast.error(t("common.error"));
       console.error(e);
     } finally {
       setSaving(false);
@@ -125,9 +127,24 @@ function MetasPage() {
     sub: string;
     Icon: typeof TrendingDown;
   }[] = [
-    { id: "perder", label: "Perder Peso", sub: "-500 cal/dia", Icon: TrendingDown },
-    { id: "manter", label: "Manter Peso", sub: "Manutenção", Icon: Minus },
-    { id: "ganhar", label: "Ganhar Massa", sub: "+300 cal/dia", Icon: TrendingUp },
+    {
+      id: "perder",
+      label: t("subpages.objective.lose"),
+      sub: t("subpages.objective.loseDesc"),
+      Icon: TrendingDown,
+    },
+    {
+      id: "manter",
+      label: t("subpages.objective.maintain"),
+      sub: t("subpages.objective.maintainDesc"),
+      Icon: Minus,
+    },
+    {
+      id: "ganhar",
+      label: t("subpages.objective.gain"),
+      sub: t("subpages.objective.gainDesc"),
+      Icon: TrendingUp,
+    },
   ];
 
   return (
@@ -141,10 +158,10 @@ function MetasPage() {
         </Link>
         <div className="flex-1">
           <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-            Editar Metas
+            {t("subpages.goals.title")}
           </h1>
           <div className="text-[10px] text-primary/80 flex items-center gap-1 font-black uppercase tracking-widest">
-            <Crown className="size-3" /> Recurso Premium
+            <Crown className="size-3" /> Premium
           </div>
         </div>
       </div>
@@ -155,30 +172,30 @@ function MetasPage() {
             <Lock className="size-6 text-muted-foreground" />
           </div>
           <div className="space-y-1">
-            <h3 className="font-bold text-sm text-foreground">Recurso Bloqueado</h3>
+            <h3 className="font-bold text-sm text-foreground">{t("shop.featuresTitle")}</h3>
             <p className="text-xs text-muted-foreground/80 leading-relaxed px-4">
-              Assine o Premium para personalizar suas metas e ter acesso completo ao SAR.SCAN.
+              {t("shop.subtitle")}
             </p>
           </div>
           <Button
             asChild
             className="w-full h-10 rounded-xl bg-primary text-primary-foreground hover:bg-primary/95 font-bold uppercase tracking-widest text-[10px] shadow-sm"
           >
-            <Link to="/premium">Ver Planos</Link>
+            <Link to="/premium">{t("shop.subscribeNow")}</Link>
           </Button>
         </Card>
       ) : (
         <Card className="bg-card rounded-[32px] p-6 space-y-4 border border-border shadow-sm text-foreground">
           <div className="flex items-center justify-between">
             <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">
-              Meta Personalizada
+              {t("subpages.goals.title")}
             </h2>
             <Crown className="size-4 text-primary" />
           </div>
           <div className="space-y-3">
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-                Calorias Diárias (KCAL)
+                {t("subpages.goals.calories")}
               </Label>
               <Input
                 type="number"
@@ -190,7 +207,7 @@ function MetasPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-                Meta de Água (ML)
+                {t("home.water")} (ml)
               </Label>
               <Input
                 type="number"
@@ -201,7 +218,7 @@ function MetasPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-                Prazo final da Meta (Opcional)
+                {t("common.optional")}
               </Label>
               <Input
                 type="date"
@@ -209,14 +226,7 @@ function MetasPage() {
                 onChange={(e) => setMetaPrazo(e.target.value)}
                 className="h-14 rounded-2xl bg-secondary/30 border border-border focus:ring-2 ring-primary/20 text-lg font-bold text-foreground"
               />
-              <p className="text-[10px] text-muted-foreground/70 font-medium italic ml-1">
-                Defina uma data para atingir seu objetivo.
-              </p>
             </div>
-            <p className="text-[10px] text-muted-foreground/70 font-medium italic">
-              * O SAR calcula automaticamente sua meta baseando-se no seu corpo, mas como Premium
-              você pode definir o valor que desejar.
-            </p>
           </div>
         </Card>
       )}
@@ -224,12 +234,12 @@ function MetasPage() {
       <div className={isPremium ? "opacity-100" : "opacity-30 pointer-events-none"}>
         <Card className="bg-card rounded-[32px] p-6 space-y-4 border border-border shadow-sm text-foreground mb-4">
           <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">
-            Dados Pessoais
+            {t("profile.physicalData")}
           </h2>
           <div className="grid grid-cols-1 gap-4">
             <div className="space-y-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-                Idade (anos)
+                {t("subpages.physicalData.age")}
               </Label>
               <Input
                 type="number"
@@ -241,7 +251,7 @@ function MetasPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-                  Peso (kg)
+                  {t("subpages.physicalData.weight")}
                 </Label>
                 <Input
                   type="number"
@@ -252,7 +262,7 @@ function MetasPage() {
               </div>
               <div className="space-y-2">
                 <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/80">
-                  Altura (cm)
+                  {t("subpages.physicalData.height")}
                 </Label>
                 <Input
                   type="number"
@@ -267,7 +277,7 @@ function MetasPage() {
 
         <Card className="bg-card rounded-[32px] p-6 space-y-4 border border-border shadow-sm text-foreground mb-4">
           <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">
-            Objetivo
+            {t("profile.objective")}
           </h2>
           <div className="space-y-2">
             {objs.map(({ id, label, sub, Icon }) => {
@@ -309,13 +319,13 @@ function MetasPage() {
           </div>
           <div className="relative z-10">
             <div className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mb-1">
-              Meta Diária Estimada
+              {t("subpages.goals.title")}
             </div>
             <div className="text-4xl font-display font-black text-foreground tracking-tighter">
               {meta}
             </div>
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/80 truncate mt-1">
-              calorias{goals ? ` · atual: ${goals.calorias}` : ""}
+              {t("common.kcal")}
             </div>
           </div>
         </Card>
@@ -326,7 +336,7 @@ function MetasPage() {
         onClick={save}
         disabled={saving}
       >
-        {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : "Salvar Metas"}
+        {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : t("subpages.goals.save")}
       </Button>
     </div>
   );

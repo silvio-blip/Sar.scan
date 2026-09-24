@@ -1,7 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export type ReferenceObjectType =
-  "card" | "coin_2eur" | "coin_1real" | "coin_1eur" | "bottle_cap" | "ruler";
+  | "card"
+  | "coin_2eur"
+  | "coin_1real"
+  | "coin_1eur"
+  | "bottle_cap"
+  | "ruler";
 
 export interface ReferenceObjectOption {
   id: ReferenceObjectType;

@@ -12,39 +12,45 @@ import {
   ArrowRight,
   Gift,
   Crown,
-  Check,
-  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SarLogo } from "@/components/sar-logo";
 import { motion, AnimatePresence } from "motion/react";
+import { useTranslation } from "@/lib/strings";
+import { LanguageSelector } from "@/components/language-selector";
 
 export const Route = createFileRoute("/onboarding")({ component: OnboardingPage });
 
-const objetivos = [
-  {
-    id: "perder",
-    label: "Perder Peso",
-    desc: "Déficit moderado (-500 kcal/dia)",
-    Icon: TrendingDown,
-  },
-  { id: "manter", label: "Manter Peso", desc: "Equilíbrio calórico e manutenção", Icon: Minus },
-  {
-    id: "ganhar",
-    label: "Ganhar Massa",
-    desc: "Superávit e hipertrofia (+300 kcal/dia)",
-    Icon: TrendingUp,
-  },
-] as const;
-
 function OnboardingPage() {
   const { user, profile, refresh, loading: authLoading, campaignSettings } = useAuth();
+  const { t } = useTranslation();
   const nav = useNavigate();
   const [idade, setIdade] = useState("");
   const [peso, setPeso] = useState("");
   const [altura, setAltura] = useState("");
   const [objetivo, setObjetivo] = useState<"perder" | "manter" | "ganhar">("manter");
   const [loading, setLoading] = useState(false);
+
+  const objetivos = [
+    {
+      id: "perder" as const,
+      label: t("onboarding.loseWeight"),
+      desc: t("onboarding.loseWeightDesc"),
+      Icon: TrendingDown,
+    },
+    {
+      id: "manter" as const,
+      label: t("onboarding.maintainWeight"),
+      desc: t("onboarding.maintainWeightDesc"),
+      Icon: Minus,
+    },
+    {
+      id: "ganhar" as const,
+      label: t("onboarding.gainMuscle"),
+      desc: t("onboarding.gainMuscleDesc"),
+      Icon: TrendingUp,
+    },
+  ];
 
   // Inicialização instantânea a partir do cache local para resposta imediata
   const getInitialCampaignState = () => {
@@ -136,19 +142,19 @@ function OnboardingPage() {
       p = parseFloat(peso),
       a = parseFloat(altura);
     if (!i || !p || !a) {
-      toast.error("Por favor, preencha todos os campos obrigatórios.");
+      toast.error(t("onboarding.fillAllFields"));
       return;
     }
     if (i < 10 || i > 120) {
-      toast.error("Insira uma idade válida.");
+      toast.error(t("onboarding.validAge"));
       return;
     }
     if (p < 20 || p > 350) {
-      toast.error("Insira um peso válido (kg).");
+      toast.error(t("onboarding.validWeight"));
       return;
     }
     if (a < 50 || a > 250) {
-      toast.error("Insira uma altura válida (cm).");
+      toast.error(t("onboarding.validHeight"));
       return;
     }
 
@@ -171,11 +177,11 @@ function OnboardingPage() {
     ]);
     setLoading(false);
     if (e1 || e2) {
-      toast.error("Erro ao salvar dados do perfil.");
+      toast.error(t("common.error"));
       return;
     }
     await refresh();
-    toast.success("Metas calculadas com sucesso!");
+    toast.success(t("onboarding.goalsCalculated"));
     nav({ to: "/scanner" });
   };
 
@@ -184,6 +190,11 @@ function OnboardingPage() {
       {/* Organic fluid decorative ambient background */}
       <div className="absolute top-[-10%] left-[-20%] w-[80vw] h-[80vw] sm:w-[50vw] sm:h-[50vw] rounded-full bg-primary/5 blur-[80px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[-20%] w-[80vw] h-[80vw] sm:w-[50vw] sm:h-[50vw] rounded-full bg-accent/5 blur-[80px] pointer-events-none" />
+
+      {/* Language Selector in Top Right Bar */}
+      <div className="w-full max-w-md flex justify-end mb-2 z-20">
+        <LanguageSelector variant="pills" />
+      </div>
 
       <motion.div
         initial={{ opacity: 0, y: 15 }}
@@ -203,11 +214,10 @@ function OnboardingPage() {
           </motion.div>
           <div className="space-y-1.5">
             <h1 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-primary">
-              Vamos te conhecer
+              {t("onboarding.title")}
             </h1>
             <p className="text-xs text-muted-foreground font-medium max-w-xs mx-auto">
-              Informe seus dados básicos para calcularmos suas metas nutricionais diárias
-              personalizadas.
+              {t("onboarding.subtitle")}
             </p>
           </div>
         </div>
@@ -218,19 +228,33 @@ function OnboardingPage() {
             {/* 3 Metric Inputs: Idade, Peso, Altura */}
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1 block">
-                Suas Medidas
+                {t("onboarding.measuresTitle")}
               </label>
               <div className="grid grid-cols-3 gap-2.5">
                 {[
-                  { id: "idade", val: idade, set: setIdade, ph: "28", lbl: "Idade", unit: "anos" },
-                  { id: "peso", val: peso, set: setPeso, ph: "75", lbl: "Peso", unit: "kg" },
+                  {
+                    id: "idade",
+                    val: idade,
+                    set: setIdade,
+                    ph: "28",
+                    lbl: t("onboarding.age"),
+                    unit: t("onboarding.ageUnit"),
+                  },
+                  {
+                    id: "peso",
+                    val: peso,
+                    set: setPeso,
+                    ph: "75",
+                    lbl: t("onboarding.weight"),
+                    unit: t("onboarding.weightUnit"),
+                  },
                   {
                     id: "altura",
                     val: altura,
                     set: setAltura,
                     ph: "175",
-                    lbl: "Altura",
-                    unit: "cm",
+                    lbl: t("onboarding.height"),
+                    unit: t("onboarding.heightUnit"),
                   },
                 ].map((f) => (
                   <div
@@ -262,7 +286,7 @@ function OnboardingPage() {
             {/* Objective Selection */}
             <div className="space-y-2 pt-1">
               <label className="text-[10px] font-black uppercase tracking-widest text-primary/70 ml-1 block">
-                Escolha o seu Objetivo
+                {t("onboarding.objectiveTitle")}
               </label>
               <div className="space-y-2">
                 {objetivos.map(({ id, label, desc, Icon }) => {
@@ -325,7 +349,7 @@ function OnboardingPage() {
                   <Loader2 className="size-5 animate-spin" />
                 ) : (
                   <>
-                    <span>Calcular Metas & Continuar</span>
+                    <span>{t("onboarding.submitButton")}</span>
                     <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
                   </>
                 )}
@@ -358,11 +382,10 @@ function OnboardingPage() {
               </motion.div>
 
               <h2 className="text-2xl sm:text-3xl font-display font-black tracking-tight text-foreground uppercase mb-2">
-                Conseguiu a tempo! 🎉
+                {t("onboarding.celebrationTitle")}
               </h2>
               <p className="text-xs text-muted-foreground font-semibold leading-relaxed max-w-sm mb-6">
-                Parabéns! O seu registo foi realizado durante o nosso período de campanha especial
-                de boas-vindas. Ativámos bónus exclusivos na sua conta:
+                {t("onboarding.celebrationSub")}
               </p>
 
               {/* Bonus highlights container */}
@@ -374,16 +397,15 @@ function OnboardingPage() {
                   </div>
                   <div>
                     <div className="text-xs font-black text-foreground">
-                      Scans de Alimentos Ativados
+                      {t("onboarding.bonusScansTitle")}
                     </div>
                     <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
-                      Recebeu{" "}
+                      {t("onboarding.bonusScansDescPrefix")}{" "}
                       <strong className="text-foreground font-bold">
-                        +{bonusScansCount} scans de bónus
+                        +{bonusScansCount} {t("onboarding.bonusScansDescMid")}
                       </strong>{" "}
-                      além dos 3 de oferta base. Começa com{" "}
                       <strong className="text-primary font-extrabold">
-                        {3 + bonusScansCount} scans!
+                        {3 + bonusScansCount} {t("onboarding.bonusScansDescSuffix")}
                       </strong>
                     </p>
                   </div>
@@ -396,14 +418,13 @@ function OnboardingPage() {
                   </div>
                   <div>
                     <div className="text-xs font-black text-foreground">
-                      Acesso Gratuito ao Chatbot IA
+                      {t("onboarding.bonusChatTitle")}
                     </div>
                     <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
-                      Desbloqueámos o Nutricionista IA por{" "}
+                      {t("onboarding.bonusChatDescPrefix")}{" "}
                       <strong className="text-foreground font-bold">
-                        {freeAiDaysCount} dias grátis
-                      </strong>{" "}
-                      (até 30 mensagens diárias) para guiar a sua alimentação saudável!
+                        {freeAiDaysCount} {t("onboarding.bonusChatDescSuffix")}
+                      </strong>
                     </p>
                   </div>
                 </div>
@@ -413,7 +434,7 @@ function OnboardingPage() {
                 onClick={() => setShowCelebration(false)}
                 className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-[0.15em] text-xs shadow-lg shadow-primary/10 transition-all active:scale-[0.98]"
               >
-                Garantir Bónus & Definir Metas
+                {t("onboarding.claimCelebration")}
               </Button>
             </motion.div>
           </div>

@@ -181,7 +181,7 @@ function EditarPerfil() {
           />
         </div>
         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          Toque na câmera para trocar a foto
+          {t("editProfile.changePhoto")}
         </p>
       </div>
 

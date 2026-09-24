@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { AlertCircle, Trash2, X, Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/excluir-conta")({
   component: ExcluirContaPage,
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/_app/perfil/excluir-conta")({
 
 export default function ExcluirContaPage() {
   const { user, profile, refresh } = useAuth();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,7 +28,7 @@ export default function ExcluirContaPage() {
     if (!profile || !user?.email) return;
 
     if (password !== confirmPassword) {
-      toast.error("As senhas não coincidem.");
+      toast.error(t("auth.passwordsDoNotMatch"));
       return;
     }
 
@@ -48,10 +50,10 @@ export default function ExcluirContaPage() {
         .update({ deletion_requested_at: new Date().toISOString() })
         .eq("id", profile.id);
       if (error) throw error;
-      toast.success("Solicitação de exclusão recebida. Você tem 3 dias para cancelar.");
+      toast.success(t("subpages.deleteAccount.warning"));
       await refresh();
     } catch (err) {
-      toast.error("Erro ao solicitar exclusão.");
+      toast.error(t("common.error"));
       console.error(err);
     } finally {
       setLoading(false);
@@ -67,10 +69,10 @@ export default function ExcluirContaPage() {
         .update({ deletion_requested_at: null })
         .eq("id", profile.id);
       if (error) throw error;
-      toast.success("Solicitação de exclusão cancelada.");
+      toast.success(t("common.success"));
       await refresh();
     } catch (err) {
-      toast.error("Erro ao cancelar exclusão.");
+      toast.error(t("common.error"));
       console.error(err);
     } finally {
       setLoading(false);
@@ -87,77 +89,86 @@ export default function ExcluirContaPage() {
           <ArrowLeft className="size-5" />
         </Link>
         <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-          Excluir Conta
+          {t("subpages.deleteAccount.title")}
         </h1>
       </div>
 
       {isPendingDeletion ? (
-        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-4">
-          <div className="flex items-center gap-2 text-yellow-800">
-            <AlertCircle className="size-5" />
-            <h2 className="font-semibold">Exclusão pendente</h2>
+        <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl space-y-4">
+          <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+            <AlertCircle className="size-5 shrink-0" />
+            <h2 className="font-semibold text-sm">{t("subpages.deleteAccount.title")}</h2>
           </div>
-          <p className="text-sm text-yellow-700">
-            Sua conta será permanentemente excluída em{" "}
-            {new Date(
-              new Date(deletionRequestedAt).getTime() + 3 * 24 * 60 * 60 * 1000,
-            ).toLocaleDateString()}
-            . Se você mudar de ideia, pode cancelar a solicitação até lá.
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {t("subpages.deleteAccount.warning")}
           </p>
           <Button
             onClick={handleCancelDeletion}
             disabled={loading}
             variant="outline"
-            className="w-full"
+            className="w-full rounded-xl border-yellow-500/30 text-xs font-bold"
           >
-            <X className="size-4 mr-2" />
-            Cancelar Exclusão
+            {t("common.cancel")}
           </Button>
         </div>
       ) : (
         <div className="space-y-4">
-          <p className="text-muted-foreground text-sm">
-            Tem certeza de que deseja excluir sua conta? Esta ação removerá todos os seus dados
-            permanentemente após 3 dias.
-          </p>
-
-          <div className="space-y-2">
-            <Label>Senha</Label>
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Insira sua senha"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
+          <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-2">
+            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertCircle className="size-5 shrink-0" />
+              <h2 className="font-semibold text-sm">{t("common.error")}</h2>
             </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Confirmar Senha</Label>
-            <Input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirme sua senha"
-            />
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {t("subpages.deleteAccount.warning")}
+            </p>
           </div>
 
-          <Button
-            onClick={handleRequestDeletion}
-            disabled={loading}
-            variant="destructive"
-            className="w-full"
-          >
-            <Trash2 className="size-4 mr-2" />
-            Solicitar Exclusão
-          </Button>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs font-bold text-muted-foreground">
+                {t("auth.password")}
+              </Label>
+              <div className="relative mt-1">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={t("auth.passwordPlaceholder")}
+                  className="rounded-xl pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-xs font-bold text-muted-foreground">
+                {t("auth.confirmPassword")}
+              </Label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder={t("auth.confirmPasswordPlaceholder")}
+                className="rounded-xl mt-1"
+              />
+            </div>
+
+            <Button
+              onClick={handleRequestDeletion}
+              disabled={loading || !password || !confirmPassword}
+              variant="destructive"
+              className="w-full h-12 rounded-xl text-xs font-black uppercase tracking-wider mt-4"
+            >
+              <Trash2 className="size-4 mr-2" />
+              {t("subpages.deleteAccount.confirmButton")}
+            </Button>
+          </div>
         </div>
       )}
     </div>

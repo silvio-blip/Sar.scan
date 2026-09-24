@@ -15,7 +15,6 @@ import {
   Sparkles,
   Send as SendIcon,
   Trash2,
-  Bot,
   RotateCcw,
   CheckCheck,
   Zap,
@@ -26,6 +25,7 @@ import {
   Image as ImageIcon,
   X as XIcon,
 } from "lucide-react";
+import { SarAiAvatar } from "@/components/sar-ai-avatar";
 import { motion } from "motion/react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -38,6 +38,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/chat")({ component: ChatPage });
 
@@ -68,6 +69,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
   onRejectPlan,
 }: ChatMessageItemProps) {
   const isUser = msg.role === "user";
+  const { t } = useTranslation();
 
   const { cleanContent, plan, status } = useMemo(() => {
     if (isUser) return { cleanContent: msg.content, plan: null, status: null };
@@ -99,11 +101,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
         isUser ? "justify-end" : "justify-start"
       }`}
     >
-      {!isUser && (
-        <div className="size-8 rounded-xl bg-gradient-to-tr from-primary to-emerald-400 flex items-center justify-center text-white shrink-0 shadow-sm mt-0.5">
-          <Sparkles className="size-4" />
-        </div>
-      )}
+      {!isUser && <SarAiAvatar size={34} className="shrink-0 mt-0.5" />}
 
       <div
         className={`max-w-[85%] sm:max-w-[78%] px-4 py-3 rounded-[22px] text-xs sm:text-sm leading-relaxed shadow-sm ${
@@ -144,26 +142,26 @@ const ChatMessageItem = memo(function ChatMessageItem({
             {plan && (
               <div className="mt-3 p-3 rounded-xl bg-secondary/80 border border-primary/30 space-y-2">
                 <p className="text-xs font-bold text-primary flex items-center gap-1.5">
-                  <Sparkles className="size-3.5" /> Plano Nutricional Proposto
+                  <Sparkles className="size-3.5" /> {t("chat.planProposed")}
                 </p>
                 {plan.meta && (
                   <p className="text-[11px] text-foreground">
-                    <span className="font-bold">Meta:</span> {plan.meta}
+                    <span className="font-bold">{t("chat.planGoal")}</span> {plan.meta}
                   </p>
                 )}
                 {plan.dieta && (
                   <p className="text-[11px] text-foreground">
-                    <span className="font-bold">Dieta/Estratégia:</span> {plan.dieta}
+                    <span className="font-bold">{t("chat.planStrategy")}</span> {plan.dieta}
                   </p>
                 )}
 
                 {status === "accepted" ? (
                   <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-lg">
-                    <span>✅ Plano Aceito e Aplicado ao Perfil</span>
+                    <span>{t("chat.planAcceptedBadge")}</span>
                   </div>
                 ) : status === "rejected" ? (
                   <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-rose-500 bg-rose-500/10 px-3 py-2 rounded-lg">
-                    <span>❌ Plano Recusado</span>
+                    <span>{t("chat.planRejectedBadge")}</span>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 pt-1">
@@ -172,7 +170,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
                       onClick={() => onAcceptPlan(msg.id, msg.content, plan)}
                       className="h-8 rounded-lg bg-primary text-primary-foreground font-bold text-xs shadow-sm hover:bg-primary/95"
                     >
-                      Aceitar Plano
+                      {t("chat.acceptPlan")}
                     </Button>
                     <Button
                       size="sm"
@@ -180,7 +178,7 @@ const ChatMessageItem = memo(function ChatMessageItem({
                       onClick={() => onRejectPlan(msg.id, msg.content)}
                       className="h-8 rounded-lg border-border text-xs font-bold hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
                     >
-                      Recusar
+                      {t("chat.rejectPlan")}
                     </Button>
                   </div>
                 )}
@@ -207,33 +205,10 @@ const ChatMessageItem = memo(function ChatMessageItem({
   );
 });
 
-const QUICK_PROMPTS = [
-  {
-    icon: Flame,
-    title: "Calcular meus macros",
-    prompt: "Gostaria de calcular meus macronutrientes ideais para o meu objetivo atual.",
-  },
-  {
-    icon: Dumbbell,
-    title: "Pré e pós-treino",
-    prompt: "Quais são as melhores opções de refeição para comer antes e depois do meu treino?",
-  },
-  {
-    icon: Salad,
-    title: "Almoço proteico",
-    prompt: "Me dê uma sugestão de almoço proteico, saudável e fácil de preparar.",
-  },
-  {
-    icon: Apple,
-    title: "Dicas para secar",
-    prompt:
-      "Quais estratégias nutricionais você recomenda para queimar gordura mantendo massa magra?",
-  },
-];
-
 export function ChatPage() {
   const router = useRouter();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const {
     user,
     profile,
@@ -253,7 +228,6 @@ export function ChatPage() {
     }
   };
 
-  // Horizontal swipe gestures to go back (swipe right) or advance to next section (swipe left)
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -278,12 +252,9 @@ export function ChatPage() {
     const elapsed = Date.now() - touchStartRef.current.time;
     touchStartRef.current = null;
 
-    // Swipe right (do lado esquerdo para o direito): vai para a sessão à esquerda no menu (Perfil)
     if (deltaX > 55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3 && elapsed < 500) {
       navigate({ to: "/perfil" });
-    }
-    // Swipe left (do lado direito para o esquerdo): vai para a sessão à direita no menu (Scanner)
-    else if (deltaX < -55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3 && elapsed < 500) {
+    } else if (deltaX < -55 && Math.abs(deltaX) > Math.abs(deltaY) * 1.3 && elapsed < 500) {
       navigate({ to: "/scanner" });
     }
   };
@@ -300,7 +271,7 @@ export function ChatPage() {
   const [planStatuses, setPlanStatuses] = useState<Record<string, "accepted" | "rejected">>({});
 
   const handleAcceptPlan = useCallback(
-    async (msgId: string, msgContent: string, plan: { meta?: string; dieta?: string }) => {
+    async (msgId: string, _msgContent: string, plan: { meta?: string; dieta?: string }) => {
       if (!user) return;
       try {
         setPlanStatuses((prev) => ({ ...prev, [msgId]: "accepted" }));
@@ -341,18 +312,18 @@ export function ChatPage() {
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
 
-        toast.success("Plano nutricional aplicado com sucesso ao seu perfil!");
+        toast.success(t("chat.planAppliedToast"));
         await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
         await qc.invalidateQueries({ queryKey: ["user_profile", user.id] });
       } catch (e: any) {
         toast.error(e?.message || "Erro ao aplicar plano.");
       }
     },
-    [user, qc],
+    [user, qc, t],
   );
 
   const handleRejectPlan = useCallback(
-    async (msgId: string, msgContent: string) => {
+    async (msgId: string, _msgContent: string) => {
       if (!user) return;
       try {
         setPlanStatuses((prev) => ({ ...prev, [msgId]: "rejected" }));
@@ -368,13 +339,13 @@ export function ChatPage() {
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || "Erro ao salvar status do plano");
 
-        toast.info("Plano nutricional recusado.");
+        toast.info(t("chat.planRejectedToast"));
         await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
       } catch (e: any) {
         toast.error(e?.message || "Erro ao recusar plano.");
       }
     },
-    [user, qc],
+    [user, qc, t],
   );
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -442,7 +413,7 @@ export function ChatPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.type !== "image/png" && file.type !== "image/jpeg") {
-      toast.error("Por favor, envie apenas imagens nos formatos PNG ou JPEG.");
+      toast.error(t("chat.imageFormatError"));
       return;
     }
     const reader = new FileReader();
@@ -454,7 +425,6 @@ export function ChatPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Scroll to bottom on new messages
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -466,13 +436,12 @@ export function ChatPage() {
     return () => clearTimeout(timer);
   }, [rawAiMsgs?.length, optimisticMessages.length, sending]);
 
-  // Send message to AI Nutritionist
   const sendMessage = async (messageText?: string) => {
     const text = (messageText ?? input).trim();
     if (!user || (!text && !selectedImage)) return;
 
     if (!canAccessAI) {
-      toast.error("Assine um plano para conversar com a IA Nutricionista.");
+      toast.error(t("chat.exclusiveTitle"));
       return;
     }
 
@@ -527,7 +496,6 @@ export function ChatPage() {
         throw new Error(data.error ?? "Erro ao processar resposta da IA.");
       }
 
-      // Increment usage count
       if (!isAdmin) {
         const { data: usageData } = await supabase
           .from("chat_usage")
@@ -535,7 +503,6 @@ export function ChatPage() {
           .eq("user_id", user.id)
           .maybeSingle();
 
-        const planKey = (subscription?.plan || "free").replace("_cancelled", "");
         let currentCount = usageData?.usage_count ?? 0;
         if (usageData?.last_message_at) {
           const lastDate = new Date(usageData.last_message_at).toDateString();
@@ -565,13 +532,12 @@ export function ChatPage() {
     }
   };
 
-  // Clear conversation history
   const handleClearHistory = async () => {
     if (!user) return;
     try {
       const { error } = await supabase.from("chat_messages").delete().eq("user_id", user.id);
       if (error) throw error;
-      toast.success("Histórico da conversa limpo com sucesso.");
+      toast.success(t("chat.historyClearedSuccess"));
       setShowClearConfirm(false);
       await qc.invalidateQueries({ queryKey: ["ai_chat", user.id] });
     } catch {
@@ -579,13 +545,35 @@ export function ChatPage() {
     }
   };
 
-  // Combine real and optimistic messages
   const allMessages: Message[] = [...(rawAiMsgs ?? [])];
   optimisticMessages.forEach((om) => {
     if (!allMessages.some((m) => m.id === om.id)) {
       allMessages.push(om);
     }
   });
+
+  const quickPrompts = [
+    {
+      icon: Flame,
+      title: t("chat.promptCalcMacrosTitle"),
+      prompt: t("chat.promptCalcMacrosText"),
+    },
+    {
+      icon: Dumbbell,
+      title: t("chat.promptWorkoutTitle"),
+      prompt: t("chat.promptWorkoutText"),
+    },
+    {
+      icon: Salad,
+      title: t("chat.promptLunchTitle"),
+      prompt: t("chat.promptLunchText"),
+    },
+    {
+      icon: Apple,
+      title: t("chat.promptFatLossTitle"),
+      prompt: t("chat.promptFatLossText"),
+    },
+  ];
 
   return (
     <div
@@ -612,13 +600,11 @@ export function ChatPage() {
             <ArrowLeft className="size-5" />
           </Button>
 
-          <div className="size-9 sm:size-10 rounded-2xl bg-gradient-to-tr from-primary to-emerald-400 flex items-center justify-center shadow-md shadow-primary/20 text-white shrink-0">
-            <Sparkles className="size-4 sm:size-5 animate-pulse" />
-          </div>
+          <SarAiAvatar size={38} className="shrink-0" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-base sm:text-lg font-display font-black tracking-tight text-foreground truncate">
-                Nutricionista IA
+                {t("chat.title")}
               </h1>
               <Badge className="text-[9px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-none font-black px-1.5 py-0">
                 PRO
@@ -626,7 +612,7 @@ export function ChatPage() {
             </div>
             <p className="text-[11px] text-muted-foreground flex items-center gap-1.5 font-medium truncate">
               <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              Online • Especialista em Nutrição
+              {t("chat.statusOnline")}
             </p>
           </div>
         </div>
@@ -635,7 +621,7 @@ export function ChatPage() {
           {usageInfo && usageInfo.limit !== -1 ? (
             <div className="px-2.5 py-1 rounded-xl bg-secondary border border-border flex flex-col items-center">
               <span className="text-[8px] font-black tracking-widest text-muted-foreground uppercase leading-none mb-0.5">
-                Uso Diário
+                {t("chat.dailyUsage")}
               </span>
               <span className="text-[10px] font-black text-primary leading-none">
                 {usageInfo.count} / {usageInfo.limit}
@@ -646,7 +632,7 @@ export function ChatPage() {
               variant="outline"
               className="text-[10px] font-bold border-primary/30 text-primary"
             >
-              <Zap className="size-3 mr-1 fill-primary" /> Ilimitado
+              <Zap className="size-3 mr-1 fill-primary" /> {t("chat.unlimited")}
             </Badge>
           )}
 
@@ -656,7 +642,7 @@ export function ChatPage() {
               size="icon"
               className="size-9 rounded-xl text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
               onClick={() => setShowClearConfirm(true)}
-              title="Limpar histórico"
+              title={t("chat.clearChat")}
             >
               <RotateCcw className="size-4" />
             </Button>
@@ -670,7 +656,7 @@ export function ChatPage() {
           <div className="flex items-center gap-2 min-w-0">
             <Gift className="size-4 text-primary shrink-0 animate-bounce" />
             <p className="text-[11px] sm:text-xs text-muted-foreground font-medium truncate">
-              Acesso de bónus ativo! Chatbot IA gratuito expira em:{" "}
+              {t("chat.campaignActive")}{" "}
               <strong className="text-foreground font-bold">
                 {campaignAiExpirationDate.toLocaleString("pt-PT", {
                   day: "2-digit",
@@ -683,7 +669,7 @@ export function ChatPage() {
             </p>
           </div>
           <Badge className="bg-primary/20 hover:bg-primary/35 text-primary text-[10px] font-black border-none shrink-0 py-0.5 px-2">
-            CAMPANHA
+            {t("chat.campaignBadge")}
           </Badge>
         </div>
       )}
@@ -697,14 +683,13 @@ export function ChatPage() {
             </div>
             <div className="space-y-2">
               <h2 className="text-2xl font-display font-black text-foreground">
-                Nutricionista IA Exclusivo
+                {t("chat.exclusiveTitle")}
               </h2>
               <p className="text-xs text-muted-foreground leading-relaxed px-2">
-                Tenha um especialista em nutrição disponível 24 horas por dia para tirar dúvidas,
-                calcular macros, analisar pratos e montar estratégias alimentares personalizadas.
+                {t("chat.exclusiveDesc")}
               </p>
               <p className="text-[10px] text-primary font-black uppercase tracking-widest pt-1">
-                Disponível nos planos Semanal, Mensal e Anual
+                {t("chat.exclusivePlans")}
               </p>
             </div>
             <Button
@@ -712,7 +697,7 @@ export function ChatPage() {
               className="w-full h-13 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 font-black uppercase tracking-wider shadow-lg shadow-primary/20"
             >
               <Link to="/premium">
-                <Crown className="size-5 mr-2" /> Ativar Acesso Premium
+                <Crown className="size-5 mr-2" /> {t("chat.unlockPremium")}
               </Link>
             </Button>
           </Card>
@@ -723,22 +708,19 @@ export function ChatPage() {
           <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 custom-scrollbar">
             {allMessages.length === 0 && !loadingMsgs ? (
               <div className="flex flex-col items-center justify-center h-full text-center py-6 px-4 space-y-5 animate-in fade-in duration-300">
-                <div className="size-16 rounded-3xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm">
-                  <Bot className="size-8" />
-                </div>
+                <SarAiAvatar size={84} withAura className="mx-auto drop-shadow-xl" />
                 <div className="space-y-1.5 max-w-xs">
                   <h3 className="text-base font-black text-foreground">
-                    Olá, {profile?.nome || "atleta"}! 👋
+                    {t("chat.helloUser", { name: profile?.nome || "atleta" })}
                   </h3>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    Sou o seu nutricionista com inteligência artificial. Como posso ajudar com a sua
-                    alimentação e metas hoje?
+                    {t("chat.welcomeIntro")}
                   </p>
                 </div>
 
                 {/* Quick Prompts */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-md pt-2">
-                  {QUICK_PROMPTS.map((qp, idx) => {
+                  {quickPrompts.map((qp, idx) => {
                     const Icon = qp.icon;
                     return (
                       <button
@@ -780,15 +762,13 @@ export function ChatPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex justify-start items-center gap-2.5"
               >
-                <div className="size-8 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shrink-0 shadow-sm">
-                  <Sparkles className="size-4 animate-spin" />
-                </div>
+                <SarAiAvatar size={34} isThinking={true} className="shrink-0" />
                 <div className="bg-secondary/80 border border-border/80 rounded-[20px] rounded-tl-sm px-4 py-2.5 flex items-center gap-1.5 shadow-sm">
                   <span className="size-1.5 bg-primary rounded-full animate-bounce" />
                   <span className="size-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.2s]" />
                   <span className="size-1.5 bg-primary rounded-full animate-bounce [animation-delay:0.4s]" />
                   <span className="text-[11px] text-muted-foreground font-semibold ml-1.5">
-                    Nutricionista analisando...
+                    {t("chat.analyzing")}
                   </span>
                 </div>
               </motion.div>
@@ -838,7 +818,7 @@ export function ChatPage() {
                   ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Pergunte ou envie foto de um prato (PNG/JPEG)..."
+                  placeholder={t("chat.placeholder")}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -853,7 +833,7 @@ export function ChatPage() {
                   onClick={() => sendMessage()}
                   disabled={sending || (!input.trim() && !selectedImage)}
                   className="size-12 rounded-2xl bg-primary text-primary-foreground hover:bg-primary/95 shadow-md shadow-primary/20 transition-all active:scale-95 flex items-center justify-center shrink-0 disabled:opacity-40 cursor-pointer"
-                  aria-label="Enviar mensagem"
+                  aria-label={t("chat.send")}
                 >
                   <SendIcon className="size-5" />
                 </Button>
@@ -867,18 +847,16 @@ export function ChatPage() {
       <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
         <DialogContent className="max-w-xs bg-card border border-border rounded-[28px] p-6 text-foreground text-center">
           <DialogHeader className="sr-only">
-            <DialogTitle>Limpar histórico da conversa?</DialogTitle>
-            <DialogDescription>Apagar todas as mensagens com o nutricionista IA.</DialogDescription>
+            <DialogTitle>{t("chat.clearChatTitle")}</DialogTitle>
+            <DialogDescription>{t("chat.clearChatDesc")}</DialogDescription>
           </DialogHeader>
 
           <div className="size-12 rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center mx-auto mb-2">
             <Trash2 className="size-6" />
           </div>
 
-          <h3 className="text-base font-black tracking-tight">Limpar Histórico?</h3>
-          <p className="text-xs text-muted-foreground mt-1">
-            Esta ação removerá todas as mensagens trocadas com o nutricionista IA.
-          </p>
+          <h3 className="text-base font-black tracking-tight">{t("chat.clearChatTitle")}</h3>
+          <p className="text-xs text-muted-foreground mt-1">{t("chat.clearChatDesc")}</p>
 
           <div className="grid grid-cols-2 gap-2 mt-4">
             <Button
@@ -886,14 +864,14 @@ export function ChatPage() {
               className="rounded-xl h-11 border-border"
               onClick={() => setShowClearConfirm(false)}
             >
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
               className="rounded-xl h-11 font-bold"
               onClick={handleClearHistory}
             >
-              Apagar
+              {t("chat.clearConfirmBtn")}
             </Button>
           </div>
         </DialogContent>
@@ -903,9 +881,9 @@ export function ChatPage() {
       <Dialog open={showLimitModal} onOpenChange={setShowLimitModal}>
         <DialogContent className="max-w-xs bg-card border border-border rounded-[28px] p-6 text-foreground text-center">
           <DialogHeader className="sr-only">
-            <DialogTitle>Limite diário atingido</DialogTitle>
+            <DialogTitle>{t("chat.limitReachedTitle")}</DialogTitle>
             <DialogDescription>
-              Você atingiu o limite de mensagens diárias para seu plano.
+              {t("chat.limitReachedDesc", { limit: usageLimit.limit })}
             </DialogDescription>
           </DialogHeader>
 
@@ -913,10 +891,9 @@ export function ChatPage() {
             <Zap className="size-6" />
           </div>
 
-          <h3 className="text-base font-black tracking-tight">Limite Diário Atingido</h3>
+          <h3 className="text-base font-black tracking-tight">{t("chat.limitReachedTitle")}</h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Você utilizou todas as {usageLimit.limit} mensagens diárias do seu plano mensal. O
-            limite será reiniciado amanhã.
+            {t("chat.limitReachedDesc", { limit: usageLimit.limit })}
           </p>
 
           <div className="space-y-2 mt-4">
@@ -925,7 +902,7 @@ export function ChatPage() {
               className="w-full rounded-xl h-11 bg-primary text-primary-foreground font-black uppercase text-xs tracking-wider"
             >
               <Link to="/premium">
-                <Crown className="size-4 mr-1.5" /> Migrar para Anual (Ilimitado)
+                <Crown className="size-4 mr-1.5" /> {t("chat.upgradeUnlimited")}
               </Link>
             </Button>
             <Button
@@ -933,7 +910,7 @@ export function ChatPage() {
               className="w-full rounded-xl h-10 border-border text-xs"
               onClick={() => setShowLimitModal(false)}
             >
-              Entendido
+              {t("chat.understood")}
             </Button>
           </div>
         </DialogContent>

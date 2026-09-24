@@ -22,12 +22,21 @@ type Food = NutritionFood & { porcao?: string };
 interface FoodListItemProps {
   food: Food;
   onSelect: (food: Food) => void;
+  lang: string;
+  translateFoodName: (name: string, lang: string) => string;
 }
 
-const FoodListItem = memo(function FoodListItem({ food, onSelect }: FoodListItemProps) {
+const FoodListItem = memo(function FoodListItem({
+  food,
+  onSelect,
+  lang,
+  translateFoodName,
+}: FoodListItemProps) {
   const handleClick = useCallback(() => {
     onSelect(food);
   }, [food, onSelect]);
+
+  const displayName = translateFoodName(food.nome, lang);
 
   return (
     <button
@@ -42,7 +51,7 @@ const FoodListItem = memo(function FoodListItem({ food, onSelect }: FoodListItem
       {/* Center Side: Food Name & Highlighted Calories */}
       <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center">
         <span className="font-bold text-sm tracking-tight text-foreground truncate block leading-tight">
-          {food.nome}
+          {displayName}
         </span>
         <span className="text-xs font-black text-rose-500/90 mt-1 flex items-center gap-1">
           <span className="size-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />
@@ -83,7 +92,7 @@ const FoodListItem = memo(function FoodListItem({ food, onSelect }: FoodListItem
 
 export function BuscarPage() {
   const { user } = useAuth();
-  const { t } = useTranslation();
+  const { t, lang, translateFoodName } = useTranslation();
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<FoodCategory>("all");
@@ -135,12 +144,17 @@ export function BuscarPage() {
     // Filtra pela busca textual
     if (q.trim()) {
       const query = q.toLowerCase().trim();
-      list = list.filter(
-        (f) => f.nome.toLowerCase().includes(query) || f.porcao?.toLowerCase().includes(query),
-      );
+      list = list.filter((f) => {
+        const translated = translateFoodName(f.nome, lang).toLowerCase();
+        return (
+          f.nome.toLowerCase().includes(query) ||
+          translated.includes(query) ||
+          f.porcao?.toLowerCase().includes(query)
+        );
+      });
     }
     return list;
-  }, [allFoods, selectedCategory, q]);
+  }, [allFoods, selectedCategory, q, lang, translateFoodName]);
 
   const showList = useMemo(() => variants ?? filtered, [variants, filtered]);
 
@@ -173,7 +187,7 @@ export function BuscarPage() {
     });
     if (error) {
       console.error("Erro ao salvar alimento no diário:", error);
-      toast.error("Erro ao salvar alimento no diário");
+      toast.error(t("common.error"));
       return;
     }
     await Promise.all([
@@ -181,7 +195,7 @@ export function BuscarPage() {
       qc.invalidateQueries({ queryKey: ["consumption"] }),
       qc.invalidateQueries({ queryKey: ["weekly"] }),
     ]);
-    toast.success("Adicionado ao diário!");
+    toast.success(t("scanner.addMealSuccess"));
     setSelected(null);
   };
 
@@ -217,9 +231,7 @@ export function BuscarPage() {
 
       const alimentos = (data.alimentos ?? []) as Food[];
       if (alimentos.length === 0) {
-        toast.message("Nenhum alimento encontrado", {
-          description: "Tente usar termos diferentes para a busca.",
-        });
+        toast.message(t("search.noResults"));
       } else {
         try {
           const cachedAi = JSON.parse(localStorage.getItem("sar_ai_search_cache") || "{}");
@@ -234,11 +246,7 @@ export function BuscarPage() {
       setVariants(alimentos);
     } catch (e: any) {
       console.error("AI Search error:", e);
-      toast.error(
-        e instanceof Error
-          ? `Erro na busca por IA: ${e.message}`
-          : "Erro ao realizar busca com IA. Tente novamente.",
-      );
+      toast.error(e instanceof Error ? `${t("search.aiSearch")}: ${e.message}` : t("common.error"));
     } finally {
       setAiBusy(false);
     }
@@ -253,7 +261,10 @@ export function BuscarPage() {
             {t("search.title")}
           </h1>
           <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
-            {popular?.length ?? allFoods.length} alimentos • {filtered.length}
+            {t("search.foodsCount", {
+              total: popular?.length ?? allFoods.length,
+              filtered: filtered.length,
+            })}
           </p>
         </div>
 
@@ -297,6 +308,8 @@ export function BuscarPage() {
         >
           {FOOD_CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat.id;
+            const categoryLabel = t(`search.categories.${cat.id}`) || cat.label;
+
             return (
               <button
                 key={cat.id}
@@ -312,7 +325,7 @@ export function BuscarPage() {
                 }`}
               >
                 <span className="text-sm leading-none">{cat.emoji}</span>
-                <span>{cat.label}</span>
+                <span>{categoryLabel}</span>
               </button>
             );
           })}
@@ -329,7 +342,7 @@ export function BuscarPage() {
             ) : (
               <Sparkles className="size-5 mr-2" />
             )}
-            Analisar com IA: "{q}"
+            {t("search.aiSearch")}: "{q}"
           </Button>
         )}
 
@@ -338,7 +351,7 @@ export function BuscarPage() {
             onClick={() => setVariants(null)}
             className="text-[10px] text-primary font-black uppercase tracking-widest hover:opacity-85 transition-opacity block"
           >
-            ← Voltar à lista por categorias
+            {t("search.backToCategories")}
           </button>
         )}
       </div>
@@ -360,7 +373,13 @@ export function BuscarPage() {
 
       <div className="flex flex-col gap-3">
         {visibleList.map((f, i) => (
-          <FoodListItem key={`${f.nome}-${i}`} food={f} onSelect={setSelected} />
+          <FoodListItem
+            key={`${f.nome}-${i}`}
+            food={f}
+            onSelect={setSelected}
+            lang={lang}
+            translateFoodName={translateFoodName}
+          />
         ))}
       </div>
 
@@ -371,15 +390,13 @@ export function BuscarPage() {
             className="rounded-full px-6 font-bold text-xs h-11 border-border bg-secondary hover:bg-muted text-foreground shadow-sm"
             onClick={() => setDisplayLimit((prev) => prev + 50)}
           >
-            Carregar mais ({showList.length - displayLimit} restantes)
+            {t("search.loadMore", { count: showList.length - displayLimit })}
           </Button>
         </div>
       )}
 
       {!isLoading && showList.length === 0 && q.trim() && !variants && (
-        <p className="text-center text-sm text-muted-foreground py-4">
-          Nada encontrado. Use a busca por IA acima.
-        </p>
+        <p className="text-center text-sm text-muted-foreground py-4">{t("search.noResults")}</p>
       )}
 
       <NutritionModal food={selected} onClose={() => setSelected(null)} onAdd={adicionar} />

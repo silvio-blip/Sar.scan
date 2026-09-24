@@ -309,14 +309,14 @@ function AppLayout() {
             ? "0px"
             : "max(var(--main-padding-bottom, 120px), calc(var(--main-padding-bottom, 120px) + env(safe-area-inset-bottom, 0px)))",
         }}
-        className={`flex-1 w-full max-w-[480px] bg-card ${
+        className={`flex-1 w-full max-w-[500px] bg-card ${
           isChatRoute
             ? "pt-0 border-none shadow-none"
             : "pt-4 sm:pt-6 border-x border-border shadow-xl"
         } relative min-h-screen flex flex-col`}
       >
         <div
-          className={`w-full flex-1 flex flex-col min-h-0 ${isChatRoute ? "px-0" : "px-4 sm:px-6"}`}
+          className={`w-full flex-1 flex flex-col min-h-0 ${isChatRoute ? "px-0" : "px-3.5 sm:px-5"}`}
         >
           <Suspense
             fallback={

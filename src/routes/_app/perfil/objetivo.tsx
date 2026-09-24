@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, TrendingDown, Minus, TrendingUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/objetivo")({ component: ObjetivoPage });
 
@@ -13,14 +14,30 @@ type Objetivo = "perder" | "manter" | "ganhar";
 
 function ObjetivoPage() {
   const { user, profile, refresh } = useAuth();
+  const { t } = useTranslation();
   const nav = useNavigate();
   const [objetivo, setObjetivo] = useState<Objetivo>((profile?.objetivo as Objetivo) ?? "manter");
   const [saving, setSaving] = useState(false);
 
   const objs: { id: Objetivo; label: string; sub: string; Icon: typeof TrendingDown }[] = [
-    { id: "perder", label: "Perder Peso", sub: "-500 cal/dia", Icon: TrendingDown },
-    { id: "manter", label: "Manter Peso", sub: "Manutenção", Icon: Minus },
-    { id: "ganhar", label: "Ganhar Massa", sub: "+300 cal/dia", Icon: TrendingUp },
+    {
+      id: "perder",
+      label: t("subpages.objective.lose"),
+      sub: t("subpages.objective.loseDesc"),
+      Icon: TrendingDown,
+    },
+    {
+      id: "manter",
+      label: t("subpages.objective.maintain"),
+      sub: t("subpages.objective.maintainDesc"),
+      Icon: Minus,
+    },
+    {
+      id: "ganhar",
+      label: t("subpages.objective.gain"),
+      sub: t("subpages.objective.gainDesc"),
+      Icon: TrendingUp,
+    },
   ];
 
   const save = async () => {
@@ -33,7 +50,7 @@ function ObjetivoPage() {
       return;
     }
     await refresh();
-    toast.success("Objetivo atualizado");
+    toast.success(t("subpages.objective.success"));
     nav({ to: "/perfil" });
   };
 
@@ -47,7 +64,7 @@ function ObjetivoPage() {
           <ArrowLeft className="size-5" />
         </Link>
         <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-          Objetivo
+          {t("subpages.objective.title")}
         </h1>
       </div>
 
@@ -89,7 +106,7 @@ function ObjetivoPage() {
         onClick={save}
         disabled={saving}
       >
-        {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : "Confirmar Objetivo"}
+        {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : t("subpages.objective.save")}
       </Button>
     </div>
   );

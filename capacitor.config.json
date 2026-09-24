@@ -1,6 +1,6 @@
 {
   "appId": "com.sarscan.new",
-  "appName": "Sar Scan",
+  "appName": "Sar scan",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

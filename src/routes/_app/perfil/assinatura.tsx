@@ -26,22 +26,21 @@ import { toast } from "sonner";
 import { useState, useEffect, useMemo } from "react";
 import {
   isCapacitor,
-  getStoredPlayPrices,
-  syncGooglePlayPrices,
   useGooglePlayPrices,
   cancelSubscriptionOnBackend,
   reactivateSubscriptionOnBackend,
   syncSubscriptionStatusOnBackend,
   PLAY_PRODUCT_IDS,
-  type PlayProductDetails,
 } from "@/lib/google-play.functions";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/assinatura")({
   component: AssinaturaPage,
 });
 
 export function AssinaturaPage() {
-  const { user, session, subscription, isPremium, isUnlimited, refresh } = useAuth();
+  const { session, subscription, refresh } = useAuth();
+  const { t, lang } = useTranslation();
   const [cancelling, setCancelling] = useState(false);
   const [reactivating, setReactivating] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -108,11 +107,16 @@ export function AssinaturaPage() {
   const planDetails = useMemo(() => {
     if (!planType || subscription?.status === "free") {
       return {
-        title: "Plano Gratuito",
-        description: "Acesso diário a 3 scans nutricionais.",
-        priceText: "Grátis",
-        period: "Sem custo",
-        badge: "Básico",
+        title: lang === "pt" ? "Plano Gratuito" : lang === "fr" ? "Forfait Gratuit" : "Free Plan",
+        description:
+          lang === "pt"
+            ? "Acesso diário a 3 scans nutricionais."
+            : lang === "fr"
+              ? "Accès quotidien à 3 scans nutritionnels."
+              : "Daily access to 3 nutrition scans.",
+        priceText: lang === "pt" ? "Grátis" : lang === "fr" ? "Gratuit" : "Free",
+        period: lang === "pt" ? "Sem custo" : lang === "fr" ? "Sans frais" : "No cost",
+        badge: lang === "pt" ? "Básico" : lang === "fr" ? "Basique" : "Basic",
         color: "text-muted-foreground",
       };
     }
@@ -141,43 +145,44 @@ export function AssinaturaPage() {
 
     if (planType === "weekly") {
       return {
-        title: "sar.scan Semanal",
-        description: "30 scans por semana + registro rápido.",
-        priceText: `${weeklyPrice}/semana`,
-        period: "Renovação semanal",
-        badge: "Semanal",
+        title: "Sar scan " + t("shop.weekly"),
+        description: t("shop.pWeekly1") + " + " + t("shop.pWeekly2"),
+        priceText: `${weeklyPrice}${t("shop.cycleWeekly")}`,
+        period: t("shop.weekly"),
+        badge: t("shop.weekly"),
         color: "text-primary",
       };
     }
 
     if (planType === "yearly") {
       return {
-        title: "sar.scan Anual",
-        description: "1.200 scans por ano + IA Nutricionista liberada.",
-        priceText: `${yearlyPrice}/ano`,
-        period: "Renovação anual",
-        badge: "Mais Popular",
+        title: "Sar scan " + t("shop.yearly"),
+        description: t("shop.pYearly1") + " + " + t("shop.pYearly2"),
+        priceText: `${yearlyPrice}${t("shop.cycleYearly")}`,
+        period: t("shop.yearly"),
+        badge: t("shop.popularBadge"),
         color: "text-primary",
       };
     }
 
     // Mensal padrão
     return {
-      title: "sar.scan Mensal",
-      description: "150 scans por mês + IA Nutricionista liberada.",
-      priceText: `${monthlyPrice}/mês`,
-      period: "Renovação mensal",
-      badge: "Mensal",
+      title: "Sar scan " + t("shop.monthly"),
+      description: t("shop.pMonthly1") + " + " + t("shop.pMonthly2"),
+      priceText: `${monthlyPrice}${t("shop.cycleMonthly")}`,
+      period: t("shop.monthly"),
+      badge: t("shop.monthly"),
       color: "text-primary",
     };
-  }, [planType, subscription?.status, playPrices]);
+  }, [planType, subscription?.status, playPrices, t, lang]);
 
   // Formatação de datas
   const periodEndFormatted = useMemo(() => {
     const end = subscription?.current_period_end || subscription?.trial_end;
     if (!end) return null;
     try {
-      return new Date(end).toLocaleDateString("pt-BR", {
+      const locale = lang === "fr" ? "fr-FR" : lang === "en" ? "en-US" : "pt-BR";
+      return new Date(end).toLocaleDateString(locale, {
         day: "2-digit",
         month: "long",
         year: "numeric",
@@ -185,29 +190,28 @@ export function AssinaturaPage() {
     } catch {
       return null;
     }
-  }, [subscription?.current_period_end, subscription?.trial_end]);
+  }, [subscription?.current_period_end, subscription?.trial_end, lang]);
 
   // Função para cancelar assinatura
   const handleCancelSubscription = async (immediate: boolean = false) => {
     if (!session?.access_token) {
-      toast.error("Sessão expirada. Faça login novamente.");
+      toast.error(t("common.error"));
       return;
     }
 
     setCancelling(true);
     try {
-      // 1. Registra a intenção de cancelamento no backend/Supabase (executa Stripe e Google Play S2S)
       const res = await cancelSubscriptionOnBackend(session.access_token, immediate);
       if (res.success) {
-        toast.success(res.message || "Assinatura cancelada com sucesso.");
+        toast.success(res.message || t("common.success"));
         setShowCancelDialog(false);
         setRemoteCancelled(true);
         await refresh();
       } else {
-        toast.error(res.message || "Erro ao solicitar cancelamento.");
+        toast.error(res.message || t("common.error"));
       }
     } catch (err: any) {
-      toast.error(err.message || "Erro ao solicitar cancelamento.");
+      toast.error(err.message || t("common.error"));
     } finally {
       setCancelling(false);
     }
@@ -216,7 +220,7 @@ export function AssinaturaPage() {
   // Função para reativar assinatura
   const handleReactivateSubscription = async () => {
     if (!session?.access_token) {
-      toast.error("Sessão expirada. Faça login novamente.");
+      toast.error(t("common.error"));
       return;
     }
 
@@ -224,14 +228,14 @@ export function AssinaturaPage() {
     try {
       const res = await reactivateSubscriptionOnBackend(session.access_token);
       if (res.success) {
-        toast.success(res.message);
+        toast.success(res.message || t("common.success"));
         setRemoteCancelled(false);
         await refresh();
       } else {
-        toast.error(res.message);
+        toast.error(res.message || t("common.error"));
       }
     } catch (err: any) {
-      toast.error(err.message || "Erro ao reativar assinatura.");
+      toast.error(err.message || t("common.error"));
     } finally {
       setReactivating(false);
     }
@@ -245,12 +249,12 @@ export function AssinaturaPage() {
       const res = await syncSubscriptionStatusOnBackend(session.access_token);
       await refresh();
       if (res.success) {
-        toast.success("Status da assinatura sincronizado com sucesso!");
+        toast.success(t("common.success"));
       } else {
-        toast.info("Status verificado.");
+        toast.info(t("common.active"));
       }
     } catch (err: any) {
-      toast.error(err.message || "Erro ao verificar status.");
+      toast.error(err.message || t("common.error"));
     } finally {
       setSyncing(false);
     }
@@ -269,10 +273,10 @@ export function AssinaturaPage() {
           </Link>
           <div>
             <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-              Minha Assinatura
+              {t("subpages.subscriptions.title")}
             </h1>
             <p className="text-xs text-muted-foreground font-semibold">
-              Gerencie seus planos, status e renovações
+              {t("subpages.subscriptions.subtitle")}
             </p>
           </div>
         </div>
@@ -289,7 +293,7 @@ export function AssinaturaPage() {
           ) : (
             <RefreshCw className="size-3.5 text-primary" />
           )}
-          <span className="hidden sm:inline">Sincronizar</span>
+          <span className="hidden sm:inline">{t("common.active")}</span>
         </Button>
       </div>
 
@@ -308,7 +312,7 @@ export function AssinaturaPage() {
               </span>
               {isTrial && (
                 <span className="text-xs font-black uppercase tracking-widest text-amber-500 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full">
-                  Teste Grátis (7 Dias)
+                  {t("shop.freeTrialBadge")}
                 </span>
               )}
             </div>
@@ -325,35 +329,35 @@ export function AssinaturaPage() {
         <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
           <div className="bg-secondary/60 rounded-2xl p-3 space-y-0.5 border border-border/50">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Valor
+              {t("shop.totalToday")}
             </div>
             <div className="text-sm font-extrabold text-foreground">{planDetails.priceText}</div>
           </div>
 
           <div className="bg-secondary/60 rounded-2xl p-3 space-y-0.5 border border-border/50">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Status
+              {t("shop.subStatus")}
             </div>
             <div className="text-sm font-extrabold flex items-center gap-1.5">
               {hasActiveSub ? (
                 isCancelled ? (
                   <span className="text-amber-500 flex items-center gap-1">
-                    <AlertTriangle className="size-4" /> Cancelada
+                    <AlertTriangle className="size-4" /> {t("common.cancel")}
                   </span>
                 ) : (
                   <span className="text-emerald-500 flex items-center gap-1">
-                    <ShieldCheck className="size-4" /> Ativa
+                    <ShieldCheck className="size-4" /> {t("shop.statusActive")}
                   </span>
                 )
               ) : (
-                <span className="text-muted-foreground">Gratuito</span>
+                <span className="text-muted-foreground">{planDetails.badge}</span>
               )}
             </div>
           </div>
 
           <div className="bg-secondary/60 rounded-2xl p-3 space-y-0.5 border border-border/50">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              Créditos Disponíveis
+              {t("home.remainingScans")}
             </div>
             <div className="text-sm font-extrabold text-foreground">
               {subscription?.scans_credits ?? 0} scans
@@ -362,25 +366,25 @@ export function AssinaturaPage() {
 
           <div className="bg-secondary/60 rounded-2xl p-3 space-y-0.5 border border-border/50">
             <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {isTrial ? "Término do Teste" : "Válido até"}
+              {isTrial ? t("shop.freeTrialBadge") : t("shop.validUntil")}
             </div>
             <div className="text-sm font-extrabold text-foreground">
-              {periodEndFormatted || "Sem limite de tempo"}
+              {periodEndFormatted || t("shop.noExpiryCredits")}
             </div>
           </div>
         </div>
 
         {/* Provedor de Pagamento e Plataforma de Origem */}
         <div className="bg-secondary/30 rounded-2xl p-3 flex items-center justify-between border border-border/40 text-xs">
-          <span className="text-muted-foreground font-semibold">Provedor de Pagamento:</span>
+          <span className="text-muted-foreground font-semibold">{t("shop.accountDetails")}</span>
           <span className="font-bold text-foreground flex items-center gap-1">
             {isGooglePlaySub
-              ? "Google Play Billing (Android)"
+              ? "Google Play Billing"
               : isStripeSub
-                ? "Stripe / Cartão de Crédito"
+                ? "Stripe / Card"
                 : isTrial
-                  ? "Período de Testes (7 dias)"
-                  : "Conta Padrão Gratuita"}
+                  ? t("shop.freeTrialBadge")
+                  : planDetails.badge}
           </span>
         </div>
       </Card>
@@ -388,7 +392,7 @@ export function AssinaturaPage() {
       {/* Benefícios Inclusos */}
       <Card className="bg-card rounded-[32px] p-6 border border-border shadow-sm space-y-4">
         <h3 className="text-sm font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <Sparkles className="size-4 text-primary" /> Benefícios do seu plano
+          <Sparkles className="size-4 text-primary" /> {t("shop.planPerksTitle")}
         </h3>
 
         <div className="space-y-3 pt-1">
@@ -396,9 +400,7 @@ export function AssinaturaPage() {
             <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
               <Check className="size-4" />
             </div>
-            <div className="text-xs font-semibold text-foreground">
-              Reconhecimento instantâneo de calorias e macros por imagem
-            </div>
+            <div className="text-xs font-semibold text-foreground">{t("shop.why1Desc")}</div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -407,10 +409,10 @@ export function AssinaturaPage() {
             </div>
             <div className="text-xs font-semibold text-foreground">
               {subscription?.plan === "yearly" || subscription?.plan === "annual"
-                ? "Chat com Nutricionista IA (150 mensagens / dia)"
+                ? t("shop.pYearly2")
                 : subscription?.plan === "monthly"
-                  ? "Chat com Nutricionista IA (50 mensagens / dia)"
-                  : "Chat com Nutricionista IA (50 mensagens)"}
+                  ? t("shop.pMonthly2")
+                  : t("shop.pWeekly2")}
             </div>
           </div>
 
@@ -419,7 +421,7 @@ export function AssinaturaPage() {
               <Check className="size-4" />
             </div>
             <div className="text-xs font-semibold text-foreground">
-              Edição de metas e suporte prioritário inclusos
+              {t("shop.pMonthly3")} · {t("shop.pMonthly4")}
             </div>
           </div>
 
@@ -427,9 +429,7 @@ export function AssinaturaPage() {
             <div className="size-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
               <Check className="size-4" />
             </div>
-            <div className="text-xs font-semibold text-foreground">
-              Histórico detalhado e exportação de dados de nutrição
-            </div>
+            <div className="text-xs font-semibold text-foreground">{t("shop.why4Desc")}</div>
           </div>
         </div>
       </Card>
@@ -442,7 +442,7 @@ export function AssinaturaPage() {
         >
           <Link to="/premium">
             <Zap className="size-4 mr-2" />
-            {hasActiveSub ? "Alterar / Fazer Upgrade de Plano" : "Ver Todos os Planos Premium"}
+            {hasActiveSub ? t("shop.upgradePlan") : t("shop.subscribeNow")}
           </Link>
         </Button>
 
@@ -450,15 +450,10 @@ export function AssinaturaPage() {
         {isGooglePlaySub && hasActiveSub && (
           <div className="rounded-[24px] bg-secondary/40 border border-border p-4 text-center space-y-1.5">
             <div className="text-[11px] font-black text-foreground uppercase tracking-widest flex items-center justify-center gap-1.5">
-              <ShieldCheck className="size-4 text-primary" /> Pacote Google Play Ativo
+              <ShieldCheck className="size-4 text-primary" /> Google Play
             </div>
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Seus benefícios e créditos estão 100% ativos e garantidos até{" "}
-              <span className="text-foreground font-bold">
-                {periodEndFormatted || "o fim do período"}
-              </span>
-              . Como este é um pacote por período fixo adquirido via Google Play Store, não há
-              renovação automática e nenhuma ação de cancelamento é necessária.
+              {t("shop.activePerksNote")} ({periodEndFormatted || ""})
             </p>
           </div>
         )}
@@ -478,7 +473,7 @@ export function AssinaturaPage() {
               ) : (
                 <RefreshCw className="size-4 text-primary" />
               )}
-              Ativar Novamente a Assinatura
+              {t("shop.subscribeNow")}
             </Button>
           ) : (
             <Button
@@ -486,7 +481,7 @@ export function AssinaturaPage() {
               onClick={() => setShowCancelDialog(true)}
               className="w-full h-14 rounded-[28px] border border-red-500/20 bg-transparent hover:bg-red-500/10 text-red-500 hover:text-red-600 font-bold uppercase tracking-wider text-xs transition-all"
             >
-              <XCircle className="size-4 mr-2" /> Cancelar Assinatura
+              <XCircle className="size-4 mr-2" /> {t("common.cancel")}
             </Button>
           ))}
       </div>
@@ -499,12 +494,10 @@ export function AssinaturaPage() {
               <AlertTriangle className="size-7" />
             </div>
             <DialogTitle className="text-center text-xl font-bold text-foreground">
-              Cancelar Assinatura?
+              {t("common.cancel")}
             </DialogTitle>
             <DialogDescription className="text-center text-xs text-muted-foreground leading-relaxed">
-              Você continuará com acesso integral a todos os seus benefícios e créditos de scans até
-              o final do período contratado ({periodEndFormatted || "vigência atual"}). Nenhuma nova
-              cobrança automática será efetuada.
+              {t("shop.trialCancelNote")} ({periodEndFormatted || ""}).
             </DialogDescription>
           </DialogHeader>
 
@@ -520,7 +513,7 @@ export function AssinaturaPage() {
               ) : (
                 <Check className="size-4 mr-2" />
               )}
-              Confirmar Cancelamento
+              {t("common.confirm")}
             </Button>
 
             <Button
@@ -529,7 +522,7 @@ export function AssinaturaPage() {
               className="w-full h-12 rounded-2xl border-border font-bold text-xs"
               onClick={() => setShowCancelDialog(false)}
             >
-              Voltar e Manter Plano
+              {t("shop.maybeLater")}
             </Button>
           </DialogFooter>
         </DialogContent>

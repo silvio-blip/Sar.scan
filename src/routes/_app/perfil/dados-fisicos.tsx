@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/dados-fisicos")({ component: DadosPage });
 
 function DadosPage() {
   const { user, profile, refresh } = useAuth();
+  const { t } = useTranslation();
   const nav = useNavigate();
   const [idade, setIdade] = useState<number>(profile?.idade ?? 28);
   const [peso, setPeso] = useState<number>(Number(profile?.peso ?? 70));
@@ -32,7 +34,7 @@ function DadosPage() {
       return;
     }
     await refresh();
-    toast.success("Dados atualizados");
+    toast.success(t("subpages.physicalData.success"));
     nav({ to: "/perfil" });
   };
 
@@ -46,14 +48,14 @@ function DadosPage() {
           <ArrowLeft className="size-5" />
         </Link>
         <h1 className="text-2xl font-display font-black tracking-tight text-foreground">
-          Dados Físicos
+          {t("subpages.physicalData.title")}
         </h1>
       </div>
 
       <Card className="bg-card rounded-[32px] p-6 space-y-5 border border-border shadow-sm text-foreground">
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">
-            Idade (anos)
+            {t("subpages.physicalData.age")}
           </Label>
           <Input
             type="number"
@@ -64,7 +66,7 @@ function DadosPage() {
         </div>
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">
-            Peso (kg)
+            {t("subpages.physicalData.weight")}
           </Label>
           <Input
             type="number"
@@ -75,7 +77,7 @@ function DadosPage() {
         </div>
         <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest ml-1 text-muted-foreground/90">
-            Altura (cm)
+            {t("subpages.physicalData.height")}
           </Label>
           <Input
             type="number"
@@ -91,7 +93,11 @@ function DadosPage() {
         onClick={save}
         disabled={saving}
       >
-        {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : "Salvar Alterações"}
+        {saving ? (
+          <Loader2 className="size-4 animate-spin mr-2" />
+        ) : (
+          t("subpages.physicalData.save")
+        )}
       </Button>
     </div>
   );

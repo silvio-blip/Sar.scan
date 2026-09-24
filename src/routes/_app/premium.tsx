@@ -43,6 +43,7 @@ import {
 import { toast } from "sonner";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "motion/react";
+import { useTranslation } from "@/lib/strings";
 import {
   Dialog,
   DialogContent,
@@ -77,69 +78,9 @@ type PlanDef = {
   missing: string[];
 };
 
-const PLANS: PlanDef[] = [
-  {
-    id: "weekly",
-    label: "Semanal",
-    price: "€4,99",
-    priceNum: 4.99,
-    cycle: "/semana",
-    scans: 30,
-    trialDays: 0,
-    hint: "Ideal para experimentar",
-    aiAgent: true,
-    perks: [
-      "30 scans / semana",
-      "Chat IA Nutricionista (50 mensagens)",
-      "Edição de metas",
-      "Suporte prioritário",
-    ],
-    missing: [],
-  },
-  {
-    id: "monthly",
-    label: "Mensal",
-    price: "€19,99",
-    priceNum: 19.99,
-    cycle: "/mês",
-    scans: 150,
-    trialDays: 0,
-    badge: "Popular",
-    hint: "Mais escolhido",
-    aiAgent: true,
-    perks: [
-      "150 scans / mês",
-      "Chat IA Nutricionista (50 mensagens / dia)",
-      "Edição de metas",
-      "Suporte prioritário",
-      "Histórico estendido",
-    ],
-    missing: [],
-  },
-  {
-    id: "yearly",
-    label: "Anual",
-    price: "€99,99",
-    priceNum: 99.99,
-    cycle: "/ano",
-    scans: 1200,
-    trialDays: 0,
-    badge: "Melhor valor",
-    hint: "Economize ~58%",
-    aiAgent: true,
-    perks: [
-      "1200 scans / ano",
-      "Chat IA Nutricionista (150 mensagens / dia)",
-      "Edição de metas",
-      "Suporte prioritário",
-      "Acesso antecipado",
-    ],
-    missing: [],
-  },
-];
-
 export function PremiumPage() {
   const { user, session, isPremium, isAdmin, subscription, refresh } = useAuth();
+  const { t, lang } = useTranslation();
   const [confirmedCredits, setConfirmedCredits] = useState<number | null>(null);
   const [selected, setSelected] = useState<PlanId>("monthly");
   const [loading, setLoading] = useState<PlanId | null>(null);
@@ -151,6 +92,65 @@ export function PremiumPage() {
   const [showExternalRedirectOverlay, setShowExternalRedirectOverlay] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const PLANS: PlanDef[] = useMemo(
+    () => [
+      {
+        id: "weekly",
+        label: t("shop.weekly"),
+        price: "€4,99",
+        priceNum: 4.99,
+        cycle: t("shop.cycleWeekly"),
+        scans: 30,
+        trialDays: 0,
+        hint: t("shop.hintWeekly"),
+        aiAgent: true,
+        perks: [t("shop.pWeekly1"), t("shop.pWeekly2"), t("shop.pWeekly3"), t("shop.pWeekly4")],
+        missing: [],
+      },
+      {
+        id: "monthly",
+        label: t("shop.monthly"),
+        price: "€19,99",
+        priceNum: 19.99,
+        cycle: t("shop.cycleMonthly"),
+        scans: 150,
+        trialDays: 0,
+        badge: t("shop.popularBadge"),
+        hint: t("shop.hintMonthly"),
+        aiAgent: true,
+        perks: [
+          t("shop.pMonthly1"),
+          t("shop.pMonthly2"),
+          t("shop.pMonthly3"),
+          t("shop.pMonthly4"),
+          t("shop.pMonthly5"),
+        ],
+        missing: [],
+      },
+      {
+        id: "yearly",
+        label: t("shop.yearly"),
+        price: "€99,99",
+        priceNum: 99.99,
+        cycle: t("shop.cycleYearly"),
+        scans: 1200,
+        trialDays: 0,
+        badge: t("shop.bestValueBadge"),
+        hint: t("shop.hintYearly"),
+        aiAgent: true,
+        perks: [
+          t("shop.pYearly1"),
+          t("shop.pYearly2"),
+          t("shop.pYearly3"),
+          t("shop.pYearly4"),
+          t("shop.pYearly5"),
+        ],
+        missing: [],
+      },
+    ],
+    [t, lang],
+  );
 
   // Preços dinâmicos da Google Play Store (atualizados em tempo real do Google Play Console)
   const { prices: playPrices, isScanning: isScanningPlayPrices } = useGooglePlayPrices();
@@ -620,10 +620,10 @@ export function PremiumPage() {
         </div>
         <div className="space-y-2">
           <h1 className="text-4xl font-display font-black tracking-tighter text-white">
-            sar.scan Premium
+            Sar scan Premium
           </h1>
           <p className="text-[10px] text-white/30 font-black uppercase tracking-[0.4em]">
-            Architecture of Nutri Intelligence
+            {t("shop.subtitle")}
           </p>
         </div>
 
@@ -641,12 +641,9 @@ export function PremiumPage() {
               className="w-full h-16 rounded-full bg-gradient-to-r from-zinc-100 to-white text-black hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 font-black flex flex-col items-center justify-center gap-0 shadow-[0_20px_50px_rgba(255,255,255,0.15)] ring-1 ring-white/50 group"
             >
               <div className="flex items-center gap-2 text-sm uppercase tracking-wider">
-                Ativar 7 Dias Grátis
+                {t("shop.startTrial")}
                 <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
               </div>
-              <span className="text-[9px] font-bold text-black/50 uppercase tracking-[0.1em]">
-                30 scans total por 7 dias
-              </span>
             </Button>
           </motion.div>
         )}
@@ -660,20 +657,21 @@ export function PremiumPage() {
           </div>
           <div className="flex-1 relative z-10">
             <div className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground mb-1">
-              Status da Assinatura
+              {t("shop.subStatus")}
             </div>
             <div className="font-display font-black text-xl text-foreground uppercase tracking-tight flex items-center gap-2">
-              Ativa <div className="size-2 rounded-full bg-emerald-600 animate-pulse" />
+              {t("shop.statusActive")}{" "}
+              <div className="size-2 rounded-full bg-emerald-600 animate-pulse" />
             </div>
             <div className="text-xs text-muted-foreground font-semibold mt-1">
-              Plano{" "}
               {subscription?.plan
                 ? displayPlans.find((p) => p.id === subscription.plan)?.label || subscription.plan
                 : "Premium"}{" "}
-              · {subscription?.scans_credits ?? 0} créditos
+              · {subscription?.scans_credits ?? 0} {t("shop.totalScansAvailable")}
               {subscription?.current_period_end && (
                 <span className="block text-[11px] text-muted-foreground/80 mt-0.5">
-                  Válido até {new Date(subscription.current_period_end).toLocaleDateString("pt-PT")}
+                  {t("shop.validUntil")}{" "}
+                  {new Date(subscription.current_period_end).toLocaleDateString()}
                 </span>
               )}
             </div>
@@ -684,7 +682,7 @@ export function PremiumPage() {
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-            Escolha sua jornada
+            {t("shop.benefitsTitle")}
           </h2>
         </div>
 
@@ -714,7 +712,7 @@ export function PremiumPage() {
               >
                 {isCurrentActivePlan ? (
                   <span className="absolute top-0 right-0 rounded-bl-[16px] bg-emerald-600 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-sm font-sans">
-                    Plano Ativo
+                    {t("shop.activePlan")}
                   </span>
                 ) : p.badge ? (
                   <span className="absolute top-0 right-0 rounded-bl-[16px] bg-accent px-4 py-1.5 text-[10px] font-black uppercase tracking-widest text-white shadow-sm font-sans">
@@ -771,11 +769,11 @@ export function PremiumPage() {
                   <span className="text-xs text-muted-foreground font-medium">
                     {isCurrentActivePlan
                       ? subscription?.current_period_end
-                        ? `Válido até ${new Date(subscription.current_period_end).toLocaleDateString("pt-PT")}`
-                        : "Assinatura ativa"
+                        ? `${t("shop.validUntil")} ${new Date(subscription.current_period_end).toLocaleDateString()}`
+                        : t("shop.statusActive")
                       : isEligibleForTrial && p.trialDays > 0
-                        ? `${p.trialDays} dias grátis · Cancele quando quiser`
-                        : "Renovação automática · Cancele quando quiser"}
+                        ? t("shop.trialCancelAnytime")
+                        : t("shop.cancelAnytime")}
                   </span>
 
                   {isCurrentActivePlan ? (
@@ -784,14 +782,14 @@ export function PremiumPage() {
                       className="h-11 px-6 rounded-full font-black text-[11px] uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 cursor-not-allowed opacity-90"
                     >
                       <Check className="size-4 mr-1.5 text-emerald-400" />
-                      Plano Atual
+                      {t("shop.currentPlan")}
                     </Button>
                   ) : isDowngrade ? (
                     <Button
                       disabled
                       className="h-11 px-6 rounded-full font-black text-[11px] uppercase tracking-wider bg-secondary text-muted-foreground border border-border cursor-not-allowed opacity-60"
                     >
-                      Plano Superior Ativo
+                      {t("shop.higherPlanActive")}
                     </Button>
                   ) : (
                     <Button
@@ -809,11 +807,11 @@ export function PremiumPage() {
                       {loading === p.id ? (
                         <Loader2 className="size-4 animate-spin" />
                       ) : hasActiveSubscription ? (
-                        "Upgrade de Plano"
+                        t("shop.upgradePlan")
                       ) : isEligibleForTrial && p.trialDays > 0 ? (
-                        "Testar 7 Dias"
+                        t("shop.trialButton")
                       ) : (
-                        "Assinar Agora"
+                        t("shop.subscribeNow")
                       )}
                     </Button>
                   )}
@@ -826,69 +824,65 @@ export function PremiumPage() {
 
       <div className="flex flex-col gap-4">
         <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-          Pacotes de Créditos (Consumível)
+          {t("shop.creditsPackTitle")}
         </h2>
         <div className="bg-card rounded-[32px] border border-border p-6 text-left relative overflow-hidden group">
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-xs font-black uppercase text-primary font-bold">
-                Pacote de 50 Scans
+                {t("shop.credits50Title")}
               </div>
               <div className="mt-1 flex items-baseline gap-1">
                 <span className="text-3xl font-display font-black tracking-tighter text-foreground">
                   {displayCreditsPrice}
                 </span>
-                <span className="text-xs font-medium text-muted-foreground">/ pagamento único</span>
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t("shop.oneTimePayment")}
+                </span>
               </div>
             </div>
             <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shadow-sm text-primary">
               <Zap className="size-5" />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mb-4">
-            Perfeito se você já atingiu o limite semanal ou mensal ou prefere não utilizar uma
-            assinatura premium recorrente neste momento. Adiciona 50 scans definitivos ao seu
-            utilizador.
-          </p>
+          <p className="text-xs text-muted-foreground mb-4">{t("shop.credits50Desc")}</p>
           <div className="flex justify-end pt-2">
             <Button
               onClick={startCreditsCheckout}
               disabled={buyingCredits}
               className="h-11 px-8 rounded-full font-black text-[11px] uppercase tracking-wider bg-primary text-primary-foreground hover:bg-primary/95 transition-all duration-300 shadow-sm"
             >
-              {buyingCredits ? <Loader2 className="size-4 animate-spin" /> : "Comprar 50 Scans"}
+              {buyingCredits ? <Loader2 className="size-4 animate-spin" /> : t("shop.buy50Scans")}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Deleted main subscribe/sync UI block */}
-
       <div className="space-y-4">
         <h2 className="px-1 text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-          Por que ser Premium?
+          {t("shop.whyPremium")}
         </h2>
         <div className="grid grid-cols-1 gap-3">
           {[
             {
               Icon: Sparkles,
-              t: "Scans com Super IA",
-              d: "Identificação ultra detalhada e imediata",
+              t: t("shop.why1Title"),
+              d: t("shop.why1Desc"),
             },
             {
               Icon: Bot,
-              t: "Nutricionista IA 24/7",
-              d: "Tire dúvidas e peça receitas a qualquer hora",
+              t: t("shop.why2Title"),
+              d: t("shop.why2Desc"),
             },
             {
               Icon: MessageSquare,
-              t: "Análise de Sentimento",
-              d: "Entendemos como sua dieta afeta seu humor",
+              t: t("shop.why3Title"),
+              d: t("shop.why3Desc"),
             },
             {
               Icon: Target,
-              t: "Metas Dinâmicas",
-              d: "Ajuste seus objetivos conforme sua evolução",
+              t: t("shop.why4Title"),
+              d: t("shop.why4Desc"),
             },
           ].map(({ Icon, t, d }) => (
             <div
@@ -912,7 +906,7 @@ export function PremiumPage() {
       <Dialog open={!!confirmingPlan} onOpenChange={(open) => !open && setConfirmingPlan(null)}>
         <DialogContent className="max-w-md bg-card border border-border p-0 overflow-hidden rounded-[32px] text-foreground">
           <DialogHeader className="sr-only">
-            <DialogTitle>Confirmar Ativação de Teste Grátis</DialogTitle>
+            <DialogTitle>{t("shop.trialModalTitle")}</DialogTitle>
           </DialogHeader>
 
           <div className="relative p-8 flex flex-col items-center text-center">
@@ -927,17 +921,19 @@ export function PremiumPage() {
             </motion.div>
 
             <h2 className="text-2xl font-display font-black tracking-tight text-foreground mb-2 uppercase">
-              Comece 7 dias grátis
+              {t("shop.trialModalTitle")}
             </h2>
             <p className="text-muted-foreground text-sm font-medium mb-6">
-              Experimente todos os benefícios do plano {confirmingPlan?.label} totalmente grátis por{" "}
-              {confirmingPlan?.trialDays} dias!
+              {t("shop.trialModalSub", {
+                plan: confirmingPlan?.label || "",
+                days: confirmingPlan?.trialDays || 7,
+              })}
             </p>
 
             {/* List of perks for the plan */}
             <div className="w-full text-left space-y-2 mb-6 p-4 rounded-2xl bg-secondary/20 border border-border">
               <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">
-                Benefícios do plano:
+                {t("shop.planPerksTitle")}
               </p>
               {confirmingPlan?.perks.map((pk) => (
                 <div
@@ -954,13 +950,13 @@ export function PremiumPage() {
               <div className="flex items-center justify-between p-4 rounded-2xl bg-secondary/40 border border-border">
                 <div className="text-left">
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                    Total Hoje
+                    {t("shop.totalToday")}
                   </p>
                   <p className="text-lg font-display font-black text-foreground">€0,00</p>
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                    Após 7 dias
+                    {t("shop.after7Days")}
                   </p>
                   <p className="text-lg font-display font-black text-foreground">
                     {confirmingPlan?.price}
@@ -979,14 +975,14 @@ export function PremiumPage() {
                 disabled={!!loading}
                 className="w-full h-14 rounded-full bg-primary text-primary-foreground hover:bg-primary/95 font-black text-sm shadow-md transition-all"
               >
-                {loading ? <Loader2 className="size-4 animate-spin" /> : "Ativar Teste Grátis"}
+                {loading ? <Loader2 className="size-4 animate-spin" /> : t("shop.activateTrialBtn")}
               </Button>
               <Button
                 variant="ghost"
                 onClick={() => setConfirmingPlan(null)}
                 className="w-full h-12 text-muted-foreground hover:text-foreground hover:bg-secondary/40 font-bold text-xs"
               >
-                Talvez depois
+                {t("shop.maybeLater")}
               </Button>
             </div>
           </div>
@@ -996,10 +992,9 @@ export function PremiumPage() {
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
           <DialogHeader className="sr-only">
-            <DialogTitle>Plano Ativado com Sucesso</DialogTitle>
+            <DialogTitle>{t("shop.successTitle")}</DialogTitle>
           </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
-            {/* Background elements */}
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/10 to-transparent" />
             <div className="absolute top-10 size-40 bg-white/5 rounded-full blur-3xl" />
 
@@ -1024,34 +1019,34 @@ export function PremiumPage() {
             >
               <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2 uppercase">
                 {purchasedPlan?.trialDays
-                  ? "Teste Grátis Ativado!"
+                  ? t("shop.successTrialTitle")
                   : purchasedPlan?.id === "credits"
-                    ? "50 Scans Adicionados!"
-                    : `Plano ${purchasedPlan?.label || "Premium"} Ativado!`}
+                    ? t("shop.successCreditsTitle")
+                    : t("shop.successTitle")}
               </h2>
               <p className="text-white/60 text-sm font-medium mb-6">
                 {purchasedPlan?.trialDays
-                  ? "Você tem 7 dias de acesso com créditos para escanear seus alimentos."
+                  ? t("shop.successTrialDesc")
                   : purchasedPlan?.id === "credits"
-                    ? "Os 50 scans foram creditados e já estão prontos para você utilizar."
-                    : "Parabéns! Sua assinatura está confirmada e o acesso foi liberado em tempo real."}
+                    ? t("shop.successCreditsDesc")
+                    : t("shop.successDesc")}
               </p>
 
               <div className="space-y-2.5 mb-8 text-left">
                 <div className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-2 px-1">
-                  DETALHES DA SUA CONTA:
+                  {t("shop.accountDetails")}
                 </div>
                 {[
                   {
                     icon: Sparkles,
-                    text: `${confirmedCredits ?? subscription?.scans_credits ?? purchasedPlan?.scans ?? 50} scans totais disponíveis`,
+                    text: `${confirmedCredits ?? subscription?.scans_credits ?? purchasedPlan?.scans ?? 50} ${t("shop.totalScansAvailable")}`,
                   },
                   {
                     icon: Bot,
                     text:
                       purchasedPlan?.id === "credits"
-                        ? "Créditos sem data de expiração"
-                        : "Detecção e análise por IA liberada",
+                        ? t("shop.noExpiryCredits")
+                        : t("shop.aiUnlocked"),
                   },
                 ].map((item, i) => (
                   <motion.div
@@ -1077,7 +1072,7 @@ export function PremiumPage() {
                   }}
                   className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-[0_20px_40px_rgba(255,255,255,0.1)] transition-all group"
                 >
-                  Começar a escanear agora
+                  {t("shop.startScanningNow")}
                   <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
                 </Button>
 
@@ -1087,14 +1082,12 @@ export function PremiumPage() {
                     onClick={triggerAppReturnDeepLinks}
                     className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors py-1 underline underline-offset-4"
                   >
-                    Abrir no aplicativo Android instalado
+                    {t("shop.openInApp")}
                   </button>
                 )}
 
                 <p className="text-[10px] text-white/30 font-medium">
-                  {purchasedPlan?.trialDays
-                    ? "Cancele a qualquer momento no seu perfil se mudar de ideia."
-                    : "Suas vantagens já estão ativas na sua conta."}
+                  {purchasedPlan?.trialDays ? t("shop.trialCancelNote") : t("shop.activePerksNote")}
                 </p>
               </div>
             </motion.div>
@@ -1105,7 +1098,7 @@ export function PremiumPage() {
       <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
         <DialogContent className="max-w-md bg-zinc-950 border-white/10 p-0 overflow-hidden rounded-[32px]">
           <DialogHeader className="sr-only">
-            <DialogTitle>Pagamento Interrompido</DialogTitle>
+            <DialogTitle>{t("shop.paymentIncomplete")}</DialogTitle>
           </DialogHeader>
           <div className="relative p-8 flex flex-col items-center text-center">
             <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/5 to-transparent" />
@@ -1119,26 +1112,25 @@ export function PremiumPage() {
             </motion.div>
 
             <h2 className="text-2xl font-display font-black tracking-tight text-white mb-2">
-              Pagamento não finalizado
+              {t("shop.paymentIncomplete")}
             </h2>
             <p className="text-white/60 text-sm font-medium mb-8">
-              Parece que o processo foi interrompido. Sem problemas, seus dados estão seguros e nada
-              foi cobrado.
+              {t("shop.paymentIncompleteDesc")}
             </p>
 
             <div className="w-full space-y-3 mb-8">
               <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-left">
                 <ShieldQuestion className="size-5 text-white/40 shrink-0" />
                 <div className="text-xs">
-                  <p className="text-white/80 font-bold mb-0.5">Dúvida sobre o plano?</p>
-                  <p className="text-white/40 font-medium">Fale conosco se precisar de ajuda.</p>
+                  <p className="text-white/80 font-bold mb-0.5">{t("shop.planDoubt")}</p>
+                  <p className="text-white/40 font-medium">{t("shop.planDoubtDesc")}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/5 text-left">
                 <CreditCard className="size-5 text-white/40 shrink-0" />
                 <div className="text-xs">
-                  <p className="text-white/80 font-bold mb-0.5">Problema no cartão?</p>
-                  <p className="text-white/40 font-medium">Tente outro método de pagamento.</p>
+                  <p className="text-white/80 font-bold mb-0.5">{t("shop.cardIssue")}</p>
+                  <p className="text-white/40 font-medium">{t("shop.cardIssueDesc")}</p>
                 </div>
               </div>
             </div>
@@ -1147,11 +1139,11 @@ export function PremiumPage() {
               <Button
                 onClick={() => {
                   setShowCancelModal(false);
-                  toast.info("Escolha um plano abaixo para completar sua assinatura");
+                  toast.info(t("shop.tryAgainToast"));
                 }}
                 className="w-full h-14 rounded-full bg-white text-black hover:bg-zinc-200 font-black text-sm shadow-xl transition-all group"
               >
-                Tentar novamente
+                {t("shop.tryAgain")}
                 <ArrowRight className="ml-2 size-4 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button
@@ -1162,7 +1154,7 @@ export function PremiumPage() {
                 }}
                 className="w-full h-12 text-white/40 hover:text-white hover:bg-white/5 font-bold text-xs"
               >
-                Voltar para o Início
+                {t("shop.backToHome")}
               </Button>
             </div>
           </div>

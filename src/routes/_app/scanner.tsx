@@ -46,6 +46,7 @@ import { useSubscriptionRealtime, useRewardsRealtime } from "@/hooks/use-realtim
 import { Gauge } from "@/components/gauge";
 import { WaterTracker } from "@/components/water-tracker";
 import { NutritionTip } from "@/components/nutrition-tip";
+import { useTranslation } from "@/lib/strings";
 
 import { CreditDisplay } from "@/components/credit-display";
 
@@ -77,6 +78,7 @@ function cleanApiKey(val: string | undefined | null): string | null {
 
 export function ScannerPage() {
   const { user, isPremium, isUnlimited, subscription, refresh, profile } = useAuth();
+  const { t, lang, translateFoodName } = useTranslation();
   const qc = useQueryClient();
   const { stream, streamOn, startCamera, stopCamera, facingMode, toggleCamera, isSwitching } =
     useCamera();
@@ -711,7 +713,7 @@ export function ScannerPage() {
         <SarLogo size="sm" align="left" />
         <div className="flex flex-col items-end">
           <div className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/80">
-            Scans Restantes
+            {t("home.remainingScans")}
           </div>
           <div className="text-sm font-display font-black text-foreground mt-0.5">
             <CreditDisplay value={remaining} />
@@ -726,7 +728,7 @@ export function ScannerPage() {
           <Gauge
             current={Math.round(consumption ?? 0)}
             target={profile?.meta_calorias ?? 2000}
-            label="Kcal de Hoje"
+            label={t("home.caloriesToday")}
           />
         </div>
 
@@ -754,10 +756,10 @@ export function ScannerPage() {
                 </div>
                 <div className="min-w-0">
                   <span className="font-bold text-foreground block truncate">
-                    Escala Biométrica Ativa ({handCalibration.comprimento_cm} cm)
+                    {t("scanner.handCalibratedBadge")} ({handCalibration.comprimento_cm} cm)
                   </span>
                   <span className="text-[11px] text-muted-foreground block truncate">
-                    Coloque sua mão ao lado do prato para obter dados mais precisos.
+                    {t("scanner.handCalibratedDesc")}
                   </span>
                 </div>
               </div>
@@ -765,7 +767,7 @@ export function ScannerPage() {
                 to="/perfil/calibracao-mao"
                 className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 px-2.5 py-1.5 rounded-xl shrink-0 transition"
               >
-                Ajustar
+                {t("scanner.adjust")}
               </Link>
             </div>
           ) : (
@@ -779,15 +781,15 @@ export function ScannerPage() {
                 </div>
                 <div>
                   <span className="font-bold text-foreground block">
-                    Quer dados e porções mais precisos?
+                    {t("scanner.calibrateHandPrompt")}
                   </span>
                   <span className="text-[11px] text-muted-foreground">
-                    Calibre sua mão uma vez no perfil para ter medições com maior precisão.
+                    {t("scanner.calibrateHandDesc")}
                   </span>
                 </div>
               </div>
               <span className="text-[10px] font-bold text-primary bg-primary/20 px-2.5 py-1.5 rounded-xl shrink-0">
-                Calibrar
+                {t("scanner.calibrate")}
               </span>
             </Link>
           )}
@@ -870,7 +872,7 @@ export function ScannerPage() {
                 <div className="flex flex-col items-center gap-4">
                   <div className="size-12 rounded-full border-4 border-white/10 border-t-white animate-spin" />
                   <span className="text-[10px] font-black uppercase tracking-[0.25em] text-white">
-                    Analisando Alimento...
+                    {t("scanner.analyzing")}
                   </span>
                 </div>
               </div>
@@ -978,17 +980,18 @@ export function ScannerPage() {
       <section className="w-full space-y-5 pt-8 border-t border-border">
         <div className="flex items-center justify-between px-2">
           <h2 className="font-display font-black text-2xl text-foreground tracking-tight">
-            Sugestões
+            {t("home.suggestions")}
           </h2>
           <Link
             to="/buscar"
             className="text-[10px] text-primary font-black uppercase tracking-[0.2em] hover:opacity-80 transition-all"
           >
-            Ver tudo
+            {t("home.viewAll")}
           </Link>
         </div>
         <div className="flex flex-col gap-3">
           {sugestoes?.slice(0, 5).map((f, i) => {
+            const displayName = translateFoodName(f.nome, lang);
             return (
               <motion.button
                 key={`${f.nome}-${i}`}
@@ -1006,7 +1009,7 @@ export function ScannerPage() {
                 {/* Center Side: Food Name & Highlighted Calories */}
                 <div className="flex-1 min-w-0 pr-1 flex flex-col justify-center">
                   <span className="font-bold text-sm tracking-tight text-foreground truncate block leading-tight">
-                    {f.nome}
+                    {displayName}
                   </span>
                   <span className="text-xs font-black text-rose-500/90 mt-1 flex items-center gap-1">
                     <span className="size-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />

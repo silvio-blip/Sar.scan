@@ -34,7 +34,7 @@ import { useRewardsRealtime } from "@/hooks/use-realtime-invalidate";
 import { Switch } from "@/components/ui/switch";
 import { WaterReminderScheduler } from "@/components/water-reminder-scheduler";
 import { getSavedHandCalibration } from "@/lib/hand-calibration";
-import { useTranslation } from "@/lib/strings";
+import { useTranslation, SUPPORTED_LANGUAGES } from "@/lib/strings";
 
 export const Route = createFileRoute("/_app/perfil/")({ component: PerfilPage });
 
@@ -82,7 +82,29 @@ export function PerfilPage() {
   });
 
   const novas = rewards?.filter((r) => !r.lida).length ?? 0;
-  const initials = (profile?.nome ?? profile?.email ?? "U").slice(0, 2).toUpperCase();
+  const initials = (profile?.nome || profile?.email || "U").slice(0, 2).toUpperCase();
+
+  const getSubDescription = () => {
+    if (subscription?.plan && subscription.status === "active") {
+      const planName =
+        subscription.plan === "weekly"
+          ? t("shop.weekly")
+          : subscription.plan === "yearly"
+            ? t("shop.yearly")
+            : t("shop.monthly");
+      return `${planName} · ${t("common.active")}`;
+    }
+    if (subscription?.status === "trialing") {
+      return `${t("shop.freeTrialBadge")} · ${t("common.active")}`;
+    }
+    return t("subpages.subscriptions.upgrade");
+  };
+
+  const getObjectiveLabel = () => {
+    if (profile?.objetivo === "perder") return t("subpages.objective.lose");
+    if (profile?.objetivo === "ganhar") return t("subpages.objective.gain");
+    return t("subpages.objective.maintain");
+  };
 
   return (
     <div className="space-y-6 select-none transform-gpu pb-10">
@@ -161,13 +183,7 @@ export function PerfilPage() {
             to="/perfil/assinatura"
             Icon={Crown}
             label={t("profile.subscriptions")}
-            sub={
-              subscription?.plan && subscription.status === "active"
-                ? `Plano ${subscription.plan === "weekly" ? "Semanal" : subscription.plan === "yearly" ? "Anual" : "Mensal"} · Ativo`
-                : subscription?.status === "trialing"
-                  ? "Teste Grátis (7 Dias) · Ativo"
-                  : "Plano Gratuito · Ver Planos Premium"
-            }
+            sub={getSubDescription()}
             badge={
               isPremium ? (subscription?.plan ? subscription.plan.toUpperCase() : "PRO") : undefined
             }
@@ -176,7 +192,7 @@ export function PerfilPage() {
             to="/perfil/recompensas"
             Icon={Gift}
             label={t("profile.rewards")}
-            sub="Reivindique scans bônus enviados pelo admin"
+            sub={t("subpages.rewards.subtitle")}
             badge={novas > 0 ? `${novas} nova(s)` : undefined}
             badgeColor="bg-accent text-white"
           />
@@ -184,7 +200,7 @@ export function PerfilPage() {
             to="/diario"
             Icon={History}
             label={t("profile.history")}
-            sub="Veja seu histórico de leituras e registros salvos"
+            sub={t("diario.subtitle")}
           />
         </Card>
       </div>
@@ -199,26 +215,24 @@ export function PerfilPage() {
             to="/perfil/metas"
             Icon={Crown}
             label={t("profile.goals")}
-            sub={goals ? `${goals.calorias} cal · ${goals.proteina_g}g prot` : "Definir metas"}
+            sub={
+              goals
+                ? `${goals.calorias} kcal · ${goals.proteina_g}g prot`
+                : t("subpages.goals.title")
+            }
             premium
           />
           <Row
             to="/perfil/objetivo"
             Icon={Target}
             label={t("profile.objective")}
-            sub={
-              profile?.objetivo === "perder"
-                ? "Perder peso"
-                : profile?.objetivo === "ganhar"
-                  ? "Ganhar massa"
-                  : "Manter peso"
-            }
+            sub={getObjectiveLabel()}
           />
           <Row
             to="/perfil/dados-fisicos"
             Icon={Activity}
             label={t("profile.physicalData")}
-            sub={`${profile?.peso ?? "?"}kg · ${profile?.altura ?? "?"}cm · ${profile?.idade ?? "?"} anos`}
+            sub={`${profile?.peso ?? "?"}kg · ${profile?.altura ?? "?"}cm · ${profile?.idade ?? "?"} ${t("common.years")}`}
           />
           <Row
             to="/perfil/calibracao-mao"
@@ -226,8 +240,8 @@ export function PerfilPage() {
             label={t("profile.handCalibration")}
             sub={
               handCalibration
-                ? `Calibrada: ${handCalibration.comprimento_cm} cm · Ativa`
-                : "Calibre sua mão para dados mais precisos"
+                ? `${t("scanner.handCalibratedBadge")}: ${handCalibration.comprimento_cm} cm · ${t("common.active")}`
+                : t("scanner.calibrateHandPrompt")
             }
           />
         </Card>
@@ -265,23 +279,28 @@ export function PerfilPage() {
             <div className="flex-1 min-w-0">
               <div className="font-bold text-sm text-foreground">{t("profile.language")}</div>
               <p className="text-[11px] text-muted-foreground font-medium">
-                {lang === "pt" ? "Português (Brasil)" : lang === "en" ? "English" : "Español"}
+                {lang === "pt" ? "Português" : lang === "en" ? "English" : "Français"}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
-              {(["pt", "en", "es"] as const).map((l) => (
-                <button
-                  key={l}
-                  onClick={() => setLanguage(l)}
-                  className={`size-8 rounded-xl text-[10px] font-black uppercase transition-all ${
-                    lang === l
-                      ? "bg-primary text-primary-foreground shadow-sm scale-105"
-                      : "bg-secondary text-foreground hover:bg-secondary/80"
-                  }`}
-                >
-                  {l}
-                </button>
-              ))}
+              {SUPPORTED_LANGUAGES.map((item) => {
+                const langId = item.id || item.code;
+                return (
+                  <button
+                    key={langId}
+                    onClick={() => setLanguage(langId)}
+                    title={item.label}
+                    className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+                      lang === langId
+                        ? "bg-primary text-primary-foreground shadow-sm scale-105"
+                        : "bg-secondary text-foreground hover:bg-secondary/80"
+                    }`}
+                  >
+                    <span>{item.flag}</span>
+                    <span>{(langId || "").toUpperCase()}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -301,19 +320,19 @@ export function PerfilPage() {
             to="/perfil/alterar-senha"
             Icon={Lock}
             label={t("profile.changePassword")}
-            sub="Atualize sua senha de acesso"
+            sub={t("subpages.changePassword.cardTitle")}
           />
           <Row
             to="/direitos-privacidade"
             Icon={Shield}
             label={t("profile.privacy")}
-            sub="Termos de uso, limites de créditos e privacidade"
+            sub={t("direitos.rightsTitle")}
           />
           <Row
             to="/perfil/excluir-conta"
             Icon={Trash2}
             label={t("profile.deleteAccount")}
-            sub="Remover todos os dados permanentemente"
+            sub={t("subpages.deleteAccount.warning")}
             danger
           />
         </Card>
@@ -338,10 +357,10 @@ export function PerfilPage() {
               <LogOut className="size-6" />
             </div>
             <DialogTitle className="text-center text-xl font-bold text-foreground">
-              {t("profile.signOut")}
+              {t("auth.logoutConfirmTitle")}
             </DialogTitle>
             <DialogDescription className="text-center text-xs text-muted-foreground">
-              Tem certeza de que deseja sair? Você precisará entrar novamente na próxima vez.
+              {t("auth.logoutConfirmDesc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-3 pt-4 sm:justify-center">
@@ -351,7 +370,7 @@ export function PerfilPage() {
               className="flex-1 h-12 rounded-2xl border-border font-bold text-xs"
               onClick={() => setShowSignOutDialog(false)}
             >
-              Cancelar
+              {t("auth.logoutCancel")}
             </Button>
             <Button
               variant="destructive"
@@ -363,7 +382,7 @@ export function PerfilPage() {
                 await signOut();
               }}
             >
-              {signingOut ? <Loader2 className="size-4 animate-spin" /> : "Sim, Sair"}
+              {signingOut ? <Loader2 className="size-4 animate-spin" /> : t("auth.logoutButton")}
             </Button>
           </DialogFooter>
         </DialogContent>

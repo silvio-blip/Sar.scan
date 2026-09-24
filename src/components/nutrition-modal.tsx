@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { isInstalledApp, dataURLtoFile } from "@/lib/utils";
 import { getFoodEmoji } from "@/lib/food-emoji";
 import { stopSpeech } from "@/lib/tts";
+import { useTranslation } from "@/lib/strings";
 
 export type NutritionFood = {
   nome: string;
@@ -36,21 +37,28 @@ type Props = {
   onAdd: (food: NutritionFood, porcoes: number, fotoUrl: string | null) => Promise<void> | void;
 };
 
-const BLOCKS = [
-  { key: "cal", label: "Calorias", unit: "", Icon: Flame, color: "text-accent" },
-  { key: "carb", label: "Carbos", unit: "g", Icon: Wheat, color: "text-amber-600" },
-  { key: "prot", label: "Proteína", unit: "g", Icon: Beef, color: "text-primary" },
-  { key: "gord", label: "Gordura", unit: "g", Icon: Droplet, color: "text-sky-500" },
-] as const;
-
 export function NutritionModal({ food, onClose, onAdd }: Props) {
   const { user } = useAuth();
+  const { t, lang, translateFoodName } = useTranslation();
   const [porcoes, setPorcoes] = useState(1);
   const [busy, setBusy] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const BLOCKS = [
+    {
+      key: "cal",
+      label: t("home.caloriesToday"),
+      unit: " kcal",
+      Icon: Flame,
+      color: "text-accent",
+    },
+    { key: "carb", label: t("home.carbs"), unit: "g", Icon: Wheat, color: "text-amber-600" },
+    { key: "prot", label: t("home.protein"), unit: "g", Icon: Beef, color: "text-primary" },
+    { key: "gord", label: t("home.fats"), unit: "g", Icon: Droplet, color: "text-sky-500" },
+  ] as const;
 
   useEffect(() => {
     if (food) {
@@ -81,9 +89,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
         !mimeType.includes("xml"));
 
     if (!hasValidExtension && !hasValidMime) {
-      toast.error(
-        "Por favor, envie um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
-      );
+      toast.error(t("common.error"));
       return;
     }
 
@@ -91,9 +97,9 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
     try {
       const url = await uploadFoodPhoto(file, user.id, "manual");
       setPhotoUrl(url);
-      toast.success("Foto carregada com sucesso!");
+      toast.success(t("common.success"));
     } catch {
-      toast.error("Falha ao enviar foto");
+      toast.error(t("common.error"));
     } finally {
       setUploading(false);
     }
@@ -129,10 +135,10 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
             const file = await dataURLtoFile(photo.dataUrl, `camera-photo-${Date.now()}.jpg`);
             const url = await uploadFoodPhoto(file, user.id, "manual");
             setPhotoUrl(url);
-            toast.success("Foto em tempo real capturada!");
+            toast.success(t("common.success"));
           } catch (uploadErr) {
             console.error("Capacitor camera upload error in dialog:", uploadErr);
-            toast.error("Falha ao salvar foto");
+            toast.error(t("common.error"));
           } finally {
             setUploading(false);
           }
@@ -181,10 +187,10 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
             const file = await dataURLtoFile(photo.dataUrl, `gallery-photo-${Date.now()}.jpg`);
             const url = await uploadFoodPhoto(file, user.id, "manual");
             setPhotoUrl(url);
-            toast.success("Foto selecionada da galeria!");
+            toast.success(t("common.success"));
           } catch (uploadErr) {
             console.error("Capacitor gallery upload error in dialog:", uploadErr);
-            toast.error("Falha ao salvar foto");
+            toast.error(t("common.error"));
           } finally {
             setUploading(false);
           }
@@ -219,18 +225,19 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
   };
 
   const foodEmoji = food ? getFoodEmoji(food.nome) : "🍽️";
+  const displayedFoodName = food ? translateFoodName(food.nome, lang) : "";
 
   return (
     <Dialog open={!!food} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="max-w-sm w-[92vw] max-h-[88vh] overflow-y-auto rounded-[32px] border border-border bg-card p-0 shadow-xl text-foreground">
-        <DialogTitle className="sr-only">Adicionar alimento</DialogTitle>
-        <DialogDescription className="sr-only">Ajuste a porção e adicione</DialogDescription>
+        <DialogTitle className="sr-only">{t("scanner.adjust")}</DialogTitle>
+        <DialogDescription className="sr-only">{t("scanner.portion")}</DialogDescription>
         {food && (
           <div className="space-y-0 relative">
             <div className="relative h-48 sm:h-60 w-full overflow-hidden bg-secondary/25 border-b border-border/40 flex items-center justify-center">
               <FoodImage
                 src={photoUrl ?? food.foto_url}
-                alt={food.nome}
+                alt={displayedFoodName}
                 foodName={food.nome}
                 emoji={foodEmoji}
                 textSizeClass="text-7xl sm:text-8xl drop-shadow-sm transition-transform duration-300 select-none"
@@ -243,7 +250,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
               {photoUrl && (
                 <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-600/90 text-white text-[10px] font-black uppercase tracking-wider shadow-md backdrop-blur-sm">
                   <span className="size-1.5 rounded-full bg-white animate-pulse" />
-                  Foto pronta para salvar
+                  {t("common.success")}
                 </div>
               )}
 
@@ -257,7 +264,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                     className="size-8 rounded-full bg-zinc-900/80 text-white hover:bg-zinc-900 border border-white/20 shadow-md active:scale-95 transition-transform shrink-0"
                     onClick={() => setPhotoUrl(null)}
                     disabled={uploading}
-                    title="Remover foto personalizada"
+                    title={t("common.remove")}
                   >
                     <X className="size-4" />
                   </Button>
@@ -270,14 +277,14 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   className="rounded-full h-8 bg-background/90 text-foreground hover:bg-background border border-border/80 shadow-sm gap-1.5 px-3 active:scale-95 transition-all text-xs font-semibold backdrop-blur-md"
                   onClick={handleTakeLivePhoto}
                   disabled={uploading}
-                  title="Tirar foto em tempo real agora"
+                  title={t("scanner.takePhoto")}
                 >
                   {uploading ? (
                     <Loader2 className="size-3.5 animate-spin text-foreground" />
                   ) : (
                     <Camera className="size-3.5 text-emerald-600" />
                   )}
-                  <span>Tirar Foto</span>
+                  <span>{t("scanner.takePhoto")}</span>
                 </Button>
 
                 <Button
@@ -287,10 +294,10 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   className="rounded-full h-8 bg-background/90 text-foreground hover:bg-background border border-border/80 shadow-sm gap-1.5 px-3 active:scale-95 transition-all text-xs font-semibold backdrop-blur-md"
                   onClick={handleSelectGalleryPhoto}
                   disabled={uploading}
-                  title="Escolher foto da galeria"
+                  title={t("scanner.gallery")}
                 >
                   <ImageIcon className="size-3.5 text-sky-600" />
-                  <span>Galeria</span>
+                  <span>{t("scanner.gallery")}</span>
                 </Button>
               </div>
 
@@ -315,11 +322,11 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
             <div className="space-y-6 p-6 relative z-10">
               <div className="space-y-1">
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
-                  Resumo Nutricional
+                  {t("diario.mealDetails")}
                 </p>
                 <h3 className="text-xl sm:text-2xl font-display font-black tracking-tight text-foreground flex items-start gap-2.5">
                   <span className="text-2xl shrink-0 leading-none pt-0.5">{foodEmoji}</span>
-                  <span className="break-words leading-tight">{food.nome}</span>
+                  <span className="break-words leading-tight">{displayedFoodName}</span>
                 </h3>
               </div>
 
@@ -337,7 +344,7 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                     {porcoes}×
                   </div>
                   <div className="text-[9px] font-black uppercase tracking-[0.25em] text-muted-foreground/60">
-                    porção
+                    {t("scanner.portion")}
                   </div>
                 </div>
                 <Button
@@ -384,14 +391,14 @@ export function NutritionModal({ food, onClose, onAdd }: Props) {
                   onClick={handleClose}
                   disabled={busy}
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   className="h-14 rounded-[24px] bg-primary text-primary-foreground hover:bg-primary/95 font-bold uppercase tracking-widest text-[10px] shadow-sm"
                   onClick={handleAdd}
                   disabled={busy}
                 >
-                  {busy ? "Adicionando..." : "Adicionar"}
+                  {busy ? t("common.loading") : t("scanner.adjust")}
                 </Button>
               </div>
             </div>

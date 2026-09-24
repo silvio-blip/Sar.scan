@@ -16,12 +16,14 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { getApiUrl } from "@/lib/utils";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
+import { useTranslation } from "@/lib/strings";
 
 interface WaterReminderSchedulerProps {
   userId?: string | null;
 }
 
 export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) {
+  const { t } = useTranslation();
   const [active, setActive] = useState(() => {
     return localStorage.getItem("water_reminder_active") === "true";
   });
@@ -241,7 +243,7 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
 
     setTimeout(() => {
       setIsTesting(false);
-      toast.success("Teste acionado! Verifique as suas notificações do telemóvel.", {
+      toast.success(t("waterReminder.testSuccessToast"), {
         icon: "💧",
       });
     }, 3000);
@@ -255,13 +257,13 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
         </div>
         <div className="flex-1">
           <div className="font-bold text-sm text-foreground flex items-center gap-2">
-            Lembretes de Hidratação
+            {t("waterReminder.title")}
             <span className="text-[9px] bg-sky-500/10 text-sky-500 rounded-full px-2 py-0.5 font-bold uppercase tracking-wider">
-              ÁGUA
+              {t("waterReminder.tag")}
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground font-medium leading-normal">
-            Receba notificações diárias para lembrar de manter o corpo bem hidratado.
+            {t("waterReminder.subtitle")}
           </p>
         </div>
         <Switch checked={active} onCheckedChange={setActive} />
@@ -281,7 +283,7 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
             {/* Quick Presets */}
             <div className="space-y-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-                <Sparkles className="size-3 text-amber-500" /> Presets de Horários
+                <Sparkles className="size-3 text-amber-500" /> {t("waterReminder.presetsTitle")}
               </span>
               <div className="flex items-center gap-2 flex-wrap">
                 <button
@@ -289,21 +291,21 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
                   onClick={() => applyPreset("2h")}
                   className="px-3 py-1.5 bg-secondary/60 hover:bg-secondary/100 active:scale-95 text-xs font-bold rounded-xl border border-border transition-all text-foreground"
                 >
-                  Cada 2 horas
+                  {t("waterReminder.preset2h")}
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset("3h")}
                   className="px-3 py-1.5 bg-secondary/60 hover:bg-secondary/100 active:scale-95 text-xs font-bold rounded-xl border border-border transition-all text-foreground"
                 >
-                  Cada 3 horas
+                  {t("waterReminder.preset3h")}
                 </button>
                 <button
                   type="button"
                   onClick={() => applyPreset("clear")}
                   className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/15 active:scale-95 text-xs font-black text-red-500 rounded-xl transition-all"
                 >
-                  Limpar todos
+                  {t("waterReminder.clearAll")}
                 </button>
               </div>
             </div>
@@ -311,13 +313,13 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
             {/* Current Alarm Times List */}
             <div className="space-y-2">
               <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-                <Clock className="size-3" /> Seus Horários Agendados ({times.length})
+                <Clock className="size-3" /> {t("waterReminder.scheduledTimes")} ({times.length})
               </span>
 
               {times.length === 0 ? (
                 <div className="bg-secondary/30 rounded-2xl p-4 text-center border border-border/40">
                   <span className="text-xs text-muted-foreground font-semibold flex items-center justify-center gap-1.5">
-                    <Info className="size-3.5" /> Sem horários agendados. Adicione um abaixo!
+                    <Info className="size-3.5" /> {t("waterReminder.emptySchedule")}
                   </span>
                 </div>
               ) : (
@@ -364,7 +366,7 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
                 onClick={handleAddTime}
                 className="px-3.5 h-10 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl font-bold text-xs flex items-center gap-1 transition-all active:scale-95"
               >
-                <Plus className="size-4" /> Adicionar Horário
+                <Plus className="size-4" /> {t("waterReminder.addTime")}
               </button>
             </div>
 
@@ -379,21 +381,15 @@ export function WaterReminderScheduler({ userId }: WaterReminderSchedulerProps) 
                 {isTesting ? (
                   <>
                     <Loader2 className="size-3.5 animate-spin" />
-                    Enviando Teste...
+                    {t("waterReminder.testingNotification")}
                   </>
                 ) : (
                   <>
                     <Smartphone className="size-3.5 animate-pulse" />
-                    Testar Disparo Push Agora
+                    {t("waterReminder.testButton")}
                   </>
                 )}
               </button>
-              <div className="mt-1.5 text-center">
-                <p className="text-[10px] text-muted-foreground/80 leading-normal flex items-center justify-center gap-1 font-medium">
-                  <BellRing className="size-3 text-sky-500 shrink-0" /> No telemóvel (APK), agendará
-                  uma notificação local fidedigna.
-                </p>
-              </div>
             </div>
           </motion.div>
         )}

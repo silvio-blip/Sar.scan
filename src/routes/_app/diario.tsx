@@ -22,9 +22,11 @@ import { speakText, stopSpeech } from "@/lib/tts";
 import { uploadFoodPhoto } from "@/lib/upload-food-photo";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { ptBR, enUS, fr } from "date-fns/locale";
 import { toast } from "sonner";
 import { isInstalledApp, dataURLtoFile } from "@/lib/utils";
+import { useTranslation } from "@/lib/strings";
+import { translateFoodName } from "@/lib/food-translator";
 
 export const Route = createFileRoute("/_app/diario")({ component: DiarioPage });
 
@@ -44,15 +46,19 @@ type Entry = {
 interface DiarioEntryCardProps {
   entry: Entry;
   onOpen: (entry: Entry) => void;
+  lang: string;
 }
 
 const DiarioEntryCard = React.memo(function DiarioEntryCard({
   entry,
   onOpen,
+  lang,
 }: DiarioEntryCardProps) {
   const handleClick = React.useCallback(() => {
     onOpen(entry);
   }, [entry, onOpen]);
+
+  const displayName = translateFoodName(entry.nome, lang);
 
   return (
     <button
@@ -62,13 +68,13 @@ const DiarioEntryCard = React.memo(function DiarioEntryCard({
       <div className="size-16 rounded-2xl overflow-hidden shadow-sm border border-border shrink-0 group-hover:scale-105 transition-transform duration-500">
         <FoodImage
           src={entry.foto_url}
-          alt={entry.nome}
+          alt={displayName}
           className="w-full h-full object-cover group-hover:brightness-105 transition-all"
         />
       </div>
       <div className="flex-1 min-w-0 relative z-10">
         <div className="font-bold text-base text-foreground truncate mb-1 tracking-tight">
-          {entry.nome}
+          {displayName}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-black text-primary uppercase tracking-widest">
@@ -86,12 +92,15 @@ const DiarioEntryCard = React.memo(function DiarioEntryCard({
 
 export function DiarioPage() {
   const { user } = useAuth();
+  const { t, lang } = useTranslation();
   const qc = useQueryClient();
   const [open, setOpen] = useState<Entry | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+
+  const dateLocale = lang === "fr" ? fr : lang === "en" ? enUS : ptBR;
 
   useEffect(() => {
     return () => {
@@ -194,22 +203,9 @@ export function DiarioPage() {
         const cal = (data ?? [])
           .filter((r) => r.data === key)
           .reduce((s, r) => s + Number(r.calorias), 0);
-        return { dia: format(d, "EEE", { locale: ptBR }).slice(0, 3), cal: Math.round(cal) };
+        return { dia: format(d, "EEE", { locale: dateLocale }).slice(0, 3), cal: Math.round(cal) };
       });
       return days;
-    },
-  });
-
-  const { data: waterHistory } = useQuery({
-    queryKey: ["water_history", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("water_intake")
-        .select("*")
-        .eq("user_id", user!.id)
-        .eq("data", today());
-      return (data ?? []).reduce((s, r) => s + r.ml, 0);
     },
   });
 
@@ -230,7 +226,7 @@ export function DiarioPage() {
         d.setDate(d.getDate() - (6 - i));
         const key = d.toISOString().slice(0, 10);
         const ml = (data ?? []).filter((r) => r.data === key).reduce((s, r) => s + Number(r.ml), 0);
-        return { dia: format(d, "EEE", { locale: ptBR }).slice(0, 3), ml: Math.round(ml) };
+        return { dia: format(d, "EEE", { locale: dateLocale }).slice(0, 3), ml: Math.round(ml) };
       });
       return days;
     },
@@ -251,161 +247,7 @@ export function DiarioPage() {
     await supabase.from("food_entries").delete().eq("id", id);
     qc.invalidateQueries();
     setOpen(null);
-    toast.success("Removido");
-  };
-
-  const trocarFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file || !open || !user) return;
-
-    const name = file.name ? file.name.toLowerCase() : "";
-    const mimeType = file.type ? file.type.toLowerCase() : "";
-    const extMatch = name.match(/\.([a-z0-9]+)$/);
-    const ext = extMatch ? extMatch[1] : "";
-
-    const allowedExtensions = ["jpg", "jpeg", "png", "webp", "heic", "heif"];
-    const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
-
-    const hasValidExtension = allowedExtensions.includes(ext);
-    const hasValidMime =
-      allowedMimeTypes.includes(mimeType) ||
-      (mimeType.startsWith("image/") &&
-        !mimeType.includes("svg") &&
-        !mimeType.includes("html") &&
-        !mimeType.includes("xml"));
-
-    if (!hasValidExtension || !hasValidMime) {
-      toast.error(
-        "Por favor, selecione um arquivo de imagem válido (PNG, JPEG, WEBP). Outros formatos não são permitidos.",
-      );
-      return;
-    }
-
-    setUploadingPhoto(true);
-    try {
-      const url = await uploadFoodPhoto(file, user.id, "edit");
-      const { error } = await supabase
-        .from("food_entries")
-        .update({ foto_url: url })
-        .eq("id", open.id);
-      if (error) throw error;
-      setOpen({ ...open, foto_url: url });
-      qc.invalidateQueries({ queryKey: ["entries"] });
-      toast.success("Foto atualizada");
-    } catch {
-      toast.error("Falha ao salvar foto");
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  const handleTakeLivePhoto = async () => {
-    if (isInstalledApp()) {
-      try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-        try {
-          const check = await Camera.checkPermissions();
-          if (check.camera !== "granted") {
-            await Camera.requestPermissions({ permissions: ["camera"] });
-          }
-        } catch (permErr) {
-          console.warn("[Capacitor Permissions Error]", permErr);
-        }
-
-        const photo = await Camera.getPhoto({
-          quality: 85,
-          allowEditing: false,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Camera,
-        });
-
-        if (photo.dataUrl && open && user) {
-          setUploadingPhoto(true);
-          try {
-            const file = await dataURLtoFile(photo.dataUrl, `edited-live-${Date.now()}.jpg`);
-            const url = await uploadFoodPhoto(file, user.id, "edit");
-            const { error } = await supabase
-              .from("food_entries")
-              .update({ foto_url: url })
-              .eq("id", open.id);
-            if (error) throw error;
-            setOpen({ ...open, foto_url: url });
-            qc.invalidateQueries({ queryKey: ["entries"] });
-            toast.success("Foto atualizada com sucesso");
-          } catch (uploadErr) {
-            console.error("Upload error of capacitor file:", uploadErr);
-            toast.error("Falha ao salvar foto");
-          } finally {
-            setUploadingPhoto(false);
-          }
-        }
-      } catch (err: any) {
-        console.error("Capacitor camera error:", err);
-        if (
-          err?.message !== "User cancelled photos app" &&
-          err?.message?.indexOf("cancelled") === -1
-        ) {
-          cameraRef.current?.click();
-        }
-      }
-    } else {
-      cameraRef.current?.click();
-    }
-  };
-
-  const handleSelectPhoto = async () => {
-    if (isInstalledApp()) {
-      try {
-        const { Camera, CameraResultType, CameraSource } = await import("@capacitor/camera");
-        try {
-          const check = await Camera.checkPermissions();
-          if (check.photos !== "granted") {
-            await Camera.requestPermissions({ permissions: ["photos"] });
-          }
-        } catch (permErr) {
-          console.warn("[Capacitor Permissions Error]", permErr);
-        }
-
-        const photo = await Camera.getPhoto({
-          quality: 85,
-          allowEditing: false,
-          resultType: CameraResultType.DataUrl,
-          source: CameraSource.Photos,
-        });
-
-        if (photo.dataUrl && open && user) {
-          setUploadingPhoto(true);
-          try {
-            const file = await dataURLtoFile(photo.dataUrl, `edited-photo-${Date.now()}.jpg`);
-            const url = await uploadFoodPhoto(file, user.id, "edit");
-            const { error } = await supabase
-              .from("food_entries")
-              .update({ foto_url: url })
-              .eq("id", open.id);
-            if (error) throw error;
-            setOpen({ ...open, foto_url: url });
-            qc.invalidateQueries({ queryKey: ["entries"] });
-            toast.success("Foto atualizada");
-          } catch (uploadErr) {
-            console.error("Upload error of capacitor file:", uploadErr);
-            toast.error("Falha ao salvar foto");
-          } finally {
-            setUploadingPhoto(false);
-          }
-        }
-      } catch (err: any) {
-        console.error("Capacitor picker error:", err);
-        if (
-          err?.message !== "User cancelled photos app" &&
-          err?.message?.indexOf("cancelled") === -1
-        ) {
-          fileRef.current?.click();
-        }
-      }
-    } else {
-      fileRef.current?.click();
-    }
+    toast.success(t("common.success"));
   };
 
   return (
@@ -413,10 +255,10 @@ export function DiarioPage() {
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1.5">
           <h1 className="text-4xl font-display font-black tracking-tight text-foreground">
-            Diário
+            {t("nav.diary")}
           </h1>
           <p className="text-[10px] text-muted-foreground/80 font-black uppercase tracking-[0.25em]">
-            {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
+            {format(new Date(), "EEEE, d MMMM", { locale: dateLocale })}
           </p>
         </div>
         <Link
@@ -424,21 +266,21 @@ export function DiarioPage() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-secondary/80 hover:bg-secondary text-foreground font-bold text-xs transition border border-border shadow-sm"
         >
           <ArrowLeft className="size-4" />
-          <span>Perfil</span>
+          <span>{t("profile.title")}</span>
         </Link>
       </div>
 
-      {/* Main Focus: Daily Total (Warm-Beige Glass Card) */}
+      {/* Main Focus: Daily Total */}
       <div className="bg-secondary/40 rounded-[36px] p-8 text-center flex flex-col items-center gap-4 border border-border/60 shadow-sm relative overflow-hidden group transform-gpu">
         <div className="relative z-10 flex flex-col items-center">
           <div className="text-[9px] font-black uppercase tracking-[0.3em] text-muted-foreground mb-1">
-            Consumo de Hoje
+            {t("home.todaySummary")}
           </div>
           <div className="text-6xl sm:text-7xl font-display font-black text-foreground tracking-tighter drop-shadow-sm">
             {Math.round(totalCal)}
           </div>
           <div className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mt-2">
-            quilocalorias
+            {t("home.calories").toLowerCase()} (kcal)
           </div>
         </div>
 
@@ -447,17 +289,17 @@ export function DiarioPage() {
         <div className="grid grid-cols-3 w-full gap-3 relative z-10">
           {[
             {
-              l: "Prot",
+              l: t("home.protein").slice(0, 4),
               v: entries?.reduce((s, e) => s + Number(e.prot), 0) ?? 0,
               color: "text-accent",
             },
             {
-              l: "Carb",
+              l: t("home.carbs").slice(0, 4),
               v: entries?.reduce((s, e) => s + Number(e.carbs), 0) ?? 0,
               color: "text-foreground",
             },
             {
-              l: "Gord",
+              l: t("home.fats").slice(0, 4),
               v: entries?.reduce((s, e) => s + Number(e.gord), 0) ?? 0,
               color: "text-muted-foreground",
             },
@@ -475,23 +317,25 @@ export function DiarioPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">
           <h2 className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
-            Refeições
+            {t("home.recentMeals")}
           </h2>
           <div className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-widest">
-            {entries?.length ?? 0} {entries?.length === 1 ? "ITEM" : "ITENS"}
+            {entries?.length ?? 0} {entries?.length === 1 ? "ITEM" : "ITEMS"}
           </div>
         </div>
 
         <div className="grid gap-3">
           {entries && entries.length > 0 ? (
-            entries.map((e) => <DiarioEntryCard key={e.id} entry={e} onOpen={setOpen} />)
+            entries.map((e) => (
+              <DiarioEntryCard key={e.id} entry={e} onOpen={setOpen} lang={lang} />
+            ))
           ) : (
             <div className="py-16 text-center bg-secondary/15 rounded-[36px] border border-border/40 flex flex-col items-center gap-3">
               <div className="size-10 rounded-full bg-primary-soft flex items-center justify-center">
                 <div className="size-1.5 rounded-full bg-primary/40 animate-pulse" />
               </div>
               <div className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground/40">
-                Nenhum registro hoje
+                {t("home.noMealsToday")}
               </div>
             </div>
           )}
@@ -500,7 +344,7 @@ export function DiarioPage() {
 
       <div className="space-y-4">
         <h2 className="px-2 text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
-          Performance (Calorias)
+          {t("home.calories")} (kcal)
         </h2>
         <div className="bg-secondary/20 rounded-[36px] p-6 border border-border/40 shadow-sm relative overflow-hidden">
           <div className="h-44 pt-4">
@@ -550,7 +394,7 @@ export function DiarioPage() {
 
       <div className="space-y-4">
         <h2 className="px-2 text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">
-          Hidratação (ml)
+          {t("home.water")} (ml)
         </h2>
         <div className="bg-secondary/20 rounded-[36px] p-6 border border-border/40 shadow-sm relative overflow-hidden">
           <div className="h-44 pt-4">
@@ -610,17 +454,15 @@ export function DiarioPage() {
       >
         <DialogContent className="max-w-sm bg-card border border-border rounded-[36px] p-6 shadow-xl text-foreground">
           <DialogTitle className="text-xl font-display font-bold tracking-tight text-foreground">
-            {open?.nome}
+            {open ? translateFoodName(open.nome, lang) : ""}
           </DialogTitle>
-          <DialogDescription className="sr-only">
-            Detalhes nutricionais e ações do alimento salvo no diário
-          </DialogDescription>
+          <DialogDescription className="sr-only">{t("scanner.detectedFood")}</DialogDescription>
           {open && (
             <div className="space-y-6">
               <div className="relative group overflow-hidden rounded-[24px] border border-border">
                 <FoodImage
                   src={open.foto_url}
-                  alt={open.nome}
+                  alt={translateFoodName(open.nome, lang)}
                   className="w-full h-44 object-cover"
                 />
               </div>
@@ -629,22 +471,22 @@ export function DiarioPage() {
                 <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 space-y-2 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs font-bold text-primary tracking-wide uppercase">
-                      <Sparkles className="size-4 shrink-0" /> Análise de Impacto na Meta
+                      <Sparkles className="size-4 shrink-0" /> {t("home.tipOfDay")}
                     </div>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => speakFeedback(getFeedbackForEntry(open.id))}
                       className="h-7 px-2.5 rounded-xl text-xs gap-1.5 border-primary/30 bg-background hover:bg-primary/10 text-primary transition-all"
-                      title={isPlayingAudio ? "Parar áudio" : "Ouvir áudio da sugestão"}
                     >
                       {isPlayingAudio ? (
                         <>
-                          <VolumeX className="size-3.5 animate-pulse text-destructive" /> Parar
+                          <VolumeX className="size-3.5 animate-pulse text-destructive" />{" "}
+                          {t("common.cancel")}
                         </>
                       ) : (
                         <>
-                          <Volume2 className="size-3.5" /> Ouvir Áudio
+                          <Volume2 className="size-3.5" /> Audio
                         </>
                       )}
                     </Button>
@@ -658,17 +500,17 @@ export function DiarioPage() {
               <div className="flex items-center gap-2 px-1">
                 <div className="h-px flex-1 bg-border" />
                 <div className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground whitespace-nowrap">
-                  Valores Totais
+                  {t("home.todaySummary")}
                 </div>
                 <div className="h-px flex-1 bg-border" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ["Calorias", Math.round(Number(open.calorias)), "kcal"],
-                  ["Proteínas", Math.round(Number(open.prot)), "g"],
-                  ["Carbos", Math.round(Number(open.carbs)), "g"],
-                  ["Gorduras", Math.round(Number(open.gord)), "g"],
+                  [t("home.calories"), Math.round(Number(open.calorias)), "kcal"],
+                  [t("home.protein"), Math.round(Number(open.prot)), "g"],
+                  [t("home.carbs"), Math.round(Number(open.carbs)), "g"],
+                  [t("home.fats"), Math.round(Number(open.gord)), "g"],
                 ].map(([k, v, u]) => (
                   <div
                     key={String(k)}
@@ -688,15 +530,14 @@ export function DiarioPage() {
               </div>
               <div className="space-y-3 pt-2">
                 <div className="text-[10px] text-center font-black uppercase tracking-[0.2em] text-muted-foreground">
-                  {open.porcoes} porção{open.porcoes !== 1 ? "es" : ""} consumida
-                  {open.porcoes !== 1 ? "s" : ""}
+                  {open.porcoes} {t("scanner.portion")}
                 </div>
                 <Button
                   variant="ghost"
                   className="w-full h-12 rounded-2xl text-red-500 hover:text-red-600 hover:bg-red-500/5 font-black uppercase tracking-widest text-[10px] transition-all"
                   onClick={() => remover(open.id)}
                 >
-                  <Trash2 className="size-4 mr-2" /> Excluir do diário
+                  <Trash2 className="size-4 mr-2" /> {t("common.delete")}
                 </Button>
               </div>
             </div>
